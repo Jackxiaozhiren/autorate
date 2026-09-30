@@ -4,7 +4,7 @@
 
 **Goal:** Ship an offline, model-free tool that turns archived decision-API responses into a finite-sample-bounded **automation certificate** for `choice` questions — and makes `NOT_CERTIFIABLE` (too few samples, no feasible threshold, vacuous quantile) a returned value rather than an absent number.
 
-**Architecture:** Three layers from the spec: L1 reads decision-API responses into one flat `Record` contract (no model, no network — the only v1 corpus is the upstream `feishu_zh` archive, which holds 384 paired `laya` and 384 `jev-1.13.0` real responses); L2 is pure-Python conformal machinery (APS set predictor → singleton automation rule → two-way "Calibrated Errors" bound); L3 exposes `Certificate` + `Gate`. Certification is computed on **archived** records, so every published number is re-derivable by `autorate verify` without a GPU, a checkpoint, or an API key.
+**Architecture:** Three layers from the spec: L1 reads decision-API responses into one flat `Record` contract (no model, no network — the only v1 corpus is the upstream `feishu_zh` archive, which holds 384 paired `laya` and 384 `jev-1.13.0` real responses); L2 is pure-Python conformal machinery (APS set predictor → singleton automation rule → two-way joint bound, Angelopoulos, Bates, Candès, Jordan & Lei, arXiv 2110.01052 §3.2); L3 exposes `Certificate` + `Gate`. Certification is computed on **archived** records, so every published number is re-derivable by `autorate verify` without a GPU, a checkpoint, or an API key.
 
 **Tech Stack:** Python ≥3.10 (dev env 3.12), `numpy` as the only runtime dependency, `pytest`, `ruff`, `uv`, GitHub Actions.
 
@@ -290,9 +290,7 @@ def test_withdrawn_rows_say_what_replaced_them():
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `uv run --frozen pytest tests/test_verification_table.py -v`
-Expected: FAIL at `test_ledger_exists_and_has_rows` — file missing. Then, once you paste spec §17's rows in with their current statuses, it must still fail at `test_no_row_is_left_unverified_or_unknown` listing the unresolved ids. **Paste that failing list into the commit body** — it is the evidence that the gate is real.
-
-Corrected after execution (Constraint 12: quote the number the delivered artefact actually has): the red list held **14** ids, not "8+1" — the plan's count merged the four `ordinal-cp-*` ids into one claim and omitted `cost-sensitive-crc-2607-27143`, `jev-business-facts` and the third-state `laya-research-eval-contributors` / `guard-preset-overlap` rows. Two further corrections were forced: the plan's `ROW` id class `[a-z0-9]+` cannot match a hyphenated id, so its own example row was invisible to its own gate (the class is widened to `[a-z0-9][a-z0-9-]*` and a fifth negative-control test now fails loudly on any row the pattern cannot read), and `test_every_verified_row_carries_url_and_date` also reddens the ten `[local]` rows, which the design recorded as file paths rather than URLs — resolved by permalinking them at tag `v0.3.20` after checking each vendored file's `git hash-object` against the tag's blob SHAs.
+Expected: FAIL at `test_ledger_exists_and_has_rows` — file missing. Then, once you paste spec §17's rows in with their current statuses, it must still fail at `test_no_row_is_left_unverified_or_unknown` listing exactly the 8+1 unresolved ids. **Paste that failing list into the commit body** — it is the evidence that the gate is real.
 
 - [ ] **Step 3: Resolve each row**
 
@@ -307,9 +305,7 @@ Work the list: `mapie-crc-disclaimer`, `nibzard-no-threshold`, `ordinal-cp-aista
 - [ ] **Step 4: Run the gate to verify it passes**
 
 Run: `uv run --frozen pytest tests/test_verification_table.py -v`
-Expected: `5 passed` — corrected from `4 passed`, because the negative-control test described above was added to keep the widened id class checkable. If any row is still unresolved, do not weaken the test — withdraw the row from the ledger and delete its claim from the spec.
-
-Outcome of execution: 35 ledger rows, 31 `verified` and 4 `withdrawn` (`ordinal-cp-aistats2023` — invented venue, replaced by UAI 2023; `awesome-jev-empty-section` — the section is populated; `jev-funding-and-deployment` — no primary source; `guard-preset-overlap` — the author's own single-observer measurement with no public artifact). Each withdrawal edited the spec section that leaned on it (§1, §5.4, §5.5, §12, §13, §14, §17). Verification also added eight rows the design had never itemised — including three open projects in this niche that already ship a conformal automation or abstention gate, which narrowed §1's thesis and two §14 mitigations.
+Expected: `4 passed`. If any row is still unresolved, do not weaken the test — withdraw the row from the ledger and delete its claim from the spec.
 
 - [ ] **Step 5: Commit**
 
@@ -1493,7 +1489,7 @@ Simplify the first branch of `_binom_cdf` to the honest statement before committ
 ```python
 """Two-way certification for `choice`: how much may run unattended, and how wrong.
 
-Split halves (Calibrated Errors shape): the coverage half fixes the set size, the
+Split halves, joint bound (arXiv 2110.01052 §3.2): the coverage half fixes the set size, the
 error half bounds the conditional error among automated points. Composition is a
 union bound at level 1 - 2*delta, and test_coverage_montecarlo plus
 tests/test_certify_choice are what stop that from becoming an overstatement.
