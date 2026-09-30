@@ -37,3 +37,14 @@ def test_ruff_gate_matches_the_upstream_shape():
         capture_output=True, text=True, cwd=ROOT,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_declared_console_script_entry_point_resolves_and_exits_zero():
+    # Guards pyproject's `autorate = "autorate.cli:main"`: neither ruff nor compileall resolves an
+    # entry-point string, so without this test renaming or deleting `autorate.cli.main` stays green.
+    # Task 9 rewrites cli.py, so the target must keep resolving and returning 0.
+    from importlib.metadata import entry_points
+
+    scripts = [ep for ep in entry_points(group="console_scripts") if ep.name == "autorate"]
+    assert len(scripts) == 1, f"expected one `autorate` console script, got {scripts}"
+    assert scripts[0].load()() == 0
