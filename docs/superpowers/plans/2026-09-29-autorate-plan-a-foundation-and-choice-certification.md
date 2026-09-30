@@ -220,7 +220,7 @@ uv venv .venv --python 3.12
 uv sync --frozen --extra dev
 uv run --frozen pytest tests/test_toolchain.py -v
 ```
-Expected: `4 passed`. Record the exact `X passed` line — Constraint 12.
+Expected: `5 passed` — corrected after the fix round added the entry-point guard; the count a reviewer can quote is the number the delivered suite actually has (Constraint 12).
 
 - [ ] **Step 5: Copy the design docs in, then commit**
 
@@ -1986,7 +1986,7 @@ Negative control output: <paste>"
 **Interfaces:**
 - Consumes: `read_archive`, `certify_choice`, `Certificate`, `Gate`.
 - Produces: `autorate certify <records.jsonl> --alpha --beta --out`; `autorate compare a.json b.json`; `autorate verify` (re-derives `docs/RESULTS.md` numbers and fails on drift); `autorate export-feishu --root … --out records.jsonl`.
-- **Required amendment carried from Task 1 (ledger R-6):** Task 1's `test_declared_console_script_entry_point_resolves_and_exits_zero` calls `scripts[0].load()()` — it passes only because the Task 1 stub is `def main() -> int: return 0` and ignores `sys.argv`. This task's `main(argv=None)` calls `argparse`, which will read pytest's `sys.argv` and raise `SystemExit`. Change that one assertion to pass an explicit argv (`scripts[0].load()([])`, expected exit code for no subcommand per the `required=True` subparser — decide and encode the real value, do not leave it bare), and keep the test name honest.
+- **Required amendment carried from Task 1 (ledger R-6, strengthened by the re-review):** Task 1's `test_declared_console_script_entry_point_resolves_and_exits_zero` calls `scripts[0].load()()` **in-process**, which passes only because the Task 1 stub is `def main() -> int: return 0` and ignores `sys.argv`. This task's `main(argv=None)` calls `argparse`, which will read pytest's `sys.argv` and raise `SystemExit` — turning that toolchain test red for a reason that looks like Task 1's fault. **Resolve it by running the installed script as a subprocess and asserting `returncode`** (`uv run --frozen autorate …`, or `.venv/bin/autorate`) rather than by passing an explicit argv list: that guards the declared entry point *and* its real exit-code contract without importing the CLI into the test process, and it stops every future `main` signature change from forcing another edit of a toolchain test. Encode the actual no-subcommand exit code, decided by measurement, not assumed.
 
 - [ ] **Step 1: Write the failing test**
 
