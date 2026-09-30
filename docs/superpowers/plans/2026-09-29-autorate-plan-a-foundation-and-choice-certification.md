@@ -290,7 +290,9 @@ def test_withdrawn_rows_say_what_replaced_them():
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `uv run --frozen pytest tests/test_verification_table.py -v`
-Expected: FAIL at `test_ledger_exists_and_has_rows` — file missing. Then, once you paste spec §17's rows in with their current statuses, it must still fail at `test_no_row_is_left_unverified_or_unknown` listing exactly the 8+1 unresolved ids. **Paste that failing list into the commit body** — it is the evidence that the gate is real.
+Expected: FAIL at `test_ledger_exists_and_has_rows` — file missing. Then, once you paste spec §17's rows in with their current statuses, it must still fail at `test_no_row_is_left_unverified_or_unknown` listing the unresolved ids. **Paste that failing list into the commit body** — it is the evidence that the gate is real.
+
+Corrected after execution (Constraint 12: quote the number the delivered artefact actually has): the red list held **14** ids, not "8+1" — the plan's count merged the four `ordinal-cp-*` ids into one claim and omitted `cost-sensitive-crc-2607-27143`, `jev-business-facts` and the third-state `laya-research-eval-contributors` / `guard-preset-overlap` rows. Two further corrections were forced: the plan's `ROW` id class `[a-z0-9]+` cannot match a hyphenated id, so its own example row was invisible to its own gate (the class is widened to `[a-z0-9][a-z0-9-]*` and a fifth negative-control test now fails loudly on any row the pattern cannot read), and `test_every_verified_row_carries_url_and_date` also reddens the ten `[local]` rows, which the design recorded as file paths rather than URLs — resolved by permalinking them at tag `v0.3.20` after checking each vendored file's `git hash-object` against the tag's blob SHAs.
 
 - [ ] **Step 3: Resolve each row**
 
@@ -305,7 +307,9 @@ Work the list: `mapie-crc-disclaimer`, `nibzard-no-threshold`, `ordinal-cp-aista
 - [ ] **Step 4: Run the gate to verify it passes**
 
 Run: `uv run --frozen pytest tests/test_verification_table.py -v`
-Expected: `4 passed`. If any row is still unresolved, do not weaken the test — withdraw the row from the ledger and delete its claim from the spec.
+Expected: `5 passed` — corrected from `4 passed`, because the negative-control test described above was added to keep the widened id class checkable. If any row is still unresolved, do not weaken the test — withdraw the row from the ledger and delete its claim from the spec.
+
+Outcome of execution: 35 ledger rows, 31 `verified` and 4 `withdrawn` (`ordinal-cp-aistats2023` — invented venue, replaced by UAI 2023; `awesome-jev-empty-section` — the section is populated; `jev-funding-and-deployment` — no primary source; `guard-preset-overlap` — the author's own single-observer measurement with no public artifact). Each withdrawal edited the spec section that leaned on it (§1, §5.4, §5.5, §12, §13, §14, §17). Verification also added eight rows the design had never itemised — including three open projects in this niche that already ship a conformal automation or abstention gate, which narrowed §1's thesis and two §14 mitigations.
 
 - [ ] **Step 5: Commit**
 
