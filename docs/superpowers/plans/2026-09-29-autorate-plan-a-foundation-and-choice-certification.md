@@ -174,8 +174,9 @@ packages = ["src/autorate"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
 ```
+
+(The block is delivered **without** `addopts = "-q"`: `addopts = "-q"` composes with the `pytest -q` this plan and CI both invoke into `-qq`, which suppresses the `N passed` summary line that Constraint 12 requires quoting. Ledger ruling R-1. Later tasks keep using `uv run --frozen pytest -q`.)
 
 `.python-version` containing exactly `3.12`. `.gitignore`: `.venv/`, `__pycache__/`, `*.egg-info/`, `.pytest_cache/`, `.ruff_cache/`, `cert.json`. `src/autorate/__init__.py`: `__version__ = "0.1.0"` and nothing else yet. `src/autorate/cli.py`: `def main() -> int:\n    return 0` (so the console script resolves; Task 9 replaces the body).
 
