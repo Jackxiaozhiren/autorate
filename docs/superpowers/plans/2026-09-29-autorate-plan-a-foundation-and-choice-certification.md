@@ -122,13 +122,26 @@ def test_tests_run_on_the_project_interpreter_not_the_path_one():
     )
 
 
-def test_lock_is_committed_and_frozen_run_does_not_rewrite_it():
+def test_lock_is_committed_and_up_to_date_with_pyproject():
+    # Guards Global Constraint 7's artefact: uv.lock is committed, and `uv lock --check` fails when
+    # pyproject.toml drifts from it. A plain interpreter run cannot re-lock, so a byte-compare around
+    # `python -c "import autorate"` could never fail; the lock check is the guard that can.
     assert (ROOT / "uv.lock").exists()
-    before = (ROOT / "uv.lock").read_bytes()
-    subprocess.run(
-        [sys.executable, "-c", "import autorate"], check=True, cwd=ROOT
+    proc = subprocess.run(
+        ["uv", "lock", "--check"], capture_output=True, text=True, cwd=ROOT
     )
-    assert (ROOT / "uv.lock").read_bytes() == before, "plain run re-locked the tree"
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_declared_console_script_entry_point_resolves_and_exits_zero():
+    # Guards pyproject's `autorate = "autorate.cli:main"`: neither ruff nor compileall resolves an
+    # entry-point string, so without this test renaming or deleting `autorate.cli.main` stays green.
+    # Task 9 rewrites cli.py, so the target must keep resolving and returning 0.
+    from importlib.metadata import entry_points
+
+    scripts = [ep for ep in entry_points(group="console_scripts") if ep.name == "autorate"]
+    assert len(scripts) == 1, f"expected one `autorate` console script, got {scripts}"
+    assert scripts[0].load()() == 0
 
 
 def test_ruff_gate_matches_the_upstream_shape():
@@ -1973,6 +1986,7 @@ Negative control output: <paste>"
 **Interfaces:**
 - Consumes: `read_archive`, `certify_choice`, `Certificate`, `Gate`.
 - Produces: `autorate certify <records.jsonl> --alpha --beta --out`; `autorate compare a.json b.json`; `autorate verify` (re-derives `docs/RESULTS.md` numbers and fails on drift); `autorate export-feishu --root … --out records.jsonl`.
+- **Required amendment carried from Task 1 (ledger R-6):** Task 1's `test_declared_console_script_entry_point_resolves_and_exits_zero` calls `scripts[0].load()()` — it passes only because the Task 1 stub is `def main() -> int: return 0` and ignores `sys.argv`. This task's `main(argv=None)` calls `argparse`, which will read pytest's `sys.argv` and raise `SystemExit`. Change that one assertion to pass an explicit argv (`scripts[0].load()([])`, expected exit code for no subcommand per the `required=True` subparser — decide and encode the real value, do not leave it bare), and keep the test name honest.
 
 - [ ] **Step 1: Write the failing test**
 
