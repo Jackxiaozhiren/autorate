@@ -78,8 +78,9 @@ tests/test_certificate_shape.py    T8
 tests/test_gate.py                 T8
 tests/test_cli.py                  T9
 tests/fixtures/feishu_sample.jsonl 6 records lifted verbatim from upstream   T5
-tests/fixtures/synthetic_uniform.jsonl / synthetic_sharp.jsonl               T6
 ```
+
+No synthetic fixture files: Task 7 builds its synthetic vectors in code, so committed fixture JSONs would be dead inputs (YAGNI ruling — see the ledger). Plan B adds fixtures only when a generator needs a replayable, hash-stable vector set.
 
 Responsibility boundaries worth defending: `records.py` knows field names and nothing about statistics; `conformal.py` knows quantiles and nothing about field names; `certificate.py` owns the output shape and the refusal semantics; `cli.py` is the only file that prints.
 
@@ -345,8 +346,8 @@ def test_inventory_sees_the_recorded_shape():
     assert d["unique_ids"] == 64
     assert d["repeats"] == [0, 1, 2]
     assert d["records_by_mode_backend"] == {
-        ("choice", "laya"): 192, ("choice", "jev"): 192,
-        ("four_noul", "laya"): 192, ("four_noul", "jev"): 192,
+        "choice|laya": 192, "choice|jev": 192,
+        "four_noul|laya": 192, "four_noul|jev": 192,
     }
     assert sorted(d["families"]) == [
         "conditional", "cross_chat", "knowledge", "lifecycle",
@@ -1039,7 +1040,6 @@ noul confidence == P(yes) is flagged at read time, not discovered at gate time."
 **Files:**
 - Create: `src/autorate/nonconformity.py`, `src/autorate/conformal.py`
 - Test: `tests/test_nonconformity.py`, `tests/test_split_quantile.py`, `tests/test_coverage_montecarlo.py`
-- Create: `tests/fixtures/synthetic_uniform.jsonl`, `tests/fixtures/synthetic_sharp.jsonl`
 
 **Interfaces:**
 - Consumes: `Record.probs`, `gold_index`, `u`.
@@ -1276,24 +1276,7 @@ def is_singleton(indices: Sequence[int]) -> bool:
 
 Generate the two synthetic fixtures for later tasks:
 
-```bash
-uv run --frozen python - <<'PY'
-import json, random
-rng = random.Random(20260929)
-for name, sharpness, k in (("synthetic_uniform", 1.2, 4), ("synthetic_sharp", 6.0, 4)):
-    with open(f"tests/fixtures/{name}.jsonl", "w") as fh:
-        for i in range(400):
-            g = rng.randrange(k)
-            w = [1.0] * k; w[g] = sharpness
-            tot = sum(w) + k * 0.05
-            p = [round(x / tot, 4) for x in w]
-            p[g] = round(p[g] + (1.0 - sum(p)), 4)
-            fh.write(json.dumps({"id": f"{name}-{i}", "gold_index": g,
-                                 "probs": p, "u": round(rng.random(), 6)}) + "\n")
-    print(name, "written")
-PY
-```
-These two fixtures are inputs to the *synthetic* generators only; Task 7 rebuilds `Record`s in code. They exist so a later plan can replay a documented vector set rather than re-seeding a generator, and nothing in Plan A reads them — say so in the commit body rather than pretending they are wired.
+Generate no fixture files in this task: Task 7's synthetic vectors are built in code from a stated seed, and a committed JSON file nothing reads would be dead weight (ledger ruling PF-3).
 
 - [ ] **Step 4: Run the suite to verify it passes**
 
@@ -1321,7 +1304,7 @@ The headline output is a *pair*: how much may run unattended, and how wrong that
 
 **Interfaces:**
 - Consumes: `list[Record]` with `calibratable`, `split_quantile`, `conformal_set`.
-- Produces: `clopper_pearson_upper(k, n, delta) -> float`; `split_cal(records, seed) -> tuple[list, list]`; `certify_choice(records, alpha=0.05, beta=0.05, delta=0.05, seed=0, method="aps", grid=None) -> Certificate` with fields `autorate, autorate_ci, joint_error_bound, marginal_error_bound, conditional_error_bound, feasible, reason, envelope, n_cal, n_eval, level`.
+- Produces: `clopper_pearson_upper(k, n, delta) -> float`; `split_cal(records, seed) -> tuple[list, list, dict]` (calibration half, evaluation half, dropped-counts); `certify_choice(records, alpha=0.05, beta=0.05, delta=0.05, seed=0, method="aps", grid=None) -> Certificate` with fields `autorate, autorate_ci, joint_error_bound, marginal_error_bound, conditional_error_bound, feasible, reason, envelope, n_cal, n_eval, meta, level`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2063,10 +2046,17 @@ def re_compile_numbers(text):
 def test_a_gate_line_is_readable_and_names_the_action(tmp_path):
     recs = tmp_path / "choice.jsonl"
     run("export-feishu", "--root", str(UPSTREAM), "--mode", "choice", "--out", str(recs))
+    # Each test gets a fresh tmp_path, so this test must produce its own certificate;
+    # reading a cert.json written by a different test would silently pass on a
+    # refused certificate.
+    c = run("certify", str(recs), "--backend", "laya", "--alpha", "0.05",
+            "--beta", "0.10", "--out", str(tmp_path / "cert.json"))
+    assert c.returncode in (0, 3), c.stdout + c.stderr
     g = run("gate", str(recs), "--cert", str(tmp_path / "cert.json"), "--limit", "3")
     assert g.returncode in (0, 3)
-    for line in g.stdout.splitlines():
-        assert "action=" in line or line.startswith("{")
+    lines = [l for l in g.stdout.splitlines() if l.strip()]
+    assert lines, "gate printed nothing"
+    assert all(("action=" in l or l.startswith("{")) for l in lines)
 ```
 
 - [ ] **Step 2: Run to verify red**
