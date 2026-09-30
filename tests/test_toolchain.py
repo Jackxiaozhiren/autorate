@@ -19,13 +19,15 @@ def test_tests_run_on_the_project_interpreter_not_the_path_one():
     )
 
 
-def test_lock_is_committed_and_frozen_run_does_not_rewrite_it():
+def test_lock_is_committed_and_up_to_date_with_pyproject():
+    # Guards Global Constraint 7's artefact: uv.lock is committed, and `uv lock --check` fails when
+    # pyproject.toml drifts from it. A plain interpreter run cannot re-lock, so a byte-compare around
+    # `python -c "import autorate"` could never fail; the lock check is the guard that can.
     assert (ROOT / "uv.lock").exists()
-    before = (ROOT / "uv.lock").read_bytes()
-    subprocess.run(
-        [sys.executable, "-c", "import autorate"], check=True, cwd=ROOT
+    proc = subprocess.run(
+        ["uv", "lock", "--check"], capture_output=True, text=True, cwd=ROOT
     )
-    assert (ROOT / "uv.lock").read_bytes() == before, "plain run re-locked the tree"
+    assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
 def test_ruff_gate_matches_the_upstream_shape():
