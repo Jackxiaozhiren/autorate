@@ -66,9 +66,15 @@ def _audit_python(root: Path) -> str:
     override = os.environ.get("AUTORATE_AUDIT_PYTHON")
     if override:
         return override
-    # <laya checkout>/research/benchmarks/feishu_zh  ->  <laya checkout>/.venv/bin/python
-    venv = root.parents[2] / ".venv" / "bin" / "python"
-    return str(venv) if venv.exists() else sys.executable
+    # <laya checkout>/research/benchmarks/feishu_zh  ->  <laya checkout>/.venv/bin/python.
+    # Walk up to three levels and take the nearest, rather than indexing parents[2]:
+    # a shallower --root (or a test pointing at a nonexistent one) raised IndexError out
+    # of the CLI, which is rc 1 -- outside the documented exit-code contract.
+    for parent in (root, *list(root.parents)[:3]):
+        venv = parent / ".venv" / "bin" / "python"
+        if venv.exists():
+            return str(venv)
+    return sys.executable
 
 
 def audit_command(root: Path) -> tuple[list[str], dict]:
