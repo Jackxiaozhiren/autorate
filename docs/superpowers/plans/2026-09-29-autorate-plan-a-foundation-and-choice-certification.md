@@ -305,7 +305,7 @@ Work the list: `mapie-crc-disclaimer`, `nibzard-no-threshold`, `ordinal-cp-aista
 - [ ] **Step 4: Run the gate to verify it passes**
 
 Run: `uv run --frozen pytest tests/test_verification_table.py -v`
-Expected: `4 passed`. If any row is still unresolved, do not weaken the test — withdraw the row from the ledger and delete its claim from the spec.
+Expected: `6 passed` — the delivered gate has six tests, not the four written here: the brief's `ROW` id class `[a-z0-9]+` matched **0 of 45** ledger rows (hyphenated ids were invisible to its own gate), so widening it plus the census test I-2 required were both controller-approved deviations. If any row is still unresolved, do not weaken the test — withdraw the row from the ledger and delete its claim from the spec.
 
 - [ ] **Step 5: Commit**
 
@@ -321,6 +321,8 @@ Red-state evidence: <paste the failing id list from Step 2>."
 ## Task 3: Data inventory — what per-case labelled data exists offline, and is `n` enough
 
 Measured during design, and the reason this task exists: `research/results/eval_english_51_languages.json` states `"per-case records omitted from this file to keep the diff reviewable; regenerate with research/eval/laya_eval.py --langs all --out <path>"`, and `mteb/amazon_massive_intent` is **not** in the local HF cache (`~/.cache/huggingface/hub` holds `models--convaiinnovations--laya` and an unrelated dataset). So the only offline labelled per-case corpus is the `feishu_zh` archive: **64 unique ids × 3 repeats (0,1,2) × 2 backends, split 192 `choice` + 192 `four_noul`**, which is small enough to make the finite-sample bound (`~1/√n`) visibly uninformative — exactly spec §14 risk R3, arriving in week 1 rather than week 12.
+
+This task does **not** build a larger corpus: it measures the one that is committed and states the feasibility boundary. Ledger **R-12** (2026-10-01) settled the question its output forces, so Plan B need not rediscover it — a dataset download **is** acceptable as a *pinned build step*, because Constraint 2 forbids a download only **in the test path**, G5 requires published numbers to re-derive from records alone, and Constraint 1 forbids only a *runtime* dependency on a hosted service. Measured: `mteb/amazon_massive_intent` ships 51 × `test/xx.json.gz` — gzipped **JSON Lines**, ~54–71 KB each (≈3.2 MB for all languages), Apache-2.0, parsed here with stdlib `gzip`+`json` and needing neither `datasets` (absent from the 3.12 venv, which does carry torch 2.14.0 / transformers 5.17.0 / huggingface_hub 1.33.0) nor `pyarrow`. `test/en.json.gz` = **2974 rows**, keys `id, label, label_text, text, lang`, 59 distinct labels; de and sw are also 2974, and that equality is the benchmark's design rather than an API collapse — proven by parsing the raw files and by the `train` split differing at 11514. Bound width then falls from 0.3395 at n=64 to 0.050 at one language and 0.007 across all 51, so the n problem inverts; the remaining cost is **inference**, not download, and taking full splits instead of the harness's published `--per-lang 100` is a declared deviation from §11's comparability basis.
 
 **Files:**
 - Create: `src/autorate/inventory.py`, `data/inventory.md`
@@ -382,11 +384,16 @@ def test_labels_are_balanced_so_a_majority_baseline_is_not_an_accident():
 
 
 def test_small_n_is_declared_infeasible_not_silently_certified():
-    # 64 unique ids cannot support alpha=0.05 with a non-vacuous split-conformal
-    # quantile: ceil((1-0.05)*(n+1)) > n requires n < 19 for vacuity, so the real
-    # limit here is bound width, which n_feasible must surface rather than hide.
-    assert n_feasible(unique_n=64, alpha=0.05, max_bound_width=0.10) is False
-    assert n_feasible(unique_n=64, alpha=0.05, max_bound_width=0.25) is True
+    # Bound width is 2*sqrt(ln(2/alpha)/(2n)). Measured with alpha=0.05:
+    #   n=64 -> 0.3395   n=240 -> 0.1753   n=500 -> 0.1215
+    #   n=1000 -> 0.0859   n=2550 -> 0.0538   n=5100 -> 0.0380
+    # Corrected after PF-11: the original expectation claimed n=64 was feasible at a
+    # 0.25 width, but 0.3395 > 0.25, so that assertion could never pass as written.
+    assert n_feasible(unique_n=64, alpha=0.05, max_bound_width=0.25) is False
+    assert n_feasible(unique_n=64, alpha=0.05, max_bound_width=0.40) is True
+    assert n_feasible(unique_n=240, alpha=0.05, max_bound_width=0.25) is True
+    assert n_feasible(unique_n=240, alpha=0.05, max_bound_width=0.10) is False
+    assert n_feasible(unique_n=1000, alpha=0.05, max_bound_width=0.10) is True
     assert n_feasible(unique_n=1, alpha=0.05, max_bound_width=1.0) is False
 
 
