@@ -239,7 +239,7 @@ frozen runs, upstream-shaped ruff gate."
 
 ## Task 2: Open-or-delete every unverified citation, and gate it in CI
 
-Spec §17 records 8 claims taken from secondary web research and never opened at the primary source, plus one contradictory number (star count). This task closes that debt **before** any code that quotes those claims is written, because several of them are the justification for the design (§5.2's "MAPIE is marginal-only", §5.4's ordinal prior art, §12's novelty ledger).
+Spec §17 flagged a batch of claims taken from secondary web research and never opened at a primary source, plus one contradictory number (star count). This task closes that debt **before** any code that quotes those claims is written, because several of them are the justification for the design (§5.2's "MAPIE is marginal-only", §5.4's ordinal prior art, §12's novelty ledger).
 
 **Files:**
 - Create: `docs/VERIFICATION.md`
@@ -290,7 +290,7 @@ def test_withdrawn_rows_say_what_replaced_them():
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `uv run --frozen pytest tests/test_verification_table.py -v`
-Expected: FAIL at `test_ledger_exists_and_has_rows` — file missing. Then, once you paste spec §17's rows in with their current statuses, it must still fail at `test_no_row_is_left_unverified_or_unknown` listing exactly the 8+1 unresolved ids. **Paste that failing list into the commit body** — it is the evidence that the gate is real.
+Expected: FAIL at `test_ledger_exists_and_has_rows` — file missing. Then, once you paste spec §17's rows in with their current statuses, it must still fail at `test_no_row_is_left_unverified_or_unknown` listing the unresolved ids it actually finds. **Paste that failing list into the commit body** — it is the evidence that the gate is real.
 
 - [ ] **Step 3: Resolve each row**
 
