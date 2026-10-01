@@ -15,10 +15,24 @@ The 45 was summed from an earlier focused run instead of read off the suite outp
 commit was not amended (it is local and unpushed, and history is preferred over message
 accuracy); this entry is the correction, and the ledger repeats the measured number.
 
-## 2026-10-01 — an entropy-confidence figure was wrong in both value and direction
+## 2026-10-01 — commit `a106cd2` quoted the wrong test count, again
+
+The body says `62 passed`; the gate printed `63 passed in 0.56s` on that tree. This is the
+second occurrence within minutes of the first entry, so it is a habit rather than a typo:
+commit messages were being written from the most recent run I had seen rather than the one
+the commit describes.
+
+**Rule adopted (ledger R-16): commit messages no longer quote suite counts at all.** A count
+in prose has no owner and goes stale the moment a test is added; the count that matters is the
+one `pytest` prints when CI runs it, and any *number published as a result* must be produced
+by the code that reports it (Constraint 12), which Task 9's `verify` enforces. Not amended;
+this entry is the correction.
+
 
 Design prose stated that gating at `confidence >= 0.85` corresponds to `p_max >= ~0.93`
 for a four-option question, implying the requirement loosens as the option count grows.
+## 2026-10-01 — an entropy-confidence figure was wrong in both value and direction
+
 Measured by bisection over `autorate.records.entropy_confidence`:
 
 | gate | k=2 | k=4 | k=10 | k=20 | k=51 |
