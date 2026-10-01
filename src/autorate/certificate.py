@@ -33,7 +33,6 @@ class Certificate:
     autorate_ci: Optional[tuple]
     conditional_error_bound: Optional[float]
     marginal_error_bound: Optional[float]
-    joint_error_bound: Optional[float]
     refusal_rate: Optional[float]
     mean_set_size: Optional[float]
     n_cal: int
@@ -84,7 +83,7 @@ class Certificate:
         return cls(
             feasible=False, reason=reason.value, alpha=alpha, beta=beta, delta=delta,
             method="aps", grid_alpha=None, qhat=None, autorate=None, autorate_ci=None,
-            conditional_error_bound=None, marginal_error_bound=None, joint_error_bound=None,
+            conditional_error_bound=None, marginal_error_bound=None,
             refusal_rate=None, mean_set_size=None,
             n_cal=n_cal, n_eval=n_eval, level=1.0 - 2.0 * delta,
             envelope=("no certificate exists, so no action is certified",
@@ -96,12 +95,12 @@ class Certificate:
         if self.feasible:
             lo, hi = self.autorate_ci
             return ("at alpha=%.3f, beta=%.3f: autorate %.3f (ci %.3f..%.3f), "
-                    "conditional error <= %.3f, marginal error <= %.3f, joint <= %.3f; "
+                    "conditional error <= %.3f, marginal error <= %.3f; "
                     "refusal (empty or multi-label set) %.3f; mean set size %.2f; "
                     "level %.2f; n_cal=%d n_eval=%d"
                     % (self.alpha, self.beta, self.autorate, lo, hi,
                        self.conditional_error_bound, self.marginal_error_bound,
-                       self.joint_error_bound, self.refusal_rate, self.mean_set_size,
+                       self.refusal_rate, self.mean_set_size,
                        self.level, self.n_cal, self.n_eval))
         return ("NOT_CERTIFIABLE: reason=%s at alpha=%.3f, beta=%.3f; n_cal=%d n_eval=%d; %s"
                 % (self.reason, self.alpha, self.beta, self.n_cal, self.n_eval,

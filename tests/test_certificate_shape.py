@@ -11,7 +11,7 @@ from autorate.certificate import Reason, Certificate
 _OK = dict(feasible=True, reason=None, alpha=0.05, beta=0.05, delta=0.05,
            method="aps", grid_alpha=0.05, qhat=0.4, autorate=0.6,
            autorate_ci=(0.55, 0.65), conditional_error_bound=0.04,
-           marginal_error_bound=0.02, joint_error_bound=0.03,
+           marginal_error_bound=0.02,
            refusal_rate=0.05, mean_set_size=1.05,
            n_cal=500, n_eval=500, level=0.9,
            envelope=("exchangeability within group assumed",), meta={})
