@@ -123,6 +123,27 @@ def test_inventory_md_numbers_are_produced_by_the_code_that_reports_them(tmp_pat
     assert f"{bound_width(64, 0.05):.4f}" in body
 
 
+@skip
+def test_the_four_noul_asks_have_no_per_ask_ground_truth_anywhere():
+    # Measured, not asserted from prose: `prompts.py:34` folds the four noul
+    # probabilities into ONE composite 4-way label, and the fixtures supervise only
+    # that label. So a per-ask noul certificate here would certify invented labels.
+    from autorate.inventory import per_ask_gold
+
+    g = per_ask_gold(UPSTREAM)
+    assert g["asks"] == ["action", "related", "urgent", "value"]
+    assert g["asks_with_gold"] == [], g
+    assert g["composite_label_available"] is True
+    assert "expected" in g["case_keys"]
+
+
+@skip
+def test_the_inventory_states_that_gap_because_the_code_found_it():
+    d = inventory(UPSTREAM)
+    assert d["per_ask_gold"]["asks_with_gold"] == []
+    assert any("per-ask ground truth" in g for g in d["gaps"]), d["gaps"]
+
+
 def test_write_inventory_refuses_a_corpus_whose_audit_failed(tmp_path):
     fake = {
         "source": "x",

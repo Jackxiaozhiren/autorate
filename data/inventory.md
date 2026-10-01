@@ -35,3 +35,4 @@ Bound width for an automation-rate estimate is `2*sqrt(ln(2/alpha)/(2n))`. At `a
 - research/results/eval_english_51_languages.json: per-case records omitted; regenerate with research/eval/laya_eval.py --langs all --out <path>
 - mteb/amazon_massive_intent is not in the local HF dataset cache
 - the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here
+- the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (asks ['action', 'related', 'urgent', 'value'] are not among the case keys ['expected', 'family', 'id', 'messages', 'rationale', 'target_id']); only the composite 4-way label is supervised, so a noul certificate on this corpus would certify invented labels

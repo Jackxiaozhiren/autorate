@@ -47,7 +47,8 @@
   "gaps": [
     "research/results/eval_english_51_languages.json: per-case records omitted; regenerate with research/eval/laya_eval.py --langs all --out <path>",
     "mteb/amazon_massive_intent is not in the local HF dataset cache",
-    "the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here"
+    "the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here",
+    "the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (asks ['action', 'related', 'urgent', 'value'] are not among the case keys ['expected', 'family', 'id', 'messages', 'rationale', 'target_id']); only the composite 4-way label is supervised, so a noul certificate on this corpus would certify invented labels"
   ],
   "label_counts": {
     "noise": 16,
@@ -56,6 +57,24 @@
     "valuable": 16
   },
   "min_calibration_n": 64,
+  "per_ask_gold": {
+    "asks": [
+      "action",
+      "related",
+      "urgent",
+      "value"
+    ],
+    "asks_with_gold": [],
+    "case_keys": [
+      "expected",
+      "family",
+      "id",
+      "messages",
+      "rationale",
+      "target_id"
+    ],
+    "composite_label_available": true
+  },
   "provenance": "AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.",
   "records_by_mode_backend": {
     "choice/jev": 192,

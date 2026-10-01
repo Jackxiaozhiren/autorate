@@ -75,8 +75,32 @@ def _scan_jsonl(path: Path) -> tuple[dict, set, list]:
     return by_mode, ids, sorted(repeats)
 
 
+def per_ask_gold(root: Path) -> dict:
+    """Whether the four binary asks have ground-truth bits anywhere in the corpus.
+
+    Measured rather than asserted: the ask names come from the manifest, and the only
+    labels the case fixtures carry are the 4-way `expected` plus metadata. If the ask
+    names are not among those keys, no per-ask gold exists and a `noul` certificate on
+    this corpus would be certifying invented labels.
+    """
+    root = Path(root)
+    manifest = json.loads((root / "data" / "manifest.json").read_text())
+    asks = sorted(manifest.get("asks", {}))
+    case_keys: set = set()
+    for line in (root / "data" / "cases.jsonl").read_text().splitlines():
+        if line.strip():
+            case_keys |= set(json.loads(line))
+    return {
+        "asks": asks,
+        "case_keys": sorted(case_keys),
+        "asks_with_gold": sorted(set(asks) & case_keys),
+        "composite_label_available": "expected" in case_keys,
+    }
+
+
 def inventory(root: Path) -> dict:
     root = Path(root)
+    gold = per_ask_gold(root)
     manifest = json.loads((root / "data" / "manifest.json").read_text())
     per_mode: dict = {}
     ids: set = set()
@@ -106,13 +130,19 @@ def inventory(root: Path) -> dict:
         "upstream_audit_stderr_tail": audit.stderr[-400:],
         "audit_interpreter": cmd[0],
         "min_calibration_n": manifest.get("cases", len(ids)),
+        "per_ask_gold": gold,
         "corpus_options": corpus_options(),
         "gaps": [
             "research/results/eval_english_51_languages.json: per-case records omitted; "
             "regenerate with research/eval/laya_eval.py --langs all --out <path>",
             "mteb/amazon_massive_intent is not in the local HF dataset cache",
             "the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here",
-        ],
+        ] + ([] if gold["asks_with_gold"] else [
+            "the four `noul` asks carry no per-ask ground truth anywhere in the fixtures "
+            "(asks %s are not among the case keys %s); only the composite 4-way label is "
+            "supervised, so a noul certificate on this corpus would certify invented labels"
+            % (gold["asks"], gold["case_keys"]),
+        ]),
     }
 
 

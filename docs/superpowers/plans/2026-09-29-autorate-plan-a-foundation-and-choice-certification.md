@@ -1043,7 +1043,14 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
 - [ ] **Step 4: Run the suite to verify it passes**
 
 Run: `uv run --frozen pytest tests/test_reader_feishu.py -v`
-Expected: `7 passed`. If `_signal_gold` returns `None` for every ask, the archive carries no per-ask gold and `test_noul_records_…` must be changed to assert `calibratable is False` for noul records — **that is a real constraint on G1 (a `noul` certificate would need labels we do not have), and it belongs in `data/inventory.md` as a gap, not in a workaround.** Verify by printing `json.dumps(obj["signals"])` for one line before deciding which way the test goes.
+
+**Resolved by measurement (was a branch in this plan): `_signal_gold` returns `None` for every ask.** Verified on 2026-10-01: `data/cases.jsonl` carries only `expected, family, id, messages, rationale, target_id`; the manifest's `asks` are instruction strings only; and `prompts.py:34` collapses the four noul probabilities into **one composite 4-way label** which is what `expected` supervises (`audit`: laya 18/64, jev 63/64 are composite-label rates, not per-ask rates). So:
+
+- the noul records this reader emits **must** carry `gold=None` and `calibratable is False`, and the test asserts that directly rather than branching on it;
+- **Plan A's G1 covers `choice` only on this corpus.** A `noul` certificate needs a binary-labelled corpus, which is Plan B's job (`bench_apps.py` already wires enron_spam / phishing-email / toxic-chat, but those require running inference to obtain probabilities);
+- there is a better §5.5 anchor available than the withdrawn guardrail anecdote: `prompts.py:34,36` is itself **a hand-tuned selective-prediction policy** — a nested 0.5/0.75 decision rule plus a `review` abstention flag built on 0.25/0.75 constants nobody estimated. Certifying *that composed rule* (replacing the invented thresholds with bounded ones, and reporting the automation rate at a stated error budget next to upstream's hand-set one) is reproducible end to end from committed data, which the guardrail numbers are not. Recorded as ledger **R-14**; the composite-rule certificate itself belongs to Plan B.
+
+Expected: `7 passed`. Verify by printing `json.dumps(obj["signals"])` for one line before finalising the noul assertions — the ask keys are `related, action, urgent, value` in manifest order.
 
 - [ ] **Step 5: Commit**
 
