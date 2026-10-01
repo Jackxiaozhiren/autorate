@@ -31,8 +31,8 @@ ROW_ANY = re.compile(r"^\s*\|\s*id=")   # review residual: `|id=x` must not esca
 #     prints the line §17 quotes verbatim, and asserts these numbers. Appending or re-status-ing a row
 #     is a red run until the constants and the §17 sentence move together with it — the assertion is
 #     updated with the row that motivated it, never loosened to absorb a drift.
-CENSUS_ROWS = 45
-CENSUS_VERIFIED = 39
+CENSUS_ROWS = 46
+CENSUS_VERIFIED = 40
 CENSUS_WITHDRAWN = 6
 
 

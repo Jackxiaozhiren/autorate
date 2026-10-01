@@ -126,3 +126,4 @@ at a pinned commit of a third-party repository, or at a paper's own PDF, rather 
   a re-grep confirms the plan now contains zero occurrences of either dead name.
 * The star count and the PyPI availability are dated observations; any text that re-quotes them
   re-opens them.
+| id=competitor-age-stars-packaging | age, stars and packaging of the three open conformal-gate projects cited in §1 | `gh api repos/<r>`: Manavarya09/verdict 2 stars created 2026-09-23 pushed 2026-09-24; FeiLiuEM/open-medical-jev 38 created 2026-09-25; rupeshpoojary9/poorjev 10 created 2026-09-19 (a search result a day earlier said 11, so the figure moves). PyPI JSON endpoints: open-medical-jev 404, verdict 200, poorjev 200 -- the two 200s name registered projects of unknown ownership, so packaging is NOT asserted, only immaturity | https://api.github.com/repos/rupeshpoojary9/poorjev and https://pypi.org/pypi/verdict/json | 2026-10-01 | status: verified |
