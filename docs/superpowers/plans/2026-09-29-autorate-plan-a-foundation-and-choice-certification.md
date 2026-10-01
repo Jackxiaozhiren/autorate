@@ -330,7 +330,7 @@ This task does **not** build a larger corpus: it measures the one that is commit
 
 **Interfaces:**
 - Consumes: `/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh/` (`data/manifest.json`, `results/v1/{laya,jev}/raw.jsonl`, `audit.py`).
-- Produces: `inventory(path) -> dict` with `sources`, `records_by_mode_backend`, `unique_ids`, `repeats`, `families`, `upstream_audit_rc`, `min_calibration_n`, and `n_feasible(alpha)` helper.
+- Produces: `inventory(path) -> dict` with `sources`, `lines_by_mode_backend`, `unique_ids`, `repeats`, `families`, `upstream_audit_rc`, `min_calibration_n`, and `n_feasible(alpha)` helper.
 
 - [ ] **Step 1: Run upstream's own model-free audit first, and record its exit code**
 
@@ -361,7 +361,7 @@ def test_inventory_sees_the_recorded_shape():
     d = inventory(UPSTREAM)
     assert d["unique_ids"] == 64
     assert d["repeats"] == [0, 1, 2]
-    assert d["records_by_mode_backend"] == {
+    assert d["lines_by_mode_backend"] == {
         "choice|laya": 192, "choice|jev": 192,
         "four_noul|laya": 192, "four_noul|jev": 192,
     }
@@ -412,7 +412,7 @@ def test_inventory_md_numbers_come_from_the_code_not_from_typing(tmp_path):
 - [ ] **Step 3: Run it to verify it fails**
 
 Run: `uv run --frozen pytest tests/test_inventory.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'autorate.inventory'`. Confirm the counts in Step 2's expectations against what `inventory()` actually sees before trusting them; if `records_by_mode_backend` differs, re-run the raw probe (`python3 -c` over `raw.jsonl`) and prefer the measured value.
+Expected: FAIL — `ModuleNotFoundError: No module named 'autorate.inventory'`. Confirm the counts in Step 2's expectations against what `inventory()` actually sees before trusting them; if `lines_by_mode_backend` differs, re-run the raw probe (`python3 -c` over `raw.jsonl`) and prefer the measured value.
 
 - [ ] **Step 4: Implement**
 
@@ -473,7 +473,7 @@ def inventory(root: Path) -> dict:
     )
     return {
         "source": str(root),
-        "records_by_mode_backend": {f"{m}|{b}": n for (m, b), n in per_mode.items()},
+        "lines_by_mode_backend": {f"{m}|{b}": n for (m, b), n in per_mode.items()},
         "unique_ids": len(ids),
         "repeats": repeats,
         "families": sorted(manifest.get("families", {})),
@@ -516,7 +516,7 @@ def write_inventory(d: dict, out: Path) -> None:
         "| key | records |",
         "|---|---|",
     ]
-    for k, v in sorted(d["records_by_mode_backend"].items()):
+    for k, v in sorted(d["lines_by_mode_backend"].items()):
         lines.append(f"| {k} | {v} |")
     lines += ["", "## Feasibility of a bound at this n", ""]
     for alpha in (0.05, 0.10):
@@ -2209,8 +2209,8 @@ def cmd_verify(a) -> int:
     body = doc.read_text()
 
     inv = json.loads(Path("data/inventory.md.json").read_text())
-    inv_total = len(inv["records_by_mode_backend"])
-    inv_ok = sum(1 for k, v in sorted(inv["records_by_mode_backend"].items())
+    inv_total = len(inv["lines_by_mode_backend"])
+    inv_ok = sum(1 for k, v in sorted(inv["lines_by_mode_backend"].items())
                  if f"| {k} | {v} |" in body)
 
     recs = _records_from(Path("data/records_feishu.jsonl"))

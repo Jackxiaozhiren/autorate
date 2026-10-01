@@ -48,13 +48,20 @@
     "research/results/eval_english_51_languages.json: per-case records omitted; regenerate with research/eval/laya_eval.py --langs all --out <path>",
     "mteb/amazon_massive_intent is not in the local HF dataset cache",
     "the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here",
-    "the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (asks ['action', 'related', 'urgent', 'value'] are not among the case keys ['expected', 'family', 'id', 'messages', 'rationale', 'target_id']); only the composite 4-way label is supervised, so a noul certificate on this corpus would certify invented labels"
+    "the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (asks ['action', 'related', 'urgent', 'value'] are not among the case keys ['expected', 'family', 'id', 'messages', 'rationale', 'target_id']); only the composite 4-way label is supervised, so a noul certificate on this corpus would certify invented labels",
+    "1 archived choice line(s) publish probabilities that do not close to 1 within 0.005 and are quarantined by the reader rather than absorbed by a wider tolerance: jev/lifecycle-01/repeat=1 (sum 0.9900)"
   ],
   "label_counts": {
     "noise": 16,
     "todo": 16,
     "urgent": 16,
     "valuable": 16
+  },
+  "lines_by_mode_backend": {
+    "choice/jev": 192,
+    "choice/laya": 192,
+    "four_noul/jev": 192,
+    "four_noul/laya": 192
   },
   "min_calibration_n": 64,
   "per_ask_gold": {
@@ -75,19 +82,28 @@
     ],
     "composite_label_available": true
   },
+  "probs_not_closing": [
+    {
+      "backend": "jev",
+      "id": "lifecycle-01",
+      "probs": [
+        0.0,
+        0.93,
+        0.01,
+        0.05
+      ],
+      "probs_sum": 0.99,
+      "repeat": 1
+    }
+  ],
   "provenance": "AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.",
-  "records_by_mode_backend": {
-    "choice/jev": 192,
-    "choice/laya": 192,
-    "four_noul/jev": 192,
-    "four_noul/laya": 192
-  },
   "repeats": [
     0,
     1,
     2
   ],
   "source": "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh",
+  "sum_tolerance": 0.005,
   "unique_ids": 64,
   "upstream_audit_rc": 0,
   "upstream_audit_stderr_tail": "",

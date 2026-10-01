@@ -25,7 +25,7 @@ def test_inventory_sees_the_recorded_shape():
     d = inventory(UPSTREAM)
     assert d["unique_ids"] == 64
     assert d["repeats"] == [0, 1, 2]
-    assert d["records_by_mode_backend"] == {
+    assert d["lines_by_mode_backend"] == {
         "choice/laya": 192,
         "choice/jev": 192,
         "four_noul/laya": 192,
@@ -144,10 +144,69 @@ def test_the_inventory_states_that_gap_because_the_code_found_it():
     assert any("per-ask ground truth" in g for g in d["gaps"]), d["gaps"]
 
 
+@skip
+def test_exactly_one_archived_choice_line_does_not_close_and_it_is_named():
+    d = inventory(UPSTREAM)
+    assert d["sum_tolerance"] == 5e-3
+    assert d["probs_not_closing"] == [{
+        "id": "lifecycle-01", "backend": "jev", "repeat": 1,
+        "probs": [0.0, 0.93, 0.01, 0.05], "probs_sum": 0.99,
+    }], d["probs_not_closing"]
+    assert any("quarantined by the reader" in g for g in d["gaps"]), d["gaps"]
+
+
+@skip
+def test_inventory_and_the_reader_quarantine_the_identical_line():
+    # Two implementations, one tolerance, no disagreement about the corpus.
+    from autorate.readers.feishu_zh import read_archive
+
+    stats = {}
+    read_archive(UPSTREAM, stats=stats)
+    inv = inventory(UPSTREAM)["probs_not_closing"]
+    key = lambda xs: sorted((x["id"], x["backend"], x["repeat"]) for x in xs)
+    assert key(inv) == key(stats["quarantined"]), (inv, stats["quarantined"])
+
+
+@skip
+def test_a_closing_corpus_produces_neither_finding_nor_gap_line():
+    # Negative control for the detector: it must stay quiet on well-formed data.
+    fake = {
+        "id": "k-0", "mode": "choice", "repeat": 0, "status": "ok", "expected": "a",
+        "response": {"model": "m", "answers": {"category": {
+            "type": "choice", "choice": "a",
+            "probabilities": {"a": 0.5, "b": 0.5}}}},
+    }
+    from autorate.inventory import _scan_jsonl
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "laya" / "raw.jsonl"
+        p.parent.mkdir(parents=True)
+        p.write_text(json.dumps(fake) + "\n")
+        by_mode, ids, reps, unclosed = _scan_jsonl(p)
+    assert by_mode == {"choice": 1} and unclosed == []
+
+
+@skip
+def test_the_published_inventory_file_is_structurally_valid():
+    """PF-12 applied to the real artefact, not only to a synthetic dict."""
+    body = Path("data/inventory.md").read_text() if Path("data/inventory.md").exists() else _render()
+    tables = _tables(body)
+    assert len(tables) == 2, [h for h, _ in tables]  # lines table + feasibility table
+    for header, rows in tables:
+        ncol = len(_cells(header))
+        assert ncol >= 2
+        assert len(_cells(rows[0])) == ncol
+        for line in rows[1:]:
+            assert len(_cells(line)) == ncol, "column drift: %r vs header %r" % (line, header)
+    # And the denominator is named where the counts appear.
+    assert "archive LINES per mode and backend" in body or "Archive lines per mode" in body
+
+
 def test_write_inventory_refuses_a_corpus_whose_audit_failed(tmp_path):
     fake = {
         "source": "x",
-        "records_by_mode_backend": {"choice|laya": 1},
+        "lines_by_mode_backend": {"choice/laya": 1},
         "unique_ids": 1,
         "repeats": [0],
         "families": [],
@@ -189,7 +248,7 @@ def _render() -> str:
 
     d = {
         "source": "x",
-        "records_by_mode_backend": {"choice/laya": 192, "four_noul/jev": 192},
+        "lines_by_mode_backend": {"choice/laya": 192, "four_noul/jev": 192},
         "unique_ids": 64, "repeats": [0, 1, 2], "families": ["lifecycle"],
         "label_counts": {"todo": 16}, "provenance": "p",
         "upstream_audit_rc": 0, "upstream_audit_stdout_tail": "",

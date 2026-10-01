@@ -10,14 +10,19 @@ not typed. Re-run `uv run --frozen pytest tests/test_inventory.py -q` to reprodu
 - upstream `audit.py` exit code: **0** (interpreter `/Users/jackson/laya/laya-0.3.20/.venv/bin/python`)
 - provenance: AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.
 
-## Records per mode x backend
+## Archive lines per mode x backend
 
-| key | records |
+| key | archive lines |
 |---|---|
 | choice/jev | 192 |
 | choice/laya | 192 |
 | four_noul/jev | 192 |
 | four_noul/laya | 192 |
+
+Counts here are archive LINES per mode and backend, taken before any
+quarantine; the reader keeps the lines whose probabilities close, so its
+`lines_by_mode` can be smaller (measured: 383 choice lines kept of 384 present).
+
 
 ## Can this corpus support a bound?
 
@@ -36,3 +41,4 @@ Bound width for an automation-rate estimate is `2*sqrt(ln(2/alpha)/(2n))`. At `a
 - mteb/amazon_massive_intent is not in the local HF dataset cache
 - the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here
 - the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (asks ['action', 'related', 'urgent', 'value'] are not among the case keys ['expected', 'family', 'id', 'messages', 'rationale', 'target_id']); only the composite 4-way label is supervised, so a noul certificate on this corpus would certify invented labels
+- 1 archived choice line(s) publish probabilities that do not close to 1 within 0.005 and are quarantined by the reader rather than absorbed by a wider tolerance: jev/lifecycle-01/repeat=1 (sum 0.9900)

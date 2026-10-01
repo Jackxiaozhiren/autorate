@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .records import SUM_TOL
+
 MODES = ("choice", "four_noul")
 BACKENDS = ("laya", "jev")
 ALPHA_DEFAULT = 0.05
@@ -65,6 +67,7 @@ def _scan_jsonl(path: Path) -> tuple[dict, set, list]:
     by_mode: dict = {}
     ids: set = set()
     repeats: set = set()
+    unclosed: list = []
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
@@ -72,7 +75,16 @@ def _scan_jsonl(path: Path) -> tuple[dict, set, list]:
         by_mode[rec["mode"]] = by_mode.get(rec["mode"], 0) + 1
         ids.add(rec["id"])
         repeats.add(rec["repeat"])
-    return by_mode, ids, sorted(repeats)
+        if rec["mode"] == "choice" and rec.get("status") == "ok":
+            probs = [float(x) for x in rec["response"]["answers"]["category"]["probabilities"].values()]
+            if abs(sum(probs) - 1.0) > SUM_TOL:
+                # The tolerance has one owner (records.SUM_TOL) and the reader
+                # quarantines the same lines, so inventory and reader cannot
+                # disagree about what the corpus contains.
+                unclosed.append({"id": rec["id"], "backend": path.parent.name,
+                                 "repeat": rec["repeat"], "probs": probs,
+                                 "probs_sum": round(sum(probs), 6)})
+    return by_mode, ids, sorted(repeats), unclosed
 
 
 def per_ask_gold(root: Path) -> dict:
@@ -105,9 +117,11 @@ def inventory(root: Path) -> dict:
     per_mode: dict = {}
     ids: set = set()
     repeats: list = []
+    unclosed: list = []
     for backend in BACKENDS:
         path = root / "results" / "v1" / backend / "raw.jsonl"
-        by_mode, this_ids, this_reps = _scan_jsonl(path)
+        by_mode, this_ids, this_reps, this_unclosed = _scan_jsonl(path)
+        unclosed += this_unclosed
         for mode in MODES:
             # Separator is "/", not "|": these keys are rendered into a markdown table,
             # and a pipe inside a cell silently adds a column and breaks the table.
@@ -119,7 +133,7 @@ def inventory(root: Path) -> dict:
     audit = subprocess.run(cmd, capture_output=True, text=True, cwd=str(root), env=env)
     return {
         "source": str(root),
-        "records_by_mode_backend": dict(sorted(per_mode.items())),
+        "lines_by_mode_backend": dict(sorted(per_mode.items())),
         "unique_ids": len(ids),
         "repeats": repeats,
         "families": sorted(manifest.get("families", {})),
@@ -130,6 +144,8 @@ def inventory(root: Path) -> dict:
         "upstream_audit_stderr_tail": audit.stderr[-400:],
         "audit_interpreter": cmd[0],
         "min_calibration_n": manifest.get("cases", len(ids)),
+        "probs_not_closing": unclosed,
+        "sum_tolerance": SUM_TOL,
         "per_ask_gold": gold,
         "corpus_options": corpus_options(),
         "gaps": [
@@ -142,6 +158,12 @@ def inventory(root: Path) -> dict:
             "(asks %s are not among the case keys %s); only the composite 4-way label is "
             "supervised, so a noul certificate on this corpus would certify invented labels"
             % (gold["asks"], gold["case_keys"]),
+        ]) + ([] if not unclosed else [
+            "%d archived choice line(s) publish probabilities that do not close to 1 within "
+            "%g and are quarantined by the reader rather than absorbed by a wider tolerance: %s"
+            % (len(unclosed), SUM_TOL,
+               ", ".join("%s/%s/repeat=%s (sum %.4f)" % (u["backend"], u["id"], u["repeat"], u["probs_sum"])
+                         for u in unclosed)),
         ]),
     }
 
@@ -194,14 +216,17 @@ def write_inventory(d: dict, out: Path) -> None:
             d["upstream_audit_rc"], d["audit_interpreter"]),
         "- provenance: %s" % d["provenance"],
         "",
-        "## Records per mode x backend",
+        "## Archive lines per mode x backend",
         "",
-        "| key | records |",
+        "| key | archive lines |",
         "|---|---|",
     ]
-    for k, v in sorted(d["records_by_mode_backend"].items()):
+    for k, v in sorted(d["lines_by_mode_backend"].items()):
         lines.append("| %s | %d |" % (k, v))
 
+    lines += ["", "Counts here are archive LINES per mode and backend, taken before any",
+              "quarantine; the reader keeps the lines whose probabilities close, so its",
+              "`lines_by_mode` can be smaller (measured: 383 choice lines kept of 384 present).", ""]
     lines += ["", "## Can this corpus support a bound?", ""]
     lines.append(
         "Bound width for an automation-rate estimate is `2*sqrt(ln(2/alpha)/(2n))`. "
