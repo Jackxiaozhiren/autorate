@@ -4,9 +4,11 @@ Every assertion here is about a number the certificate claims, so the tests chec
 claim, not the code path: an automation rate that ignores refusals, or a conditional
 bound that quietly equals the marginal one, both pass a weaker suite.
 """
+import pytest
 import random
 
 from autorate.certificate import Reason
+from autorate.nonconformity import aps_score
 from autorate.certify_choice import certify_choice
 from autorate.records import Record
 
@@ -81,7 +83,14 @@ def test_an_uninformative_task_with_real_errors_is_refused_not_certified():
     closest = cert.meta["closest_attempt"]
     assert closest is not None and closest["errors"] > 0
     assert closest["conditional_error_bound"] > 0.05
-    assert "closest attempt" in cert.summary() or "error budget" in cert.summary()
+    assert "exceeds the budget" in cert.summary(), cert.summary()
+    curve = cert.meta["diagnostic_curve"]
+    assert curve and "evidence only" in cert.meta["diagnostic_note"]
+    # R-21's name is now honest: closest_attempt is the point whose bound comes CLOSEST
+    # to beta. It used to be the point with the HIGHEST automation rate, which on a
+    # failing curve is the one furthest from the budget.
+    assert cert.meta["closest_attempt"]["conditional_error_bound"] == min(
+        c["conditional_error_bound"] for c in curve), cert.meta["closest_attempt"]
 
 
 def test_error_mass_alone_degrades_the_automation_rate():
@@ -147,6 +156,45 @@ def test_tighter_error_budgets_never_increase_the_automation_rate():
     tight = certify_choice(recs, alpha=0.01, beta=0.01, seed=11)
     rates = [c.autorate if c.feasible else 0.0 for c in (loose, mid, tight)]
     assert rates == sorted(rates, reverse=True), rates
+
+
+def test_alpha_moves_the_operating_point_instead_of_labeling_it():
+    """R-28. The first version stored and printed `alpha` while the sweep picked its set
+    size from a 0.01..0.29 grid on the evaluation half, so four different requested
+    alphas produced byte-identical certificates and a summary reading "at alpha=0.050"
+    under a 0.89-coverage operating point."""
+    recs = _records(1600, sharpness=4.0)
+    certs = {a: certify_choice(recs, alpha=a, beta=0.05, seed=7) for a in (0.01, 0.05, 0.20)}
+    for a, c in certs.items():
+        assert c.feasible is True, (a, c.summary())
+    assert certs[0.01].qhat > certs[0.05].qhat > certs[0.20].qhat, [c.qhat for c in certs.values()]
+    assert "coverage 0.950 (alpha=0.050)" in certs[0.05].summary(), certs[0.05].summary()
+    rates = [c.autorate for c in certs.values()]
+    assert len(set(rates)) == 3, rates
+
+
+def test_the_certified_threshold_is_the_one_the_summary_quotes():
+    # No selection on the test half: qhat must be the alpha-quantile of the calibration
+    # scores, recomputed here from the calibration half the certificate names.
+    from autorate.certify_choice import split_cal
+    from autorate.conformal import split_quantile
+
+    recs = _records(1200, sharpness=6.0, seed=3)
+    cert = certify_choice(recs, alpha=0.05, beta=0.05, seed=7)
+    assert cert.feasible is True, cert.summary()
+    cal, ev, _ = split_cal(recs, 7)
+    assert {r.id for r in ev} == set(cert.meta["eval_ids"])
+    scores = [aps_score(r.probs, r.gold_index, r.u) for r in cal]
+    q, vacuous = split_quantile(scores, 0.05)
+    assert vacuous is False and q == cert.qhat
+
+
+def test_a_requested_coverage_level_outside_the_unit_interval_is_a_usage_error():
+    for bad in (0.0, 1.0, -0.1, 1.5):
+        with pytest.raises(ValueError, match="must be in"):
+            certify_choice(_records(200), alpha=bad, beta=0.05, seed=7)
+        with pytest.raises(ValueError, match="must be in"):
+            certify_choice(_records(200), alpha=0.05, beta=bad, seed=7)
 
 
 def test_the_same_records_produce_the_same_certificate_twice():

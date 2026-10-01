@@ -12,6 +12,13 @@ from enum import Enum
 from typing import Optional
 
 
+# A feasible certificate makes exactly this many claims, each tested at `delta`:
+# the conditional error bound, the marginal error bound, and the automation-rate
+# interval. The published joint level is 1 - N_CLAIMS * delta by the union bound, and
+# the count lives here so no caller can restate it differently.
+N_CLAIMS = 3
+
+
 class Reason(str, Enum):
     N_BELOW_MIN = "n_below_min"
     EMPTY_FEASIBLE_SET = "empty_feasible_set"
@@ -27,13 +34,14 @@ class Certificate:
     beta: float
     delta: float
     method: str
-    grid_alpha: Optional[float]
+    # Whose model this is. A certificate that does not name its subject cannot be
+    # compared with another one, and a pair of numbers from two models is not a pair.
+    backend: Optional[str]
     qhat: Optional[float]
     autorate: Optional[float]
     autorate_ci: Optional[tuple]
     conditional_error_bound: Optional[float]
     marginal_error_bound: Optional[float]
-    refusal_rate: Optional[float]
     mean_set_size: Optional[float]
     n_cal: int
     n_eval: int
@@ -50,8 +58,11 @@ class Certificate:
         if self.feasible:
             if self.reason is not None:
                 raise ValueError("a feasible certificate cannot carry a refusal reason")
-            if self.autorate is None or self.qhat is None:
-                raise ValueError("a feasible certificate must carry a number")
+            missing = [f for f in ("autorate", "qhat", "autorate_ci", "mean_set_size",
+                                   "conditional_error_bound", "marginal_error_bound")
+                       if getattr(self, f) is None]
+            if missing:
+                raise ValueError("a feasible certificate must carry %s" % ", ".join(missing))
             if self.autorate > 1.0 + 1e-9:
                 raise ValueError("autorate is a fraction of evaluated decisions: %r" % (self.autorate,))
             lo, hi = self.autorate_ci
@@ -62,30 +73,41 @@ class Certificate:
             if self.marginal_error_bound > self.conditional_error_bound + 1e-9:
                 raise ValueError("marginal error bound cannot exceed the conditional one: %r > %r"
                                  % (self.marginal_error_bound, self.conditional_error_bound))
-            # R-17: an empty certified set is a refusal, and refusals are part of the
-            # evaluated mass, not of the automated mass.
-            if self.autorate + self.refusal_rate > 1.0 + 1e-9:
-                raise ValueError("autorate + refusal exceed the evaluated mass: %r + %r"
-                                 % (self.autorate, self.refusal_rate))
+            if not 0.0 <= self.autorate <= 1.0 + 1e-9:
+                raise ValueError("autorate is a fraction of evaluated decisions: %r"
+                                 % (self.autorate,))
         else:
             if self.reason is None:
                 raise ValueError("a refusal must name its reason")
             if self.reason not in {r.value for r in Reason}:
                 raise ValueError("unknown reason %r" % (self.reason,))
+            # A refused certificate has no measured quantity to report. Carrying one
+            # would let a reader automate on a number the tool said it could not bound.
+            carried = [f for f in ("autorate", "autorate_ci", "qhat", "mean_set_size",
+                                   "conditional_error_bound", "marginal_error_bound")
+                       if getattr(self, f) is not None]
+            if carried:
+                raise ValueError("a refusal cannot carry headline numbers: %s"
+                                 % ", ".join(carried))
 
     @property
-    def mean_size(self) -> Optional[float]:
-        return self.mean_set_size
+    def refusal_rate(self) -> Optional[float]:
+        """1 - autorate, derived: every evaluated case is empty, singleton, or multi-label.
+
+        It was a stored field guarded only by `autorate + refusal <= 1`, which let an
+        arbitrary refusal through -- one number, one owner (R-20).
+        """
+        return None if self.autorate is None else 1.0 - self.autorate
 
     @classmethod
     def refused(cls, reason: Reason, alpha: float, beta: float, n_cal: int, n_eval: int,
-                detail: str, meta: Optional[dict] = None, delta: float = 0.05) -> "Certificate":
+                detail: str, meta: Optional[dict] = None, delta: float = 0.05,
+                backend: Optional[str] = None) -> "Certificate":
         return cls(
             feasible=False, reason=reason.value, alpha=alpha, beta=beta, delta=delta,
-            method="aps", grid_alpha=None, qhat=None, autorate=None, autorate_ci=None,
-            conditional_error_bound=None, marginal_error_bound=None,
-            refusal_rate=None, mean_set_size=None,
-            n_cal=n_cal, n_eval=n_eval, level=1.0 - 2.0 * delta,
+            method="aps", backend=backend, qhat=None, autorate=None, autorate_ci=None,
+            conditional_error_bound=None, marginal_error_bound=None, mean_set_size=None,
+            n_cal=n_cal, n_eval=n_eval, level=1.0 - N_CLAIMS * delta,
             envelope=("no certificate exists, so no action is certified",
                       "exchangeability within group assumed; none of it is usable here"),
             meta={"detail": detail, **(meta or {})},
@@ -94,14 +116,14 @@ class Certificate:
     def summary(self) -> str:
         if self.feasible:
             lo, hi = self.autorate_ci
-            return ("at alpha=%.3f, beta=%.3f: autorate %.3f (ci %.3f..%.3f), "
+            return ("at coverage %.3f (alpha=%.3f), beta=%.3f: autorate %.3f (ci %.3f..%.3f), "
                     "conditional error <= %.3f, marginal error <= %.3f; "
                     "refusal (empty or multi-label set) %.3f; mean set size %.2f; "
-                    "level %.2f; n_cal=%d n_eval=%d"
-                    % (self.alpha, self.beta, self.autorate, lo, hi,
+                    "joint level %.2f over %d claims at delta=%.3f; n_cal=%d n_eval=%d"
+                    % (1.0 - self.alpha, self.alpha, self.beta, self.autorate, lo, hi,
                        self.conditional_error_bound, self.marginal_error_bound,
                        self.refusal_rate, self.mean_set_size,
-                       self.level, self.n_cal, self.n_eval))
+                       self.level, N_CLAIMS, self.delta, self.n_cal, self.n_eval))
         return ("NOT_CERTIFIABLE: reason=%s at alpha=%.3f, beta=%.3f; n_cal=%d n_eval=%d; %s"
                 % (self.reason, self.alpha, self.beta, self.n_cal, self.n_eval,
                    self.meta.get("detail", "")))

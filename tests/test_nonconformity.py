@@ -59,5 +59,5 @@ def test_an_extreme_sharp_answer_gives_a_singleton_under_a_loose_quantile():
 def test_unknown_method_is_rejected_rather_than_silently_defaulting():
     import pytest
 
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="unknown method"):
         conformal_set(P4, 0.5, 0.0, "crc")

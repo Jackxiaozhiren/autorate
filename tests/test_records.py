@@ -23,7 +23,8 @@ L05_REPORTED_CONFIDENCE = 0.0456
 
 def _rec(probs=L05_PROBS, options=L05_OPTIONS, **kw):
     base = dict(id="x", qtype="choice", backend="laya", repeat=0, options=tuple(options),
-                probs=tuple(probs), gold="valuable", predicted="todo", slices={"family": "lifecycle"},
+                probs=tuple(probs), gold="valuable", predicted=None,
+                slices={"family": "lifecycle"},
                 scores={"reported_confidence": L05_REPORTED_CONFIDENCE}, seed=13, u=0.0, meta={})
     base.update(kw)
     return Record(**base)
@@ -145,14 +146,44 @@ def test_u_is_required_in_the_validated_range_because_sets_are_reproducible_only
         _rec(u=-0.001)
 
 
-def test_a_noul_scalar_gains_a_two_slot_vector_and_the_confounding_flag():
+def test_a_noul_scalar_gains_a_two_slot_vector_and_the_shape_flag():
     # Upstream four_noul answers carry one P(true) and set confidence equal to it, so
     # "confidently no" and "low confidence" are the same number. Modeled, not hidden.
     r = _rec(qtype="noul", options=(), probs=(0.7745,), gold=None, scores={})
     assert r.options == ("false", "true")
     assert r.probs == (0.2255, 0.7745)
-    assert r.scores["noul_confounded_with_yes"] is True
+    assert r.scores["noul_scalar_expanded"] is True
     assert r.k == 2
+
+
+def test_the_two_slot_order_is_the_callers_and_p_true_follows_it():
+    # A positional guess here would assert P(true)=0.2255 for an archived 0.7745.
+    flipped = _rec(qtype="noul", options=("true", "false"), probs=(0.7745,), gold=None,
+                   scores={})
+    assert flipped.options == ("true", "false")
+    assert flipped.probs == (0.7745, 0.2255)
+    assert flipped.options.index("true") == 0
+
+
+def test_a_scalar_noul_with_slots_that_are_not_the_pair_is_refused():
+    with pytest.raises(ValueError, match="must name both slots"):
+        _rec(qtype="noul", options=("yes", "no"), probs=(0.6,), gold=None, scores={})
+    with pytest.raises(ValueError, match="must name both slots"):
+        _rec(qtype="noul", options=("true",), probs=(0.6,), gold=None, scores={})
+
+
+def test_the_confounding_flag_belongs_to_the_reader_and_survives_construction():
+    # records.py used to clobber it to True, which made the reader's computation dead
+    # and made 1527 archived noul records claim a property 759 of them have.
+    observed = _rec(qtype="noul", options=("false", "true"), probs=(0.2, 0.8), gold="true",
+                    scores={"noul_confounded_with_yes": False})
+    assert observed.scores["noul_confounded_with_yes"] is False
+    assert "noul_scalar_expanded" not in observed.scores
+
+
+def test_a_two_slot_noul_is_not_marked_as_an_expanded_scalar():
+    r = _rec(qtype="noul", options=("false", "true"), probs=(0.2, 0.8), gold="true")
+    assert "noul_scalar_expanded" not in r.scores
 
 
 def test_a_noul_gold_is_named_by_the_slot_not_by_an_invented_label():
@@ -164,6 +195,53 @@ def test_score_levels_keep_their_declared_order():
     r = _rec(qtype="score", options=("not urgent", "soon", "blocking"),
              probs=(0.1, 0.7, 0.2), gold="soon")
     assert r.gold_index == 1 and r.k == 3
+
+
+def test_negative_probabilities_and_duplicate_options_are_rejected():
+    # Both branches existed in validate() with no test behind them: a guard nobody has
+    # seen fire is a guard that may be unreachable.
+    with pytest.raises(ValueError, match="negative probability"):
+        _rec(probs=(1.2, -0.2, 0.0, 0.0))
+    with pytest.raises(ValueError, match="duplicate option"):
+        _rec(options=("a", "a", "b", "c"), probs=(0.25, 0.25, 0.25, 0.25))
+
+
+def test_a_predicted_answer_outside_the_ballot_is_rejected():
+    # predicted is what the automated decision WOULD be; a name that is not an option
+    # turns into a silent wrong answer in every certificate built from the record.
+    with pytest.raises(ValueError, match="predicted"):
+        _rec(predicted="maybe")
+    with pytest.raises(ValueError, match="predicted"):
+        _rec(qtype="score", options=("not urgent", "soon", "blocking"),
+             probs=(0.1, 0.7, 0.2), gold="soon", predicted="todo")
+
+
+def test_a_single_option_decision_is_refused_rather_than_certified_at_full_confidence():
+    with pytest.raises(ValueError, match="one-option"):
+        _rec(options=("only",), probs=(1.0,))
+    with pytest.raises(ValueError, match="k=1"):
+        entropy_confidence([1.0])
+
+
+def test_the_confidence_scales_reject_an_empty_or_non_finite_vector():
+    for bad in ([], [float("nan"), 0.5], [float("inf"), 0.0]):
+        with pytest.raises(ValueError, match="empty|non-finite"):
+            entropy_confidence(bad)
+        with pytest.raises(ValueError, match="empty|non-finite"):
+            max_confidence(bad)
+
+
+def test_the_record_copies_the_mappings_it_was_handed():
+    # A frozen dataclass does not freeze what the caller still holds. Before this, a
+    # slice dict mutated after construction rewrote a certified record's grouping.
+    slices, scores, meta = {"family": "lifecycle"}, {"reported_confidence": 0.1}, {"k": 1}
+    r = _rec(slices=slices, scores=scores, meta=meta)
+    slices["family"] = "tampered"
+    scores["reported_confidence"] = 9.9
+    meta["k"] = 99
+    assert r.slices["family"] == "lifecycle"
+    assert r.scores["reported_confidence"] == 0.1
+    assert r.meta["k"] == 1
 
 
 def test_round_trip_to_from_dict_is_lossless_including_types():

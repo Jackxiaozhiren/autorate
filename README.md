@@ -11,18 +11,26 @@ it made, and exits 3. It does not publish a number about nothing.
 
 ## What a certificate carries
 
-`feasible`, `reason`, `alpha`, `beta`, `delta`, `level`, `method`, `grid_alpha`,
+`feasible`, `reason`, `backend`, `alpha`, `beta`, `delta`, `level`, `method`,
 `autorate`, `autorate_ci`, `conditional_error_bound`, `marginal_error_bound`,
-`refusal_rate`, `mean_set_size`, `qhat`, `n_cal`, `n_eval`, `envelope`, `meta`.
+`mean_set_size`, `qhat`, `n_cal`, `n_eval`, `envelope`, `meta`. `refusal_rate` is
+derived as `1 - autorate` rather than stored, because every evaluated case is empty,
+singleton, or multi-label -- one number, one owner.
 
 Two of those rows carry the whole argument:
 
 - `conditional_error_bound` is `P(wrong | automated) <= beta`. `marginal_error_bound`
   is `P(wrong AND automated)`. They are different quantities, and a paper or a dashboard
   that quotes one while meaning the other is the failure mode this tool exists to stop.
-- `envelope` is the machine-readable statement of what the bound assumed -- group
-  conditioning, drift, and how empty sets were counted. A certificate read without its
-  envelope is invalid output, so every printing path prints it.
+- `envelope` is the machine-readable statement of what the bound assumed -- coverage
+  level, group conditioning, drift, and how empty sets were counted. A certificate read
+  without its envelope is invalid output, so `certify`, `compare` and `gate` all print it.
+- `alpha` is the coverage the certificate delivers, not a label on it. An earlier version
+  swept a grid of coverage levels for the largest automation rate and tested the winner on
+  the same evaluation half, then printed "at alpha=0.050" while operating at 0.89
+  coverage. Selecting on the test half is snooping, so the set size now comes from the
+  calibration half at exactly the requested `alpha`; the grid survives only as diagnostic
+  evidence attached to a refusal.
 
 `refusal_rate` and `mean_set_size` exist because an empty certified set is a refusal,
 not a free correct answer: counting it as automation would inflate the rate.
@@ -34,7 +42,7 @@ uv sync --frozen --extra dev
 
 autorate export-feishu --out data/records_feishu.jsonl   # archive responses -> records
 autorate certify data/records_feishu.jsonl --backend laya --out cert.json
-autorate compare data/cert_laya.json data/cert_jev.json
+autorate compare data/cert_laya.json data/cert_jev.json   # names what it actually checked
 autorate gate data/records_feishu.jsonl --cert data/cert_jev.json --limit 5
 autorate report --out docs/RESULTS.md                    # write the published numbers
 autorate verify                                          # re-derive them, fail on drift
@@ -64,8 +72,10 @@ that can see the corpus, where a stale key goes red.
 
 The first paired certificate pair is published in `docs/RESULTS.md`: on the archived
 Chinese workplace corpus, one backend certifies and the other refuses at the same
-budgets. The refusal is the finding, not a defect -- a model that scores poorly on a
-corpus should not be able to buy an automation rate on it.
+budgets and the same 95% coverage. The refusal is the finding, not a defect: at that
+coverage the refusing backend never produced a single-label certified set, so there was
+nothing to automate -- a model that scores poorly on a corpus should not be able to buy
+an automation rate on it.
 
 Covered: the `choice` primitive, marginal two-sided control, APS and LAC set sizes,
 Clopper-Pearson one-sided bounds, and the gate that turns a certificate into

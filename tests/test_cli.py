@@ -56,9 +56,13 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     assert checked == total, p.stdout
     assert "corpus absent" in p.stdout, p.stdout
     assert "transcribed" in p.stdout, p.stdout
-    # 26 certificate rows + the report bytes: nothing else is reachable without a corpus,
-    # so a count above 27 here would mean a check claimed a re-derivation it could not do.
-    assert total == 27, p.stdout
+    # Every row the corpus-less lane can honestly print: the certificate fields re-derived
+    # per backend, one summary each, and the report bytes. Derived from the shipped field
+    # list rather than typed, so a row that quietly disappears changes the expectation too.
+    from autorate.cli import CERT_COMPARE_FIELDS
+
+    expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 1
+    assert total == expected == 29, (total, expected, p.stdout)
 
 
 def test_report_is_byte_identical_with_and_without_the_corpus(tmp_path):
@@ -152,6 +156,28 @@ def test_compare_prints_both_verdicts_and_never_drops_the_envelope():
     assert p.returncode == 0, p.stdout + p.stderr
     assert "NOT_CERTIFIABLE" in p.stdout and "autorate 1.000" in p.stdout
     assert p.stdout.count("envelope:") >= 5
+    # What it claims about pairing is measured, with its denominators named.
+    assert "comparable: yes" in p.stdout, p.stdout
+    assert "records over" in p.stdout and "request ids in common" in p.stdout, p.stdout
+
+
+def test_compare_refuses_to_call_different_rubrics_comparable(tmp_path):
+    """C-1's falsifier. The old line asserted identical rubrics without reading either.
+
+    A certificate certified at alpha=0.20, beta=0.30, seed=99 is not the same
+    experiment as one at 0.05/0.05/7, and a reader comparing the two needs the tool to
+    say so rather than print a claim.
+    """
+    off = tmp_path / "cert_off.json"
+    c = run("certify", "data/records_feishu.jsonl", "--backend", "jev",
+            "--alpha", "0.20", "--beta", "0.30", "--seed", "99", "--out", str(off))
+    assert c.returncode in (0, 3), c.stdout + c.stderr
+    p = run("compare", "data/cert_jev.json", str(off))
+    assert "comparable: NO" in p.stdout, p.stdout
+    for f in ("alpha", "beta", "seed"):
+        assert f in p.stdout.splitlines()[0] or f in p.stdout, f
+    q = run("compare", "data/cert_jev.json", "data/cert_jev.json")
+    assert "comparable: yes" in q.stdout, q.stdout
 
 
 @skip
@@ -160,11 +186,13 @@ def test_gate_lines_name_the_action_and_are_self_sufficient(tmp_path):
     assert run("export-feishu", "--out", str(recs)).returncode == 0
     cert = tmp_path / "cert.json"
     run("certify", str(recs), "--backend", "jev", "--out", str(cert))
-    g = run("gate", str(recs), "--cert", str(cert), "--limit", "3")
+    g = run("gate", str(recs), "--cert", str(cert), "--backend", "jev", "--limit", "3")
     assert g.returncode in (0, 3)
-    lines = [l for l in g.stdout.splitlines() if l.strip()]
+    lines = [l for l in g.stdout.splitlines() if "action=" in l]
     assert len(lines) == 3, g.stdout
-    assert all("action=" in l and "why=" in l for l in lines)
+    assert all("why=" in l and "qhat=" in l for l in lines), lines
+    # The certificate is jev's; a laya record must not be automated on it (subject_mismatch).
+    assert "envelope carried by every decision below" in g.stdout, g.stdout
 
 
 def test_the_cli_has_no_network_or_hosted_dependency():

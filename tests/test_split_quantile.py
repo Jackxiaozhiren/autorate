@@ -1,7 +1,7 @@
 """Task 6b: the split-conformal quantile, its finite-sample correction, and vacuity."""
 import pytest
 
-from autorate.conformal import conformal_set, split_quantile
+from autorate.conformal import conformal_set, lac_score, split_quantile
 
 
 def test_quantile_index_is_the_finite_sample_correction_not_the_naive_one():
@@ -53,5 +53,32 @@ def test_the_naive_quantile_is_distinguishable_from_the_correct_one():
 
 
 def test_method_names_are_a_closed_set():
-    with pytest.raises(KeyError):
+    # ValueError, not KeyError: the CLI maps a usage error to exit 2, and an uncaught
+    # KeyError would escape the documented exit-code contract as rc 1.
+    with pytest.raises(ValueError, match="unknown method"):
         conformal_set([0.5, 0.5], 0.4, 0.0, "truncation")
+
+
+def test_lac_sets_are_a_different_frontier_from_aps_and_are_exercised_directly():
+    # The name was selectable but never selected: METHODS = {"lac": aps_score} would
+    # have shipped green, and every set assertion below ran on aps alone.
+    # On an exact tie the two differ by construction: LAC scores both at 0.5 and
+    # certifies neither, while randomised APS scores both at 0.25 and admits the pair.
+    probs, qhat, u = [0.5, 0.5], 0.4, 0.5
+    assert conformal_set(probs, qhat, u, method="lac") == []
+    assert conformal_set(probs, qhat, u, method="aps") == [0, 1]
+    assert lac_score(probs, 1) == 0.5 and lac_score(probs, 0) == 0.5
+
+
+def test_an_alpha_outside_the_unit_interval_is_a_usage_error_not_a_quantile():
+    # At alpha >= 1 the corrected index falls to <= 0 and sorted[-1] returns the MAXIMUM
+    # score while reporting itself non-vacuous: anti-conservative with a clean flag.
+    for bad in (0.0, 1.0, 1.5, -0.2):
+        with pytest.raises(ValueError, match="alpha must be"):
+            split_quantile([0.1, 0.2, 0.3], bad)
+    # n=3 cannot supply the ceil(0.9*4)=4th order statistic, so a 90%-coverage level is
+    # vacuous; a 1%-coverage level needs only the 1st and is not.
+    q, vacuous = split_quantile([0.1, 0.2, 0.3], 0.10)
+    assert vacuous is True and q == 1.0
+    q2, vacuous2 = split_quantile([0.1, 0.2, 0.3], 0.99)
+    assert vacuous2 is False and q2 == 0.1

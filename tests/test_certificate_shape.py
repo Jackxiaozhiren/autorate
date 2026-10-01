@@ -9,10 +9,9 @@ import pytest
 from autorate.certificate import Reason, Certificate
 
 _OK = dict(feasible=True, reason=None, alpha=0.05, beta=0.05, delta=0.05,
-           method="aps", grid_alpha=0.05, qhat=0.4, autorate=0.6,
+           method="aps", backend="synthetic", qhat=0.4, autorate=0.6,
            autorate_ci=(0.55, 0.65), conditional_error_bound=0.04,
-           marginal_error_bound=0.02,
-           refusal_rate=0.05, mean_set_size=1.05,
+           marginal_error_bound=0.02, mean_set_size=1.05,
            n_cal=500, n_eval=500, level=0.9,
            envelope=("exchangeability within group assumed",), meta={})
 
@@ -55,11 +54,15 @@ def test_the_interval_must_bracket_the_point_estimate():
         _ok(autorate_ci=(0.55, 0.5))
 
 
-def test_the_refusal_decomposition_must_be_consistent():
-    # R-17: automation + refusal + multi-label must not exceed the evaluated mass,
-    # and an automation rate above 1.0 is arithmetically impossible.
-    with pytest.raises(ValueError, match="refusal"):
-        _ok(autorate=0.9, refusal_rate=0.5)
+def test_the_refusal_mass_is_derived_from_the_automation_rate_not_supplied():
+    # R-17 + R-20: every evaluated case is empty, singleton, or multi-label, so
+    # refusal = 1 - autorate. It used to be a second field guarded only by `<= 1`,
+    # which let 0.6 + 0.01 through: one number, two owners, and a guard that missed
+    # everything between.
+    assert _ok(autorate=0.6).refusal_rate == 0.4
+    assert _ok(autorate=1.0).refusal_rate == 0.0
+    with pytest.raises(TypeError):
+        Certificate(**{**_OK, "refusal_rate": 0.05})
     with pytest.raises(ValueError, match="autorate"):
         _ok(autorate=1.01)
 
@@ -105,11 +108,32 @@ def test_marginal_can_never_exceed_conditional_because_p_auto_is_at_most_one():
         _ok(marginal_error_bound=0.30, conditional_error_bound=0.04)
 
 
-def test_a_refusal_decomposition_cannot_exceed_the_evaluated_mass():
-    with pytest.raises(ValueError, match="refusal"):
-        _ok(autorate=0.6, refusal_rate=0.5)  # 1.1 > 1.0
+def test_a_refusal_cannot_carry_headline_numbers():
+    # A refused certificate has measured nothing. Publishing an automation rate next to
+    # "NOT_CERTIFIABLE" is how a refusal gets read as a small success downstream.
+    for field, value in (("autorate", 0.6), ("qhat", 0.4), ("mean_set_size", 1.1),
+                        ("conditional_error_bound", 0.01), ("autorate_ci", (0.1, 0.2))):
+        kw = dict(_OK)
+        kw.update(feasible=False, reason=Reason.N_BELOW_MIN.value, autorate_ci=None,
+                  autorate=None, qhat=None, mean_set_size=None,
+                  conditional_error_bound=None, marginal_error_bound=None)
+        kw[field] = value
+        with pytest.raises(ValueError, match="headline numbers"):
+            Certificate(**kw)
 
 
 def test_mean_set_size_below_one_is_legal_because_empty_sets_are_refusals():
     # R-17 again: measured 0.948 on synthetic data; a guard demanding >= 1 would reject truth.
-    assert _ok(mean_set_size=0.948, refusal_rate=0.06, autorate=0.94).mean_size < 1.0
+    assert _ok(mean_set_size=0.948, autorate=0.94).mean_set_size < 1.0
+
+
+def test_a_success_missing_a_bound_is_a_readable_error_not_a_typeerror():
+    # The from_dict path took `lo, hi = self.autorate_ci` before any None check, so a
+    # stored certificate without its bounds raised TypeError on the CLI and escaped the
+    # documented exit codes.
+    for field in ("autorate_ci", "conditional_error_bound", "marginal_error_bound",
+                  "mean_set_size", "qhat", "autorate"):
+        kw = dict(_OK)
+        kw[field] = None
+        with pytest.raises(ValueError, match="must carry"):
+            Certificate(**kw)

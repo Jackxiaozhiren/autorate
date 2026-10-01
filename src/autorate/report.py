@@ -50,8 +50,32 @@ def _first_clause(gap: str) -> str:
     return head[:78] + ("..." if len(head) > 78 else "")
 
 
+def _audit_scores(inv: dict) -> tuple:
+    """Parse upstream's own audit lines: "jev / choice: 64/64; 0 failed requests; ...".
+
+    The score is upstream's verdict, so the number is read from its output rather than
+    recomputed here -- and a line that does not parse is an error, not a fallback.
+    """
+    out = {}
+    for line in inv["upstream_audit_stdout_tail"].splitlines():
+        head, _, rest = line.partition(":")
+        who, _, mode = head.partition(" / ")
+        score = rest.split(";")[0].strip()
+        if who and mode and score:
+            out[(who.strip(), mode.strip())] = score
+    missing = [(b, m) for b in ("laya", "jev") for m in ("choice", "four_noul")
+               if (b, m) not in out]
+    if missing:
+        raise ValueError("the archived audit output does not carry %s; refusing to "
+                         "quote a score that is not there" % missing)
+    return out
+
+
 def build_report(inv: dict, certs: dict, counts: dict) -> str:
     digests = inv["digests"]
+    scores = _audit_scores(inv)
+    ids = {b: set(certs[b].meta.get("eval_ids", [])) for b in BACKENDS}
+    shared = len(ids["laya"] & ids["jev"])
     lines = [
         "# Published results",
         "",
@@ -69,6 +93,9 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "`data/inventory.md.json`)" % inv["upstream_audit_rc"],
         "- records per backend (lines are counted separately, above): %s" % ", ".join(
             "%s=%d" % (b, counts[b]) for b in BACKENDS if b in counts),
+        "- upstream's own scores on it (read from its stdout, not recomputed here): %s" % (
+            ", ".join("%s/%s = %s" % (b, m, scores[(b, m)])
+                      for b in BACKENDS for m in ("choice", "four_noul"))),
     ]
     if digests:
         bad = [d["path"] for d in digests if not d["match"]]
@@ -95,7 +122,8 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         ))
     lines += [
         "",
-        "## Certificates at alpha=%.2f, beta=%.2f, seed=%d" % (ALPHA, BETA, SEED),
+        "## Certificates at coverage %.2f (alpha=%.2f), beta=%.2f, seed=%d" % (
+            1.0 - ALPHA, ALPHA, BETA, SEED),
         "",
         "| backend | verdict | autorate | ci | conditional <= | marginal <= | refusal | mean set size | n_cal/n_eval |",
         "|---|---|---|---|---|---|---|---|---|",
@@ -121,19 +149,28 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "### What this does and does not establish",
         "",
         "- The jev row is a **bound**, not a precision claim. With zero errors the exact "
-        "one-sided bound is `clopper_pearson_upper(0, %d, 0.05)` = %.4f, i.e. the %.3f "
+        "one-sided bound is `clopper_pearson_upper(0, %d, %.2f)` = %.4f, i.e. the %.3f "
         "published above. It is a knife-edge: the same n gives %.4f with one error and %.4f "
-        "with two, so the %.2f budget holds only while the model keeps making none. The "
-        "automation-rate interval also saturates at 1.000." % (
-            certs["jev"].n_eval, clopper_pearson_upper(0, certs["jev"].n_eval, 0.05),
+        "with two, so the %.2f budget holds only while the model keeps making none." % (
+            certs["jev"].n_eval, certs["jev"].delta,
+            clopper_pearson_upper(0, certs["jev"].n_eval, certs["jev"].delta),
             certs["jev"].conditional_error_bound,
-            clopper_pearson_upper(1, certs["jev"].n_eval, 0.05),
-            clopper_pearson_upper(2, certs["jev"].n_eval, 0.05), certs["jev"].beta)
-        if certs["jev"].feasible else
-        "- Both backends refuse at these budgets; see the reasons above.",
+            clopper_pearson_upper(1, certs["jev"].n_eval, certs["jev"].delta),
+            clopper_pearson_upper(2, certs["jev"].n_eval, certs["jev"].delta),
+            certs["jev"].beta)
+        if certs["jev"].feasible and certs["jev"].meta.get("errors_among_automated") == 0 else
+        "- Both backends refuse at these budgets, or certify with errors above zero; the "
+        "table and the summaries above carry the numbers either way.",
         "- The laya row is the project's point, not its problem: on a Chinese workplace "
-        "corpus where the archived audit scores it 20/64, a certificate that refuses is the "
-        "correct output. A published number here would be a number about nothing.",
+        "corpus where the archived audit scores its choice answers %s, a certificate "
+        "that refuses is the correct output. A published number here would be a number "
+        "about nothing." % scores[("laya", "choice")],
+        "- The evaluation halves hold %d and %d RECORDS over %d and %d distinct request "
+        "ids (the corpus repeats each case three times), and %d request ids are in common. "
+        "So the pair is a case-by-case comparison only where they overlap; the rest is two "
+        "marginal certificates on the same corpus." % (
+            certs["laya"].n_eval, certs["jev"].n_eval, len(ids["laya"]), len(ids["jev"]),
+            shared),
         "- n_eval is ~96 because the corpus has 64 unique cases. Per-slice certification, "
         "the ordinal `score` family and the `noul` budgets are Plan B, gated on a corpus with "
         "enough records to bound them.",

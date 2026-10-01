@@ -62,3 +62,39 @@ def test_invalid_inputs_are_refused_not_silently_clamped():
         clopper_pearson_upper(1, 10, 0.0)
     with pytest.raises(ValueError, match="k"):
         clopper_pearson_upper(11, 10, 0.05)
+
+
+def test_the_bound_survives_the_double_precision_floor():
+    """The head of the binomial CDF underflows at n in the thousands, and the module's
+    own docstring names that range as its design space.
+
+    Summing `(1-p)**n` first gave exactly 0.0 at n=3146, p=0.5, so every bisection step
+    read the tail as below `delta` and the published "upper bound" came out BELOW the
+    observed rate it claims to bound -- an anti-conservative bound with no signal.
+    """
+    import math
+
+    n, k, delta = 3146, 1421, 0.05
+    observed = k / n
+    bound = clopper_pearson_upper(k, n, delta)
+    assert bound >= observed, (bound, observed)
+    assert observed < bound < 0.5, (observed, bound)
+    # The normal approximation to the one-sided 95% bound, as an independent witness.
+    approx = observed + 1.6449 * math.sqrt(observed * (1 - observed) / n)
+    assert abs(bound - approx) < 0.004, (bound, approx)
+    # The inversion identity is what the bisection promises.
+    assert abs(binom_cdf(k, n, bound) - delta) < 1e-3, binom_cdf(k, n, bound)
+    # And the probe is not vacuous here: the naive leading term the old code summed from
+    # is exactly zero in this environment, which is how the bound got silently capped.
+    assert (1.0 - observed) ** n == 0.0, "this environment does not underflow; the probe is vacuous"
+    assert binom_cdf(k, n, observed) > 0.0
+
+
+def test_the_cdf_is_a_distribution_function_on_a_large_case():
+    n, p = 2000, 0.3
+    assert binom_cdf(n, n, p) == 1.0
+    # Steps through the body of the distribution: out in the far tails both ends saturate
+    # (1.0 and 0.0) and a strict increase there would be a rounding artefact, not a CDF.
+    cdfs = [binom_cdf(k, n, p) for k in (550, 580, 600, 620, 650)]
+    assert all(b > a for a, b in zip(cdfs, cdfs[1:])), cdfs
+    assert binom_cdf(0, n, p) < 1e-9 and binom_cdf(1000, n, p) > 0.999999

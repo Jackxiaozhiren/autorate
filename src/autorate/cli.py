@@ -98,10 +98,44 @@ def cmd_certify(args) -> int:
     return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
 
 
+RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+
+NON_CHOICE_REASON = "qtype_not_covered"
+# Every number a certificate publishes that verify re-derives. It is a named constant so
+# the corpus-less lane can assert a count DERIVED from it instead of a typed one.
+CERT_COMPARE_FIELDS = ("feasible", "reason", "backend", "autorate", "autorate_ci", "qhat",
+                       "conditional_error_bound", "marginal_error_bound",
+                       "refusal_rate", "mean_set_size", "n_cal", "n_eval", "envelope")
+
+
+def _rubric(cert) -> dict:
+    return {f: (cert.meta.get(f) if f == "seed" else getattr(cert, f)) for f in RUBRIC_FIELDS}
+
+
 def cmd_compare(args) -> int:
-    left, right = (read_certificate(Path(f)) for f in args.files)
-    print("paired by request_sha256; both sides certified on identical rubrics")
-    for name, c in (("A", left), ("B", right)):
+    """Print only what was actually checked; `compare` has no authority to pair anything."""
+    labels = (Path(args.files[0]).name, Path(args.files[1]).name)
+    certs = tuple(read_certificate(Path(f)) for f in args.files)
+    rubrics = [_rubric(c) for c in certs]
+    off = [f for f in RUBRIC_FIELDS if rubrics[0][f] != rubrics[1][f]]
+    if off:
+        print("comparable: NO -- the two sides disagree on %s" % ", ".join(
+            "%s (%s=%r, %s=%r)" % (f, labels[0], rubrics[0][f], labels[1], rubrics[1][f])
+            for f in off))
+    else:
+        print("comparable: yes -- identical %s" % ", ".join(
+            "%s=%s" % (f, rubrics[0][f]) for f in RUBRIC_FIELDS))
+    backends = [c.backend for c in certs]
+    ids = [set(c.meta.get("eval_ids", [])) for c in certs]
+    if None in backends or backends[0] == backends[1] or not all(ids):
+        print("halves not paired: subjects %r, evaluation ids named %r" % (
+            backends, [len(x) for x in ids]))
+    else:
+        print("evaluation halves: %s has %d records over %d distinct request ids, %s has "
+              "%d over %d, and they have %d request ids in common" % (
+                  backends[0], certs[0].n_eval, len(ids[0]),
+                  backends[1], certs[1].n_eval, len(ids[1]), len(ids[0] & ids[1])))
+    for name, c in zip(labels, certs):
         print("  %s: %s" % (name, c.summary()))
         for line in c.envelope:
             print("    envelope:", line)
@@ -114,10 +148,14 @@ def cmd_gate(args) -> int:
     recs = _records_from(Path(args.records))
     if args.backend:
         recs = [r for r in recs if r.backend == args.backend]
+    print("envelope carried by every decision below:")
+    for line in gate.decide(recs[0])["envelope"] if recs else []:
+        print("  ", line)
     for r in recs[: args.limit]:
         d = gate.decide(r)
-        print("%s/%s: action=%s set=%s label=%s why=%s" % (
-            r.backend, r.id, d["action"], d["set"], d.get("label"), d.get("why")))
+        print("%s/%s: action=%s set=%s label=%s why=%s qhat=%s method=%s" % (
+            r.backend, r.id, d["action"], d["set"], d.get("label"), d.get("why"),
+            d.get("qhat"), d.get("method")))
     return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
 
 
@@ -169,9 +207,7 @@ def cmd_verify(args) -> int:
         fresh = certify_choice(records.get(backend, []), alpha=stored.alpha,
                                beta=stored.beta, delta=stored.delta,
                                seed=stored.meta.get("seed", SEED))
-        for field in ("feasible", "reason", "autorate", "autorate_ci", "qhat",
-                      "conditional_error_bound", "marginal_error_bound",
-                      "refusal_rate", "mean_set_size", "n_cal", "n_eval", "envelope"):
+        for field in CERT_COMPARE_FIELDS:
             expect("cert %s.%s" % (backend, field), getattr(fresh, field),
                    getattr(stored, field))
         expect("cert %s.summary" % backend, fresh.summary(), stored.summary())
