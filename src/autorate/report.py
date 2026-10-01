@@ -110,13 +110,19 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "",
         "## Is n big enough to certify?",
         "",
-        "| corpus | unique n | bound width at alpha=0.05 | feasible at 0.10 |",
-        "|---|---|---|---|",
+        "The bound is computed on independent cases, not on rows: MASSIVE's 51 language",
+        "files are translations of the same 2,974 utterances, and feishu's 384 archive",
+        "lines are 64 cases repeated. Counting either as sample size flatters the bound.",
+        "",
+        "| corpus | n_independent | n_rows | count basis | bound width at alpha=0.05 | feasible at 0.10 |",
+        "|---|---|---|---|---|---|",
     ]
     for o in inv["corpus_options"]:
-        lines.append("| %s | %s | %s | %s |" % (
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (
             o["id"],
-            "not opened" if o["unique_ids"] is None else o["unique_ids"],
+            "not opened" if o["n_independent"] is None else o["n_independent"],
+            "-" if o["n_rows"] is None else o["n_rows"],
+            o["basis"],
             "-" if o["bound_width_at_0.05"] is None else "%.4f" % o["bound_width_at_0.05"],
             "-" if o["feasible_at_0.10"] is None else ("yes" if o["feasible_at_0.10"] else "no"),
         ))

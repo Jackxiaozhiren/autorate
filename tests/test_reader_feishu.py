@@ -18,7 +18,10 @@ from autorate.readers.feishu_zh import read_archive, records_from_line
 UPSTREAM = Path(
     __import__("os").environ.get(
         "AUTORATE_FEISHU_ROOT",
-        "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh",
+        # One owner for corpus discovery: the same resolver the CLI uses, so a test
+        # default cannot drift from the shipped default and disagree about what ran.
+        str(__import__("autorate.cli", fromlist=["_default_corpus"])._default_corpus()
+            or "/no/corpus/on/this/machine"),
     )
 )
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
@@ -173,3 +176,98 @@ def _digest(root: Path) -> dict:
             st = p.stat()
             out[str(p)] = (st.st_size, st.st_mtime_ns)
     return out
+
+
+def _line(**kw):
+    base = {"id": "k-0", "mode": "choice", "repeat": 0, "status": "ok", "expected": "a",
+            "family": "f", "response": {"model": "m", "answers": {"category": {
+                "type": "choice", "choice": "a",
+                "probabilities": {"a": 0.5, "b": 0.5}}}}}
+    base.update(kw)
+    return base
+
+
+def test_an_unknown_mode_line_raises_rather_than_vanishing():
+    # The first version returned [] for any mode outside {choice, four_noul}: a corpus
+    # that gained a mode would silently shrink the sample every certificate bounds.
+    from autorate.readers.feishu_zh import records_from_line
+
+    q = []
+    assert records_from_line(_line(mode="ranked"), "laya", q) == []
+    assert q and "not readable" in q[0]["reason"], q
+
+
+def test_a_four_noul_line_with_no_noul_answer_is_not_silently_empty():
+    from autorate.readers.feishu_zh import records_from_line
+
+    q = []
+    obj = _line(mode="four_noul", response={"model": "m", "answers": {
+        "urgent": {"type": "score", "noul": 0.9}}})
+    assert records_from_line(obj, "laya", q) == []
+    assert q and "no noul-typed answer" in q[0]["reason"], q
+
+
+def test_read_archive_conserves_every_line_it_read(tmp_path):
+    """I-2: `records_kept` could not previously prove that nothing was lost.
+
+    The identity is asserted by the reader itself, so a future branch that drops a line
+    without a counter raises instead of shrinking the corpus.
+    """
+    import json
+
+    from autorate.readers.feishu_zh import read_archive
+    for b in ("laya", "jev"):
+        f = tmp_path / "results" / "v1" / b / "raw.jsonl"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        lines = [_line(id="a%d" % i) for i in range(3)]
+        lines.append(_line(id="bad", mode="choice", response={"model": "m", "answers": {
+            "category": {"type": "choice", "choice": "a",
+                         "probabilities": {"a": 0.4, "b": 0.4}}}}))
+        lines.append(_line(id="weird", mode="ranked"))
+        lines.append(_line(id="emptynoul", mode="four_noul", response={"model": "m", "answers": {
+            "urgent": {"type": "score", "noul": 0.5}}}))
+        f.write_text("".join(json.dumps(l) + "\n" for l in lines))
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "manifest.json").write_text(json.dumps({"asks": ["urgent"]}))
+    (tmp_path / "data" / "cases.jsonl").write_text(json.dumps({"id": "a0", "expected": "a"}) + "\n")
+
+    stats = {}
+    recs = read_archive(tmp_path, stats=stats)
+    assert stats["lines_read"] == 6 * 2, stats
+    assert stats["lines_kept"] == 3 * 2, stats
+    # one unclosing choice line, one noul-less four_noul line and one unknown mode, per
+    # backend: each is named, none is silently dropped.
+    assert stats["lines_quarantined_only"] == {"choice": 2, "four_noul": 2, "ranked": 2}, stats
+    assert stats["records_kept"] == len(recs) == 3 * 2, stats
+    assert len(stats["quarantined"]) == 6, stats
+    assert sum(stats["lines_by_mode"].values()) == stats["lines_kept"]
+
+
+def test_a_filter_that_matches_nothing_says_so(tmp_path):
+    # Green-on-empty was the old shape: a filter typo returned [] with no counter.
+    import json
+
+    from autorate.readers.feishu_zh import read_archive
+    f = tmp_path / "results" / "v1" / "laya" / "raw.jsonl"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(_line(id="a0")) + "\n")
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "manifest.json").write_text(json.dumps({"asks": []}))
+    (tmp_path / "data" / "cases.jsonl").write_text("{}\n")
+    stats = {}
+    assert read_archive(tmp_path, backend="laya", repeat=99, stats=stats) == []
+    assert stats["lines_read"] == 1 and stats["lines_filtered"] == 1
+    assert stats["lines_kept"] == 0 and stats["records_kept"] == 0
+
+
+def test_the_per_ask_gold_tripwire_can_fire():
+    # I-4: `_ask_gold` hardcoded None, so the "a per-ask gold appeared" branch was
+    # unreachable and the guard proved nothing. It now consumes the measured set.
+    from autorate.readers.feishu_zh import records_from_line
+
+    obj = _line(mode="four_noul", response={"model": "m", "answers": {
+        "urgent": {"type": "noul", "noul": 0.8, "confidence": 0.8}}})
+    assert records_from_line(obj, "laya", [])[0].gold is None
+    import pytest
+    with pytest.raises(ValueError, match="now supervised"):
+        records_from_line(obj, "laya", [], asks_with_gold=("urgent",))

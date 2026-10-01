@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .certify_choice import certify_choice
 from .gate import Gate
-from .inventory import inventory
+from .inventory import corpus_label, inventory, write_inventory
 from .records import Record
 from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, RECORDS, SEED, build_report,
                      certify_all, load_records, read_certificate, write_report)
@@ -18,6 +18,7 @@ EXIT_NOT_CERTIFIABLE = 3
 EXIT_USAGE = 2
 EXIT_DRIFT = 4
 RESULTS = Path("docs/RESULTS.md")
+INVENTORY_MD = Path("data/inventory.md")
 FROM_CORPUS = "recomputed from the corpus"
 FROM_SNAPSHOT = "committed %s" % INVENTORY_JSON
 # Written by the environment that can reach the corpus, so they cannot be compared
@@ -58,19 +59,44 @@ def _records_from(path: Path, backend=None, mode=None) -> list:
     return out
 
 
+def _default_corpus() -> Path:
+    """Find the vendored corpus as a SIBLING of this repo, with no absolute literal.
+
+    A hard-coded /Users/<name>/... default passes every local gate -- including a clean
+    export re-run on the same disk, because the same disk is right here -- and only breaks
+    in the one environment where the gate has teeth. `inventory._audit_python` already
+    refuses to hardcode its interpreter for the same reason; this was the last literal left.
+    """
+    checkout = Path(__file__).resolve().parents[2].parent
+    candidates = sorted(checkout.glob("laya*/research/benchmarks/feishu_zh"))
+    return candidates[0] if candidates else None
+
+
 def _root(args) -> Path:
     import os
 
-    return Path(os.environ.get(
-        "AUTORATE_FEISHU_ROOT",
-        "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh"))
+    env = os.environ.get("AUTORATE_FEISHU_ROOT")
+    if env:
+        return Path(env)
+    if getattr(args, "root", None):
+        return Path(args.root)
+    return _default_corpus()
+
+
+def _require_root(args) -> Path:
+    root = _root(args)
+    if root is None or not (root / "data" / "manifest.json").exists():
+        raise SystemExit(
+            "no corpus found: pass --root or set AUTORATE_FEISHU_ROOT (looked for a "
+            "sibling `laya*/research/benchmarks/feishu_zh`)")
+    return root
 
 
 def cmd_export_feishu(args) -> int:
     from .readers.feishu_zh import read_archive
 
     stats: dict = {}
-    recs = read_archive(_root(args), backend=args.backend, repeat=args.repeat,
+    recs = read_archive(_require_root(args), backend=args.backend, repeat=args.repeat,
                         mode=args.mode, stats=stats)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -169,12 +195,21 @@ def _inventory() -> tuple:
     re-derivations rather than transcriptions of the committed snapshot.
     """
     root = _root(argparse.Namespace())
-    if (root / "data" / "manifest.json").exists():
+    if root is not None and (root / "data" / "manifest.json").exists():
         return inventory(root), FROM_CORPUS
     cached = Path(INVENTORY_JSON)
     if not cached.exists():
         raise SystemExit("no corpus and no committed %s: nothing to verify against" % cached)
     return json.loads(cached.read_text()), FROM_SNAPSHOT
+
+
+def cmd_snapshot(args) -> int:
+    """Write the committed inventory from the corpus. `verify` polices whether it is stale."""
+    root = _require_root(args)
+    out = Path(args.out)
+    write_inventory(inventory(root), out)
+    print("wrote %s and %s from %s" % (out, str(out) + ".json", corpus_label(root)))
+    return 0
 
 
 def cmd_report(args) -> int:
@@ -240,7 +275,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="autorate")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    n = sub.add_parser("snapshot", help="corpus -> committed data/inventory.md(.json)")
+    n.add_argument("--root", help="corpus root; default: env or a sibling laya*/ checkout")
+    n.add_argument("--out", default=str(INVENTORY_MD))
+    n.set_defaults(fn=cmd_snapshot)
+
     e = sub.add_parser("export-feishu", help="archive responses -> records")
+    e.add_argument("--root", help="corpus root; default: env or a sibling laya*/ checkout")
     e.add_argument("--out", required=True)
     e.add_argument("--backend")
     e.add_argument("--mode")
@@ -280,7 +321,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except (OSError, ValueError) as exc:
+        # OSError: an input path that is not there. ValueError: a stored certificate that
+        # violates its own shape rules. Both are "the inputs are wrong", and both used to
+        # escape as a traceback with rc 1 -- outside the documented 0/2/3/4 contract.
+        print("%s: %s" % (type(exc).__name__, exc), file=sys.stderr)
+        return EXIT_USAGE
 
 
 if __name__ == "__main__":

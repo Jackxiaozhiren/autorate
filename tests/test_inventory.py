@@ -14,7 +14,10 @@ from autorate.inventory import corpus_options, inventory, n_feasible, write_inve
 UPSTREAM = Path(
     __import__("os").environ.get(
         "AUTORATE_FEISHU_ROOT",
-        "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh",
+        # One owner for corpus discovery: the same resolver the CLI uses, so a test
+        # default cannot drift from the shipped default and disagree about what ran.
+        str(__import__("autorate.cli", fromlist=["_default_corpus"])._default_corpus()
+            or "/no/corpus/on/this/machine"),
     )
 )
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
@@ -91,17 +94,34 @@ def n_feasible_bound(n, alpha):
 
 
 def test_a_larger_corpus_option_is_recorded_with_its_measured_numbers():
-    # Ledger R-12: MASSIVE ships 51 x test/xx.json.gz, 2974 rows each, stdlib-readable.
-    opts = corpus_options()
-    by_id = {o["id"]: o for o in opts}
-    assert by_id["feishu_zh"]["unique_ids"] == 64
-    assert by_id["massive_intent_per_language"]["unique_ids"] == 2974
-    assert by_id["massive_intent_all_languages"]["unique_ids"] == 2974 * 51
-    # The feasibility answer must come from the formula, not from a typed word.
-    assert by_id["feishu_zh"]["bound_width_at_0.05"] > 0.25
-    assert by_id["massive_intent_per_language"]["bound_width_at_0.05"] < 0.10
-    assert by_id["feishu_zh"]["feasible_at_0.10"] is False
-    assert by_id["massive_intent_per_language"]["feasible_at_0.10"] is True
+    """Ledger R-12: MASSIVE ships 51 x test/xx.json.gz, 2974 rows each, stdlib-readable.
+
+    Review finding C-1 was that the all-language row multiplied three opened files by a
+    51-file listing and printed the product as a sample size. The bound must key on
+    independent cases, so 51 translations of the same utterances buy coverage, not n.
+    """
+    opts = {o["id"]: o for o in corpus_options(64)}
+    one, all_langs = opts["massive_intent_per_language"], opts["massive_intent_all_languages"]
+    assert opts["feishu_zh"]["n_independent"] == 64, opts["feishu_zh"]
+    assert one["n_independent"] == one["n_rows"] == 2974
+    assert all_langs["n_rows"] == 2974 * 51
+    assert all_langs["n_independent"] == 2974, "translations must not inflate the sample"
+    assert all_langs["bound_width_at_0.05"] == one["bound_width_at_0.05"]
+    assert "3 of 51" in all_langs["basis"], all_langs["basis"]
+    assert "NOT independent" in all_langs["unit"], all_langs["unit"]
+    # The feasibility answer comes from the formula, not from a typed word.
+    assert opts["feishu_zh"]["bound_width_at_0.05"] > 0.25
+    assert opts["feishu_zh"]["feasible_at_0.10"] is False
+    assert one["feasible_at_0.10"] is True
+    assert opts["typed_decisions"]["n_independent"] is None
+    assert opts["typed_decisions"]["feasible_at_0.10"] is None
+
+
+def test_an_unscanned_corpus_does_not_invent_its_own_size():
+    opts = {o["id"]: o for o in corpus_options()}
+    assert opts["feishu_zh"]["n_independent"] is None
+    assert opts["feishu_zh"]["bound_width_at_0.05"] is None
+    assert "not scanned" in opts["feishu_zh"]["basis"]
 
 
 @skip
@@ -128,7 +148,7 @@ def test_the_four_noul_asks_have_no_per_ask_ground_truth_anywhere():
     # Measured, not asserted from prose: `prompts.py:34` folds the four noul
     # probabilities into ONE composite 4-way label, and the fixtures supervise only
     # that label. So a per-ask noul certificate here would certify invented labels.
-    from autorate.inventory import per_ask_gold
+    from autorate.readers.feishu_zh import per_ask_gold
 
     g = per_ask_gold(UPSTREAM)
     assert g["asks"] == ["action", "related", "urgent", "value"]
@@ -192,7 +212,8 @@ def test_the_published_inventory_file_is_structurally_valid():
     """PF-12 applied to the real artefact, not only to a synthetic dict."""
     body = Path("data/inventory.md").read_text() if Path("data/inventory.md").exists() else _render()
     tables = _tables(body)
-    assert len(tables) == 2, [h for h, _ in tables]  # lines table + feasibility table
+    # lines table, the bound table keyed on independent cases, and the unit/note table
+    assert len(tables) == 3, [h for h, _ in tables]
     for header, rows in tables:
         ncol = len(_cells(header))
         assert ncol >= 2

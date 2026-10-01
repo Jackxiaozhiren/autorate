@@ -15,6 +15,7 @@ from ..records import NOUL_SLOTS, SUM_TOL, Record
 BACKENDS = ("laya", "jev")
 MODES = ("choice", "four_noul")
 CHOICE_QUESTION = "category"
+NOUL_ASKS = ("action", "related", "urgent", "value")
 
 
 def _quarantine(obj: dict, backend: str, probs, reason: str) -> dict:
@@ -42,7 +43,28 @@ def _meta(obj: dict) -> dict:
     }
 
 
-def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None) -> list:
+def per_ask_gold(root: Path) -> dict:
+    """Whether the binary asks have ground-truth bits anywhere in the corpus fixtures.
+
+    Owned by the reader because it decides what a record's `gold` may be. Measured, not
+    asserted: the ask names come from the manifest and the label keys from `cases.jsonl`;
+    if the two never intersect, no per-ask gold exists and a `noul` certificate on this
+    corpus would be certifying invented labels (ledger R-14).
+    """
+    root = Path(root)
+    manifest = json.loads((root / "data" / "manifest.json").read_text())
+    asks = sorted(manifest.get("asks", {}))
+    case_keys: set = set()
+    for line in (root / "data" / "cases.jsonl").read_text().splitlines():
+        if line.strip():
+            case_keys |= set(json.loads(line))
+    return {"asks": asks, "case_keys": sorted(case_keys),
+            "asks_with_gold": sorted(set(asks) & case_keys),
+            "composite_label_available": "expected" in case_keys}
+
+
+def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None,
+                      asks_with_gold=()) -> list:
     if obj.get("status") != "ok":
         return []
     answers = obj["response"]["answers"]
@@ -69,7 +91,16 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
             seed=0, u=0.0, meta=meta,
         ))
     elif obj["mode"] == "four_noul":
-        for ask, a in answers.items():
+        noul_asks = [k for k in answers if answers[k].get("type") == "noul"]
+        if not noul_asks:
+            # A line whose mode promises four binary asks and delivers none is a defect
+            # to name, not a line to drop: absorbing it silently shrinks the sample that
+            # every later bound is computed over.
+            if quarantine is not None:
+                quarantine.append(_quarantine(
+                    obj, backend, (), "four_noul line carries no noul-typed answer"))
+            return out
+        for ask, a in sorted(answers.items()):
             if a.get("type") != "noul":
                 continue
             p_true = float(a["noul"])
@@ -82,7 +113,7 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
             out.append(Record(
                 id="%s#%s" % (obj["id"], ask), qtype="noul", backend=backend, repeat=repeat,
                 options=NOUL_SLOTS, probs=(p_true,),
-                gold=_ask_gold(ask, obj),
+                gold=_ask_gold(ask, obj, asks_with_gold),
                 predicted="true" if p_true >= 0.5 else "false",
                 slices={**base_slices, "ask": ask},
                 scores={"reported_confidence": confidence, "noul": p_true,
@@ -92,17 +123,30 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
                         "act_probability": (a.get("action") or {}).get("act_probability")},
                 seed=0, u=0.0, meta=meta,
             ))
+    else:
+        if quarantine is not None:
+            quarantine.append(_quarantine(obj, backend, (), "mode %r is not readable by "
+                                          "this reader" % obj.get("mode")))
     return out
 
 
-def _ask_gold(ask: str, obj: dict) -> Optional[str]:
+def _ask_gold(ask: str, obj: dict, asks_with_gold=()) -> Optional[str]:
     """Per-ask ground truth does not exist in this corpus (ledger R-14).
 
     `data/cases.jsonl` carries only the composite 4-way `expected`, and
     `prompts.py:34` folds the four asks into that label. Returning None keeps the
     records gateable and uncalibratable; inventing bits from `expected` would
     manufacture an accuracy figure out of a policy.
+
+    `asks_with_gold` is the measured set, so the tripwire can actually fire: if the
+    fixtures start supervising an ask, this reader must join it from `cases.jsonl`
+    rather than silently keep returning None.
     """
+    if ask in asks_with_gold:
+        raise ValueError(
+            "ask %r is now supervised in the corpus fixtures, but this reader still "
+            "returns gold=None for noul records; join it from data/cases.jsonl instead "
+            "of guessing it from the composite `expected` label" % ask)
     return None
 
 
@@ -110,33 +154,57 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
                  mode: Optional[str] = None, stats: Optional[dict] = None) -> list:
     root = Path(root)
     backends = [backend] if backend else list(BACKENDS)
+    gold = per_ask_gold(root)["asks_with_gold"] if (root / "data" / "manifest.json").exists() else ()
     records: list = []
     quarantine: list = []
-    lines_kept = 0
-    lines_dropped = 0
+    lines_read = lines_kept = lines_dropped = lines_filtered = 0
+    unaccounted: list = []
     lines_by_mode: dict = {}
+    lines_quarantined_only: dict = {}
     for b in backends:
         path = root / "results" / "v1" / b / "raw.jsonl"
         for line in path.read_text().splitlines():
             if not line.strip():
                 continue
             obj = json.loads(line)
-            if repeat is not None and int(obj["repeat"]) != repeat:
-                continue
-            if mode is not None and obj["mode"] != mode:
+            lines_read += 1
+            if (repeat is not None and int(obj["repeat"]) != repeat) or (
+                    mode is not None and obj["mode"] != mode):
+                lines_filtered += 1
                 continue
             if obj.get("status") != "ok":
                 lines_dropped += 1
                 continue
-            before = len(records)
-            records.extend(records_from_line(obj, b, quarantine))
+            before, q_before = len(records), len(quarantine)
+            records.extend(records_from_line(obj, b, quarantine, gold))
             if len(records) > before:
                 lines_kept += 1
                 lines_by_mode[obj["mode"]] = lines_by_mode.get(obj["mode"], 0) + 1
+            elif len(quarantine) > q_before:
+                key = str(obj.get("mode"))
+                lines_quarantined_only[key] = lines_quarantined_only.get(key, 0) + 1
+            else:
+                unaccounted.append({"id": obj.get("id"), "backend": b,
+                                    "mode": obj.get("mode"), "repeat": obj.get("repeat")})
+    accounted = lines_kept + lines_dropped + lines_filtered + sum(
+        lines_quarantined_only.values()) + len(unaccounted)
+    if accounted != lines_read:
+        raise ArithmeticError(
+            "line accounting does not conserve: %d read, %d accounted (%d kept, %d not-ok, "
+            "%d filtered, %d quarantined-only, %d unaccounted)" % (
+                lines_read, accounted, lines_kept, lines_dropped, lines_filtered,
+                sum(lines_quarantined_only.values()), len(unaccounted)))
+    if unaccounted:
+        raise ValueError(
+            "%d archive line(s) produced neither a record nor a quarantine entry and would "
+            "have vanished silently: %s" % (len(unaccounted), unaccounted[:3]))
     if stats is not None:
+        stats["lines_read"] = lines_read
         stats["lines_kept"] = lines_kept
+        stats["lines_filtered"] = lines_filtered
         stats["lines_dropped_not_ok"] = lines_dropped
-        stats["lines_by_mode"] = lines_by_mode
+        stats["lines_quarantined_only"] = dict(sorted(lines_quarantined_only.items()))
+        stats["lines_by_mode"] = dict(sorted(lines_by_mode.items()))
         stats["records_kept"] = len(records)
         stats["quarantined"] = list(quarantine)
     return records

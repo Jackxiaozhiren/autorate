@@ -40,20 +40,29 @@ not a free correct answer: counting it as automation would inflate the rate.
 ```bash
 uv sync --frozen --extra dev
 
-autorate export-feishu --out data/records_feishu.jsonl   # archive responses -> records
-autorate certify data/records_feishu.jsonl --backend laya --out cert.json
-autorate compare data/cert_laya.json data/cert_jev.json   # names what it actually checked
-autorate gate data/records_feishu.jsonl --cert data/cert_jev.json --limit 5
-autorate report --out docs/RESULTS.md                    # write the published numbers
-autorate verify                                          # re-derive them, fail on drift
+uv run --frozen autorate snapshot --out data/inventory.md   # corpus -> committed inventory
+uv run --frozen autorate export-feishu --out data/records_feishu.jsonl
+uv run --frozen autorate certify data/records_feishu.jsonl --backend laya --out cert.json
+uv run --frozen autorate compare data/cert_laya.json data/cert_jev.json
+uv run --frozen autorate gate data/records_feishu.jsonl --cert data/cert_jev.json --limit 5
+uv run --frozen autorate report --out docs/RESULTS.md   # write the published numbers
+uv run --frozen autorate verify                          # re-derive them, fail on drift
 ```
+
+The `uv run --frozen` prefix is not decoration: the console script is not on `PATH`
+after `uv sync`, and a bare `pytest` on this machine resolves to a different
+interpreter entirely.
 
 Exit codes: `0` certified, `3` `NOT_CERTIFIABLE`, `2` usage error, `4` reproduced
 number does not match the published one.
 
-`export-feishu` reads the vendored corpus at `AUTORATE_FEISHU_ROOT`
-(default `../laya-0.3.20/research/benchmarks/feishu_zh`). Everything else runs offline
-on committed files; no command reaches the network.
+`snapshot` and `export-feishu` read the corpus: pass `--root`, set
+`AUTORATE_FEISHU_ROOT`, or place the checkout as a sibling of this repo
+(`<workspace>/laya*/research/benchmarks/feishu_zh`). No source file carries an absolute
+machine path, and `tests/test_cli.py` fails the build if one reappears -- a literal like
+that passes every local gate and only breaks in the environment nobody can see.
+
+Everything else runs offline on committed files; no command reaches the network.
 
 ## Reproduction
 

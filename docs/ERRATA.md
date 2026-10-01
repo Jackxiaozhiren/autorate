@@ -50,7 +50,7 @@ Corrected in the plan's Task 4 test, added as spec §7.4, and now produced by
 
 Commit `e386c08` (Task 4, written in the controller session) restored
 `docs/superpowers/specs/…design.md` from a **second working copy** of the same document at
-`/Users/jackson/laya/docs/…`. The Task 2 agents had edited the repository copy; the workspace
+`<workspace>/laya/docs/…`. The Task 2 agents had edited the repository copy; the workspace
 copy still held the pre-Task-2 text, so the copy-back reverted every narrowing that round had
 made. Re-introduced at that commit and undetected by CI:
 

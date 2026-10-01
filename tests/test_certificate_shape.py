@@ -12,7 +12,7 @@ _OK = dict(feasible=True, reason=None, alpha=0.05, beta=0.05, delta=0.05,
            method="aps", backend="synthetic", qhat=0.4, autorate=0.6,
            autorate_ci=(0.55, 0.65), conditional_error_bound=0.04,
            marginal_error_bound=0.02, mean_set_size=1.05,
-           n_cal=500, n_eval=500, level=0.9,
+           n_cal=500, n_eval=500,
            envelope=("exchangeability within group assumed",), meta={})
 
 
@@ -74,6 +74,13 @@ def test_a_refusal_still_reports_n_so_small_n_is_visible_as_the_cause():
     assert c.reason == Reason.N_BELOW_MIN.value == "n_below_min"
     assert c.autorate is None and c.autorate_ci is None
     assert c.envelope  # a refusal is still conditioned by assumptions
+
+
+def test_the_joint_level_is_derived_from_delta_and_the_claim_count():
+    assert _ok(delta=0.05).level == 1.0 - 3 * 0.05
+    assert _ok(delta=0.01).level == 0.97
+    with pytest.raises(TypeError):
+        Certificate(**{**_OK, "level": 0.9})
 
 
 def test_json_round_trip_is_exact_for_both_poles():

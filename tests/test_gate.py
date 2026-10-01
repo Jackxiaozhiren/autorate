@@ -22,7 +22,7 @@ def _cert(qhat=0.3, feasible=True, **kw):
                 method="aps", backend="laya", qhat=qhat, autorate=0.5,
                 autorate_ci=(0.45, 0.55), conditional_error_bound=0.04,
                 marginal_error_bound=0.02, mean_set_size=1.2,
-                n_cal=500, n_eval=500, level=0.9,
+                n_cal=500, n_eval=500,
                 envelope=("exchangeability within group assumed",), meta={})
     base.update(kw)
     return Certificate(**base)
@@ -141,6 +141,22 @@ def test_a_certificate_gates_only_the_backend_it_was_measured_on():
     assert d["reason"] == "subject_mismatch" and d["envelope"]
     assert "not 'jev'" in d["why"] or "jev" in d["why"], d["why"]
     assert Gate(cert).decide(_rec([0.93, 0.02, 0.03, 0.02]))["action"] == "auto"
+
+
+def test_the_fields_a_reviewer_needs_to_recheck_a_row_are_asserted():
+    # u, qhat and method are published on every decision. They were asserted nowhere, so
+    # the brief's own `d["u"] == 0.0` rule was silently dropped when its test was folded
+    # into another case: a reader cannot recheck a row whose draw is not on it.
+    rec = _rec([0.93, 0.02, 0.03, 0.02], u=0.0)
+    d = Gate(_cert(qhat=0.3)).decide(rec)
+    assert d["u"] == 0.0 and d["qhat"] == 0.3 and d["method"] == "aps", d
+    # The archive carries no APS draw, so every record arrives with u = 0.0 and the set
+    # is reproducible from the published row alone.
+    rec2 = _rec([0.93, 0.02, 0.03, 0.02], u=0.4)
+    d2 = Gate(_cert(qhat=0.3)).decide(rec2)
+    assert d2["u"] == 0.4, d2
+    abstain = Gate(_cert()).decide(_rec([0.2, 0.8], gold="opt1", qtype="noul", u=0.25))
+    assert abstain["u"] == 0.25, abstain
 
 
 def test_the_automated_label_is_reported_by_name_not_only_by_index():

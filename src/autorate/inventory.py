@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 from .records import SUM_TOL
 
@@ -35,6 +36,25 @@ def bound_width(n: int, alpha: float = ALPHA_DEFAULT) -> float:
 
 def n_feasible(unique_n: int, alpha: float = ALPHA_DEFAULT, max_bound_width: float = 0.10) -> bool:
     return bound_width(unique_n, alpha) <= max_bound_width
+
+
+def _interpreter_label(path: str) -> str:
+    """Name the audit interpreter by its tail, not by an absolute path."""
+    if path == sys.executable:
+        return "sys.executable"
+    return "/".join(Path(path).parts[-4:])
+
+
+def corpus_label(root: Path) -> str:
+    """A repo-relative label for where the corpus lives, never an absolute path.
+
+    An absolute `/Users/<name>/...` literal in a committed artefact passes every local
+    gate, survives a clean-clone re-run on the same disk, and only shows up in the one
+    environment nobody can see. A checkout-relative label carries the same information
+    and is portable. tests/test_inventory.py guards the class.
+    """
+    root = Path(root).resolve()
+    return "/".join(root.parts[-4:])
 
 
 def _audit_python(root: Path) -> str:
@@ -87,29 +107,6 @@ def _scan_jsonl(path: Path) -> tuple[dict, set, list]:
     return by_mode, ids, sorted(repeats), unclosed
 
 
-def per_ask_gold(root: Path) -> dict:
-    """Whether the four binary asks have ground-truth bits anywhere in the corpus.
-
-    Measured rather than asserted: the ask names come from the manifest, and the only
-    labels the case fixtures carry are the 4-way `expected` plus metadata. If the ask
-    names are not among those keys, no per-ask gold exists and a `noul` certificate on
-    this corpus would be certifying invented labels.
-    """
-    root = Path(root)
-    manifest = json.loads((root / "data" / "manifest.json").read_text())
-    asks = sorted(manifest.get("asks", {}))
-    case_keys: set = set()
-    for line in (root / "data" / "cases.jsonl").read_text().splitlines():
-        if line.strip():
-            case_keys |= set(json.loads(line))
-    return {
-        "asks": asks,
-        "case_keys": sorted(case_keys),
-        "asks_with_gold": sorted(set(asks) & case_keys),
-        "composite_label_available": "expected" in case_keys,
-    }
-
-
 def corpus_digests(root: Path) -> list:
     """The digests upstream pins in its own `SOURCE.json`, recomputed against the files.
 
@@ -131,6 +128,10 @@ def corpus_digests(root: Path) -> list:
 
 
 def inventory(root: Path) -> dict:
+    # One owner for both measurements: the reader decides what a record's gold may be and
+    # keeps its own line counters, so the inventory transcribes instead of re-deriving.
+    from .readers.feishu_zh import per_ask_gold, read_archive
+
     root = Path(root)
     gold = per_ask_gold(root)
     manifest = json.loads((root / "data" / "manifest.json").read_text())
@@ -149,10 +150,15 @@ def inventory(root: Path) -> dict:
         if backend == "laya":  # uniqueness is asserted on one backend, not summed
             ids |= this_ids
             repeats = this_reps
+    reader_stats: dict = {}
+    try:
+        read_archive(root, stats=reader_stats)
+    except OSError as exc:
+        reader_stats = {"error": str(exc)}
     cmd, env = audit_command(root)
     audit = subprocess.run(cmd, capture_output=True, text=True, cwd=str(root), env=env)
     return {
-        "source": str(root),
+        "source": corpus_label(root),
         "lines_by_mode_backend": dict(sorted(per_mode.items())),
         "unique_ids": len(ids),
         "repeats": repeats,
@@ -162,13 +168,18 @@ def inventory(root: Path) -> dict:
         "upstream_audit_rc": audit.returncode,
         "upstream_audit_stdout_tail": audit.stdout[-400:],
         "upstream_audit_stderr_tail": audit.stderr[-400:],
-        "audit_interpreter": cmd[0],
+        "audit_interpreter": _interpreter_label(cmd[0]),
         "min_calibration_n": manifest.get("cases", len(ids)),
         "probs_not_closing": unclosed,
         "sum_tolerance": SUM_TOL,
         "per_ask_gold": gold,
+        "reader_lines_by_mode": {k: v for k, v in sorted(
+            reader_stats.get("lines_by_mode", {}).items())},
+        "reader_quarantined": len(reader_stats.get("quarantined", [])),
+        "reader_lines_read": reader_stats.get("lines_read"),
+        "reader_lines_quarantined_only": reader_stats.get("lines_quarantined_only"),
         "digests": corpus_digests(root),
-        "corpus_options": corpus_options(),
+        "corpus_options": corpus_options(len(ids)),
         "gaps": [
             "research/results/eval_english_51_languages.json: per-case records omitted; "
             "regenerate with research/eval/laya_eval.py --langs all --out <path>",
@@ -189,28 +200,57 @@ def inventory(root: Path) -> dict:
     }
 
 
-def corpus_options() -> list:
-    """Candidate corpora with the bound width each one supports, computed not asserted.
+MASSIVE_LANGUAGES_TOTAL = 51
+MASSIVE_LANGUAGES_OPENED = ("de", "en", "sw")
+MASSIVE_ROWS_PER_LANGUAGE = 2974
 
-    Only measured row counts appear. `typed-decisions` is listed with its size category
-    because its exact count has not been opened yet — inventing a number here would
-    propagate straight into a published inventory.
+
+def corpus_options(feishu_unique_ids: Optional[int] = None) -> list:
+    """Candidate corpora, with the bound computed on the number of INDEPENDENT cases.
+
+    Three disclosures per row, because one of them was missing: `n_rows` counts what is in
+    the files, `n_independent` counts what a bound may treat as a sample, and `basis` says
+    whether each was opened or inferred. The first version multiplied three measured
+    language files by a file listing and printed the product in a column labelled
+    "measured", which flattered the bound by 51x: MASSIVE's 51 test files are translations
+    of the same 2,974 utterances, so an automation rate estimated over them is a rate
+    measured 2,974 ways, not 151,674 ways.
     """
+    specs = (
+        {"id": "feishu_zh",
+         "unit": "unique labelled cases, each answered twice per backend over 3 repeats",
+         "n_rows": None, "n_independent": feishu_unique_ids,
+         "basis": "not scanned (no corpus on this machine)" if feishu_unique_ids is None
+                  else "scanned from results/v1/{laya,jev}/raw.jsonl",
+         "note": "the only corpus with real archived jev responses"},
+        {"id": "massive_intent_per_language",
+         "unit": "labelled decision rows (one utterance, one intent)",
+         "n_rows": MASSIVE_ROWS_PER_LANGUAGE, "n_independent": MASSIVE_ROWS_PER_LANGUAGE,
+         "basis": "test/%s.json.gz opened and counted" % ", ".join(MASSIVE_LANGUAGES_OPENED),
+         "note": "each language file is a candidate Mondrian slice"},
+        {"id": "massive_intent_all_languages",
+         "unit": "(language, utterance) pairs -- NOT independent cases",
+         "n_rows": MASSIVE_ROWS_PER_LANGUAGE * MASSIVE_LANGUAGES_TOTAL,
+         "n_independent": MASSIVE_ROWS_PER_LANGUAGE,
+         "basis": "%d of %d files opened; the rest counted from the repo listing, and the "
+                  "rows are translations of the same utterances" % (
+                      len(MASSIVE_LANGUAGES_OPENED), MASSIVE_LANGUAGES_TOTAL),
+         "note": "Apache-2.0, ~3.2 MB total; the 51x is coverage, not sample size"},
+        {"id": "typed_decisions", "unit": "labelled decisions", "n_rows": None,
+         "n_independent": None,
+         "basis": "dataset card size category 1K<n<10K only; no file opened",
+         "note": "candidate contamination probe (public train 300 / test 100)"},
+    )
     out = []
-    for spec in (
-        {"id": "feishu_zh", "unique_ids": 64, "note": "paired laya/Jev archived responses, zh, 3 repeats"},
-        {"id": "massive_intent_per_language", "unique_ids": 2974, "note": "test/en.json.gz parsed; de and sw also 2974"},
-        {"id": "massive_intent_all_languages", "unique_ids": 2974 * 51, "note": "51 gzipped JSONL files, ~3.2 MB total, Apache-2.0"},
-        {"id": "typed_decisions", "unique_ids": None, "note": "size category 1K<n<10K from the dataset card; row count not yet opened"},
-    ):
-        n = spec["unique_ids"]
+    for s in specs:
+        n = s["n_independent"]
         width = None if n is None else round(bound_width(n), 4)
-        out.append({
-            **spec,
-            "bound_width_at_0.05": width,
-            "feasible_at_0.10": None if n is None else bool(n_feasible(n, max_bound_width=0.10)),
-            "feasible_at_0.25": None if n is None else bool(n_feasible(n, max_bound_width=0.25)),
-        })
+        out.append({**s,
+                    "bound_width_at_0.05": width,
+                    "feasible_at_0.10": None if n is None else bool(
+                        n_feasible(n, max_bound_width=0.10)),
+                    "feasible_at_0.25": None if n is None else bool(
+                        n_feasible(n, max_bound_width=0.25))})
     return out
 
 
@@ -226,8 +266,8 @@ def write_inventory(d: dict, out: Path) -> None:
     lines = [
         "# Offline data inventory",
         "",
-        "Produced by `autorate.inventory.write_inventory`; every number here is computed,",
-        "not typed. Re-run `uv run --frozen pytest tests/test_inventory.py -q` to reproduce.",
+        "Produced by `python -m autorate.cli snapshot` -- every number here is computed",
+        "from the corpus or opened from a file, and the count basis is named per row.",
         "",
         "- corpus: `%s`" % d["source"],
         "- unique ids: **%d**   repeats: %s" % (d["unique_ids"], d["repeats"]),
@@ -254,9 +294,20 @@ def write_inventory(d: dict, out: Path) -> None:
     for k, v in sorted(d["lines_by_mode_backend"].items()):
         lines.append("| %s | %d |" % (k, v))
 
+    kept = d.get("reader_lines_by_mode", {})
     lines += ["", "Counts here are archive LINES per mode and backend, taken before any",
-              "quarantine; the reader keeps the lines whose probabilities close, so its",
-              "`lines_by_mode` can be smaller (measured: 383 choice lines kept of 384 present).", ""]
+              "quarantine. The reader keeps only the lines whose probabilities close, so its",
+              "own count can be smaller.", ""]
+    for mode in MODES:
+        present = sum(v for k, v in d["lines_by_mode_backend"].items() if k.startswith(mode + "/"))
+        kept_n = kept.get(mode)
+        if kept_n is None:
+            lines.append("- %s: %d lines present, reader count not measured in this run"
+                         % (mode, present))
+        else:
+            lines.append("- %s: **%d of %d** lines kept by the reader (%d quarantined)"
+                         % (mode, kept_n, present, present - kept_n))
+    lines.append("")
     lines += ["", "## Can this corpus support a bound?", ""]
     lines.append(
         "Bound width for an automation-rate estimate is `2*sqrt(ln(2/alpha)/(2n))`. "
@@ -264,15 +315,22 @@ def write_inventory(d: dict, out: Path) -> None:
         "`autorate certify` is expected to refuse on it rather than publish a number."
         % (bound_width(d["unique_ids"]), d["unique_ids"])
     )
-    lines += ["", "| corpus | unique n | bound width @0.05 | feasible @0.10 | note |", "|---|---|---|---|---|"]
+    lines += ["", "The bound is computed on `n_independent`, never on `n_rows`: rows that are",
+              "repeats or translations of the same case do not add sample size.", "",
+              "| corpus | n_independent | n_rows | count basis | bound width @0.05 | feasible @0.10 |",
+              "|---|---|---|---|---|---|"]
     for o in d["corpus_options"]:
-        lines.append("| %s | %s | %s | %s | %s |" % (
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (
             o["id"],
-            "not opened" if o["unique_ids"] is None else o["unique_ids"],
+            "not opened" if o["n_independent"] is None else o["n_independent"],
+            "-" if o["n_rows"] is None else o["n_rows"],
+            o["basis"],
             "-" if o["bound_width_at_0.05"] is None else "%.4f" % o["bound_width_at_0.05"],
             "-" if o["feasible_at_0.10"] is None else ("yes" if o["feasible_at_0.10"] else "no"),
-            o["note"],
         ))
+    lines += ["", "| corpus | unit | note |", "|---|---|---|"]
+    for o in d["corpus_options"]:
+        lines.append("| %s | %s | %s |" % (o["id"], o["unit"], o["note"]))
 
     lines += ["", "## Known gaps", ""] + ["- %s" % g for g in d["gaps"]] + [""]
     out.write_text("\n".join(lines))

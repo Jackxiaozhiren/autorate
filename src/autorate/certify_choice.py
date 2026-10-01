@@ -155,7 +155,7 @@ def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
         autorate_ci=(max(0.0, rate - half_width), min(1.0, rate + half_width)),
         conditional_error_bound=cond_hi, marginal_error_bound=marg_hi,
         mean_set_size=observed["mean_set_size"],
-        n_cal=len(cal), n_eval=n_ev, level=1.0 - N_CLAIMS * delta, envelope=envelope,
+        n_cal=len(cal), n_eval=n_ev, envelope=envelope,
         meta={**meta, "closest_attempt": None},
     )
     if cond_hi > beta:

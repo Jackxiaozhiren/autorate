@@ -22,7 +22,7 @@ Every task inherits these. They are copied verbatim from the spec and from measu
 2. **No `torch`, no model, no dataset download in the test path.** Unit suite runs offline. (spec §11.5)
 3. `requires-python = ">=3.10"`; the local dev environment is the **3.12** interpreter, because the sibling `laya-0.3.20/.venv` is `Python 3.12.14` and we exchange records with it.
 4. **The only runtime dependency is `numpy`.** Adding a second one (scipy, statsmodels, MAPIE) is a spec-level decision, not a task-level convenience.
-5. Never run the bare PATH `pytest` on this machine: `which pytest` resolves to `/Users/jackson/Library/Python/3.9/bin/pytest`, a **different interpreter** from the project. Always `uv run --frozen pytest …`.
+5. Never run the bare PATH `pytest` on this machine: `which pytest` resolves to a system 3.9 user-library shim, a **different interpreter** from the project. Always `uv run --frozen pytest …`.
 6. Never run bare `python` on this machine (`python -V` exits 127; only `python3` exists). Always `uv run --frozen python -m …`.
 7. Use `uv run --frozen` / `uv sync --frozen`, never plain `uv run`: plain `uv run` silently re-locks a stale `uv.lock` and dirties the tree.
 8. Lint gate on every commit, matching the upstream project's own gate shape: `uv run --frozen ruff check src tests --select=E9,F63,F7,F82,F401,F811 --line-length=120` and `uv run --frozen python -m compileall -q src tests`.
@@ -32,14 +32,14 @@ Every task inherits these. They are copied verbatim from the spec and from measu
 12. Every numeric claim in `docs/` must be produced by the code that reports it, and `autorate verify` must re-derive it. No hand-typed result tables.
 13. Repository language is English (README, docstrings, commit messages, PRs).
 14. Conventional commits, one logical change each: `feat(records):`, `fix(conformal):`, `test(coverage):`, `docs(inventory):`.
-15. This workspace root `/Users/jackson/laya` is **not** a git repository and holds a 3.6 MB vendored copy of upstream. The `autorate` repo is created at **`/Users/jackson/laya/autorate`** so provenance stays clean; the spec and this plan are copied into it in Task 1 so the two travel together.
+15. The workspace root (the directory holding `laya-0.3.20/`) is **not** a git repository and holds a 3.6 MB vendored copy of upstream. The `autorate` repo is created as a **sibling checkout** of that root, i.e. `<workspace>/autorate`, so provenance stays clean; the spec and this plan are copied into it in Task 1 so the two travel together.
 16. Local loopback proxy `127.0.0.1:7890` is active on this Mac. Any task that touches HTTP must set both `NO_PROXY` and `no_proxy` or its failures are proxy artefacts, not code. (Not exercised in Plan A; recorded because Task 9's `verify` is the first CI-visible gate.)
 
 ---
 
 ## File structure
 
-Created in `/Users/jackson/laya/autorate`:
+Created in `<workspace>/autorate`:
 
 ```
 pyproject.toml                     packaging, ruff + pytest config           T1
@@ -155,7 +155,7 @@ def test_ruff_gate_matches_the_upstream_shape():
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cd /Users/jackson/laya/autorate && uv run --frozen pytest tests/test_toolchain.py -v`
+Run: `cd <workspace>/autorate && uv run --frozen pytest tests/test_toolchain.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'autorate'` (or the `uv.lock` assertion errors before that). If it passes before the scaffold exists, the test is vacuous; stop and fix the test, not the expectation.
 
 - [ ] **Step 3: Write the scaffold**
@@ -214,7 +214,7 @@ jobs:
 - [ ] **Step 4: Create the repo, sync, and prove the gate green**
 
 ```bash
-mkdir -p /Users/jackson/laya/autorate && cd /Users/jackson/laya/autorate
+mkdir -p <workspace>/autorate && cd <workspace>/autorate
 git init -b main
 uv venv .venv --python 3.12
 uv sync --frozen --extra dev
@@ -226,8 +226,8 @@ Expected: `5 passed` — corrected after the fix round added the entry-point gua
 
 ```bash
 mkdir -p docs/superpowers/specs docs/superpowers/plans
-cp /Users/jackson/laya/docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md docs/superpowers/specs/
-cp /Users/jackson/laya/docs/superpowers/plans/2026-09-29-autorate-plan-a-foundation-and-choice-certification.md docs/superpowers/plans/
+cp <workspace>/docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md docs/superpowers/specs/
+cp <workspace>/docs/superpowers/plans/2026-09-29-autorate-plan-a-foundation-and-choice-certification.md docs/superpowers/plans/
 git add . && git commit -m "chore(scaffold): uv + pytest + ruff + CI for autorate
 
 Toolchain contract pinned by tests/test_toolchain.py: pinned 3.12 dev env
@@ -329,13 +329,13 @@ This task does **not** build a larger corpus: it measures the one that is commit
 - Test: `tests/test_inventory.py`
 
 **Interfaces:**
-- Consumes: `/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh/` (`data/manifest.json`, `results/v1/{laya,jev}/raw.jsonl`, `audit.py`).
+- Consumes: `<workspace>/laya-0.3.20/research/benchmarks/feishu_zh/` (`data/manifest.json`, `results/v1/{laya,jev}/raw.jsonl`, `audit.py`).
 - Produces: `inventory(path) -> dict` with `sources`, `records_by_mode_backend`, `unique_ids`, `repeats`, `families`, `upstream_audit_rc`, `min_calibration_n`, and `n_feasible(alpha)` helper.
 
 - [ ] **Step 1: Run upstream's own model-free audit first, and record its exit code**
 
 ```bash
-cd /Users/jackson/laya/laya-0.3.20
+cd <workspace>/laya-0.3.20
 python3 research/benchmarks/feishu_zh/audit.py; echo "audit rc=$?"
 ```
 Expected: it verifies dataset/prompt hashes, request equality across backends, repeated-run completeness, raw-response decoding, finite probabilities, and recomputes metrics — per its README, no downloads or API keys. **Record the real `rc` and the real summary lines in `data/inventory.md`.** If `rc != 0`, stop: the corpus we intend to certify against does not pass its own integrity gate, and that is a finding to report upstream, not an obstacle to route around. Do not reimplement or replace their hashing (Constraint 11).
@@ -352,7 +352,7 @@ import pytest
 
 from autorate.inventory import inventory, n_feasible
 
-UPSTREAM = Path("/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh")
+UPSTREAM = Path("<workspace>/laya-0.3.20/research/benchmarks/feishu_zh")
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
 
 
@@ -535,7 +535,7 @@ Then generate the committed artefact:
 uv run --frozen python -c "
 from pathlib import Path
 from autorate.inventory import inventory, write_inventory
-p = Path('/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh')
+p = Path('<workspace>/laya-0.3.20/research/benchmarks/feishu_zh')
 write_inventory(inventory(p), Path('data/inventory.md'))
 print(Path('data/inventory.md').read_text())"
 ```
@@ -835,7 +835,7 @@ import pytest
 
 from autorate.readers.feishu_zh import read_archive, records_from_line
 
-UPSTREAM = Path("/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh")
+UPSTREAM = Path("<workspace>/laya-0.3.20/research/benchmarks/feishu_zh")
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
 
 
@@ -920,7 +920,7 @@ Expected: FAIL — module absent. Then, after implementing, if `test_choice_reco
 mkdir -p tests/fixtures
 python3 - <<'PY'
 import json
-src="/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh/results/v1"
+src="<workspace>/laya-0.3.20/research/benchmarks/feishu_zh/results/v1"
 out=[]
 for backend in ("laya","jev"):
     for line in open(f"{src}/{backend}/raw.jsonl"):
@@ -1242,7 +1242,7 @@ Expected: FAIL — modules absent. After Step 3, re-verify falsifiability **by b
 ```bash
 mkdir -p /tmp/falsify && cp -r src tests /tmp/falsify/
 cd /tmp/falsify && sed -i '' 's/math.ceil((1.0 - alpha) \* (n + 1))/int((1.0 - alpha) * n)/' src/autorate/conformal.py
-PYTHONPATH=src /Users/jackson/laya/autorate/.venv/bin/python -m pytest tests/test_split_quantile.py tests/test_coverage_montecarlo.py -q
+PYTHONPATH=src <workspace>/autorate/.venv/bin/python -m pytest tests/test_split_quantile.py tests/test_coverage_montecarlo.py -q
 ```
 Expected: **red** (the naive quantile under-covers). Paste the count. Then delete `/tmp/falsify`. If the naive version also passes, the Monte-Carlo test is not falsifiable — tighten the allowance or raise `trials` before continuing.
 
@@ -2033,7 +2033,7 @@ from pathlib import Path
 
 import pytest
 
-UPSTREAM = Path("/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh")
+UPSTREAM = Path("<workspace>/laya-0.3.20/research/benchmarks/feishu_zh")
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -2292,7 +2292,7 @@ Produce the real artefact, and let it say "no" if that is the honest answer:
 ```bash
 mkdir -p docs
 uv run --frozen python -m autorate.cli export-feishu \
-  --root /Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh \
+  --root <workspace>/laya-0.3.20/research/benchmarks/feishu_zh \
   --out data/records_feishu.jsonl
 uv run --frozen python -m autorate.cli certify data/records_feishu.jsonl \
   --backend laya --alpha 0.05 --beta 0.10 --out data/cert_laya.json; echo "rc=$?"

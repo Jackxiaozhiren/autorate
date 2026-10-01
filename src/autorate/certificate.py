@@ -7,7 +7,7 @@ someone has to remember to read (spec 10).
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import MISSING, asdict, dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -45,7 +45,6 @@ class Certificate:
     mean_set_size: Optional[float]
     n_cal: int
     n_eval: int
-    level: float
     envelope: tuple
     meta: dict = field(default_factory=dict)
 
@@ -91,6 +90,15 @@ class Certificate:
                                  % ", ".join(carried))
 
     @property
+    def level(self) -> float:
+        """1 - N_CLAIMS * delta: the joint confidence of the bounds actually published.
+
+        Derived, because a stored `level` was a second owner of a number that is a pure
+        function of `delta` -- and nothing checked that the two agreed.
+        """
+        return 1.0 - N_CLAIMS * self.delta
+
+    @property
     def refusal_rate(self) -> Optional[float]:
         """1 - autorate, derived: every evaluated case is empty, singleton, or multi-label.
 
@@ -107,7 +115,7 @@ class Certificate:
             feasible=False, reason=reason.value, alpha=alpha, beta=beta, delta=delta,
             method="aps", backend=backend, qhat=None, autorate=None, autorate_ci=None,
             conditional_error_bound=None, marginal_error_bound=None, mean_set_size=None,
-            n_cal=n_cal, n_eval=n_eval, level=1.0 - N_CLAIMS * delta,
+            n_cal=n_cal, n_eval=n_eval,
             envelope=("no certificate exists, so no action is certified",
                       "exchangeability within group assumed; none of it is usable here"),
             meta={"detail": detail, **(meta or {})},
@@ -138,6 +146,22 @@ class Certificate:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Certificate":
+        """Read a stored certificate, and name a schema mismatch instead of crashing on it.
+
+        A certificate written by an older shape is an INPUT problem, not a code bug: it
+        used to escape as a `TypeError` with a traceback and rc 1, outside the documented
+        0/2/3/4 exit-code contract, and `verify` printed nothing the reader could act on.
+        """
+        from dataclasses import fields
+
+        names = {f.name for f in fields(cls)}
+        unknown = sorted(set(d) - names)
+        defaulted = {f.name for f in fields(cls) if f.default is not MISSING}
+        missing = sorted(names - set(d) - defaulted)
+        if unknown or missing:
+            raise ValueError(
+                "stored certificate does not match the certificate shape: unknown %s, "
+                "missing %s -- regenerate it with `autorate certify`" % (unknown, missing))
         kw = dict(d)
         kw["envelope"] = tuple(d["envelope"])
         if d.get("autorate_ci") is not None:

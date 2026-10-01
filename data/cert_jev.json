@@ -18,7 +18,6 @@
     "empty certified sets counted as refusal, not automation (refusal 0.000)"
   ],
   "feasible": true,
-  "level": 0.85,
   "marginal_error_bound": 0.03072367683353284,
   "mean_set_size": 1.0,
   "meta": {

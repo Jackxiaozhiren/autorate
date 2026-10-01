@@ -12,7 +12,10 @@ REPO = Path(__file__).resolve().parents[1]
 UPSTREAM = Path(
     __import__("os").environ.get(
         "AUTORATE_FEISHU_ROOT",
-        "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh",
+        # One owner for corpus discovery: the same resolver the CLI uses, so a test
+        # default cannot drift from the shipped default and disagree about what ran.
+        str(__import__("autorate.cli", fromlist=["_default_corpus"])._default_corpus()
+            or "/no/corpus/on/this/machine"),
     )
 )
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
@@ -41,7 +44,12 @@ def test_verify_passes_on_the_committed_tree():
     checked, total = counts(p.stdout)
     assert checked == total, p.stdout
     assert ("corpus present" in p.stdout) != ("corpus absent" in p.stdout), p.stdout
-    assert total >= 27, total
+    absent = run("verify", root=Path("/nonexistent-corpus-dir"))
+    a_checked, a_total = counts(absent.stdout)
+    assert absent.returncode == 0, absent.stdout + absent.stderr
+    # The corpus-present lane must re-derive STRICTLY more than the corpus-less one: a
+    # `>=` there stayed green if the digest and snapshot rows silently stopped counting.
+    assert total > a_total, (total, a_total)
 
 
 def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
@@ -224,6 +232,108 @@ def test_installed_console_script_exit_codes(tmp_path):
     assert ok.returncode == 0
     noargs = subprocess.run([str(script)], capture_output=True, text=True, cwd=tmp_path)
     assert noargs.returncode == 2, (noargs.returncode, noargs.stderr)
+
+
+def test_a_missing_input_is_a_usage_error_not_a_traceback(tmp_path):
+    """I-1: rc 1 was reachable outside the documented 0/2/3/4 contract."""
+    p = run("certify", str(tmp_path / "nope.jsonl"), "--out", str(tmp_path / "c.json"))
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert "Traceback" not in p.stderr, p.stderr
+    assert p.stderr.strip(), "a usage error that prints nothing is not diagnosable"
+
+
+def test_a_stored_certificate_that_violates_its_shape_is_a_usage_error(tmp_path):
+    # The brief's own Step-2 tamper: feasible with an empty envelope. Certificate raises
+    # ValueError, which used to escape as rc 1 with a traceback and no DRIFT row.
+    for d in ("data", "docs"):
+        shutil.copytree(REPO / d, tmp_path / d)
+    cert = tmp_path / "data" / "cert_jev.json"
+    doc = json.loads(cert.read_text())
+    doc["envelope"] = []
+    cert.write_text(json.dumps(doc, sort_keys=True))
+    assert doc["envelope"] == [], "tampering did not land"
+    p = run("verify", cwd=tmp_path)
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert "envelope" in p.stderr, p.stderr
+
+
+def test_snapshot_command_reproduces_the_committed_inventory(tmp_path):
+    """I-2: the artefact's own header names this command, so the command must produce it."""
+    header = (REPO / "data" / "inventory.md").read_text().splitlines()[2]
+    assert "autorate.cli snapshot" in header, header
+    out = tmp_path / "inv" / "inventory.md"
+    p = run("snapshot", "--out", str(out))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert out.read_bytes() == (REPO / "data" / "inventory.md").read_bytes(), \
+        "the committed inventory is not what `snapshot` writes"
+    assert json.loads((Path(str(out) + ".json")).read_text()) == \
+        json.loads((REPO / "data" / "inventory.md.json").read_text())
+
+
+def test_no_committed_file_carries_an_absolute_home_path():
+    """I-7: an absolute literal passes every local gate, and only CI can see it break.
+
+    Checked as structure over the tracked tree -- not by reading files I happen to think
+    are the risky ones -- because the class of defect is the path itself.
+    """
+    import subprocess
+
+    tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
+                             cwd=str(REPO)).stdout.split()
+    assert tracked, "git ls-files returned nothing; the guard would pass vacuously"
+    # A username-shaped segment, not the bare directory prefix: `<workspace>` prose and
+    # this file's own patterns say "/Users/" without naming a machine.
+    rx = re.compile(r"/(Users|home)/[A-Za-z0-9._-]+/")
+    home = str(Path.home())
+    offenders = []
+    for rel in tracked:
+        f = REPO / rel
+        if not f.is_file():
+            continue
+        for i, line in enumerate(f.read_text(errors="ignore").splitlines(), 1):
+            if home in line:
+                offenders.append((rel, i, "this machine's home directory"))
+            elif rx.search(line):
+                offenders.append((rel, i, rx.search(line).group(0)))
+    assert not offenders, offenders
+    # Built from pieces so this file does not become the offender it is looking for.
+    assert home.startswith("/") and rx.search("/" + "Users/bob/x"), "the guard is vacuous"
+
+
+def test_not_certifiable_exits_3_on_a_records_file_with_no_corpus(tmp_path):
+    """I-4: exit 3 was only reachable behind a corpus skip, so CI never exercised it.
+
+    Built from synthetic records rather than the vendored archive: 100 labelled choice
+    records split 50/50, which is under MIN_CAL/MIN_EVAL, so the refusal is a property of
+    the contract and every runner can see it.
+    """
+    import random
+
+    from autorate.records import Record
+
+    rng = random.Random(3)
+    recs = []
+    for i in range(100):
+        p = [0.4, 0.3, 0.2, 0.1]
+        rng.shuffle(p)
+        opts = tuple("opt%d" % j for j in range(4))
+        recs.append(Record(id=str(i), qtype="choice", backend="synthetic", repeat=0,
+                           options=opts, probs=tuple(p), gold=opts[0], predicted=opts[0],
+                           slices={}, scores={}, seed=3, u=rng.random(), meta={}))
+    path = tmp_path / "records.jsonl"
+    path.write_text("".join(json.dumps(r.to_dict(), sort_keys=True) + "\n" for r in recs))
+    cert = tmp_path / "cert.json"
+    p = run("certify", str(path), "--out", str(cert))
+    assert p.returncode == 3, (p.returncode, p.stdout, p.stderr)
+    assert "NOT_CERTIFIABLE" in p.stdout and "n_below_min" in p.stdout, p.stdout
+    doc = json.loads(cert.read_text())
+    assert doc["feasible"] is False and doc["reason"] == "n_below_min"
+    assert doc["envelope"], "a refusal without its envelope is invalid output"
+    assert doc["autorate"] is None and doc["qhat"] is None
+
+    g = run("gate", str(path), "--cert", str(cert), "--limit", "2")
+    assert g.returncode == 3, (g.returncode, g.stdout, g.stderr)
+    assert all("action=abstain" in l for l in g.stdout.splitlines() if "action=" in l), g.stdout
 
 
 def test_unknown_method_raises_before_any_certification():

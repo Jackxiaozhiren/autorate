@@ -1,13 +1,13 @@
 # Offline data inventory
 
-Produced by `autorate.inventory.write_inventory`; every number here is computed,
-not typed. Re-run `uv run --frozen pytest tests/test_inventory.py -q` to reproduce.
+Produced by `python -m autorate.cli snapshot` -- every number here is computed
+from the corpus or opened from a file, and the count basis is named per row.
 
-- corpus: `/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh`
+- corpus: `laya-0.3.20/research/benchmarks/feishu_zh`
 - unique ids: **64**   repeats: [0, 1, 2]
 - slice keys (families): `conditional`, `cross_chat`, `knowledge`, `lifecycle`, `ownership`, `thread_context`, `untrusted_content`, `urgency`
 - label balance: {'urgent': 16, 'todo': 16, 'valuable': 16, 'noise': 16}
-- upstream `audit.py` exit code: **0** (interpreter `/Users/jackson/laya/laya-0.3.20/.venv/bin/python`)
+- upstream `audit.py` exit code: **0** (interpreter `laya-0.3.20/.venv/bin/python`)
 - provenance: AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.
 - upstream `SOURCE.json` file digests: **9/9 match**
 
@@ -21,20 +21,33 @@ not typed. Re-run `uv run --frozen pytest tests/test_inventory.py -q` to reprodu
 | four_noul/laya | 192 |
 
 Counts here are archive LINES per mode and backend, taken before any
-quarantine; the reader keeps the lines whose probabilities close, so its
-`lines_by_mode` can be smaller (measured: 383 choice lines kept of 384 present).
+quarantine. The reader keeps only the lines whose probabilities close, so its
+own count can be smaller.
+
+- choice: **383 of 384** lines kept by the reader (1 quarantined)
+- four_noul: **384 of 384** lines kept by the reader (0 quarantined)
 
 
 ## Can this corpus support a bound?
 
 Bound width for an automation-rate estimate is `2*sqrt(ln(2/alpha)/(2n))`. At `alpha=0.05` the committed corpus gives **0.3395** for n=64, which is why `autorate certify` is expected to refuse on it rather than publish a number.
 
-| corpus | unique n | bound width @0.05 | feasible @0.10 | note |
-|---|---|---|---|---|
-| feishu_zh | 64 | 0.3395 | no | paired laya/Jev archived responses, zh, 3 repeats |
-| massive_intent_per_language | 2974 | 0.0498 | yes | test/en.json.gz parsed; de and sw also 2974 |
-| massive_intent_all_languages | 151674 | 0.0070 | yes | 51 gzipped JSONL files, ~3.2 MB total, Apache-2.0 |
-| typed_decisions | not opened | - | - | size category 1K<n<10K from the dataset card; row count not yet opened |
+The bound is computed on `n_independent`, never on `n_rows`: rows that are
+repeats or translations of the same case do not add sample size.
+
+| corpus | n_independent | n_rows | count basis | bound width @0.05 | feasible @0.10 |
+|---|---|---|---|---|---|
+| feishu_zh | 64 | - | scanned from results/v1/{laya,jev}/raw.jsonl | 0.3395 | no |
+| massive_intent_per_language | 2974 | 2974 | test/de, en, sw.json.gz opened and counted | 0.0498 | yes |
+| massive_intent_all_languages | 2974 | 151674 | 3 of 51 files opened; the rest counted from the repo listing, and the rows are translations of the same utterances | 0.0498 | yes |
+| typed_decisions | not opened | - | dataset card size category 1K<n<10K only; no file opened | - | - |
+
+| corpus | unit | note |
+|---|---|---|
+| feishu_zh | unique labelled cases, each answered twice per backend over 3 repeats | the only corpus with real archived jev responses |
+| massive_intent_per_language | labelled decision rows (one utterance, one intent) | each language file is a candidate Mondrian slice |
+| massive_intent_all_languages | (language, utterance) pairs -- NOT independent cases | Apache-2.0, ~3.2 MB total; the 51x is coverage, not sample size |
+| typed_decisions | labelled decisions | candidate contamination probe (public train 300 / test 100) |
 
 ## Known gaps
 

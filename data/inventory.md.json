@@ -1,37 +1,49 @@
 {
-  "audit_interpreter": "/Users/jackson/laya/laya-0.3.20/.venv/bin/python",
+  "audit_interpreter": "laya-0.3.20/.venv/bin/python",
   "corpus_options": [
     {
+      "basis": "scanned from results/v1/{laya,jev}/raw.jsonl",
       "bound_width_at_0.05": 0.3395,
       "feasible_at_0.10": false,
       "feasible_at_0.25": false,
       "id": "feishu_zh",
-      "note": "paired laya/Jev archived responses, zh, 3 repeats",
-      "unique_ids": 64
+      "n_independent": 64,
+      "n_rows": null,
+      "note": "the only corpus with real archived jev responses",
+      "unit": "unique labelled cases, each answered twice per backend over 3 repeats"
     },
     {
+      "basis": "test/de, en, sw.json.gz opened and counted",
       "bound_width_at_0.05": 0.0498,
       "feasible_at_0.10": true,
       "feasible_at_0.25": true,
       "id": "massive_intent_per_language",
-      "note": "test/en.json.gz parsed; de and sw also 2974",
-      "unique_ids": 2974
+      "n_independent": 2974,
+      "n_rows": 2974,
+      "note": "each language file is a candidate Mondrian slice",
+      "unit": "labelled decision rows (one utterance, one intent)"
     },
     {
-      "bound_width_at_0.05": 0.007,
+      "basis": "3 of 51 files opened; the rest counted from the repo listing, and the rows are translations of the same utterances",
+      "bound_width_at_0.05": 0.0498,
       "feasible_at_0.10": true,
       "feasible_at_0.25": true,
       "id": "massive_intent_all_languages",
-      "note": "51 gzipped JSONL files, ~3.2 MB total, Apache-2.0",
-      "unique_ids": 151674
+      "n_independent": 2974,
+      "n_rows": 151674,
+      "note": "Apache-2.0, ~3.2 MB total; the 51x is coverage, not sample size",
+      "unit": "(language, utterance) pairs -- NOT independent cases"
     },
     {
+      "basis": "dataset card size category 1K<n<10K only; no file opened",
       "bound_width_at_0.05": null,
       "feasible_at_0.10": null,
       "feasible_at_0.25": null,
       "id": "typed_decisions",
-      "note": "size category 1K<n<10K from the dataset card; row count not yet opened",
-      "unique_ids": null
+      "n_independent": null,
+      "n_rows": null,
+      "note": "candidate contamination probe (public train 300 / test 100)",
+      "unit": "labelled decisions"
     }
   ],
   "digests": [
@@ -153,12 +165,21 @@
     }
   ],
   "provenance": "AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.",
+  "reader_lines_by_mode": {
+    "choice": 383,
+    "four_noul": 384
+  },
+  "reader_lines_quarantined_only": {
+    "choice": 1
+  },
+  "reader_lines_read": 768,
+  "reader_quarantined": 1,
   "repeats": [
     0,
     1,
     2
   ],
-  "source": "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh",
+  "source": "laya-0.3.20/research/benchmarks/feishu_zh",
   "sum_tolerance": 0.005,
   "unique_ids": 64,
   "upstream_audit_rc": 0,

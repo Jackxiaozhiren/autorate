@@ -16,12 +16,16 @@ carries no timestamp so a re-run is byte-comparable.
 
 ## Is n big enough to certify?
 
-| corpus | unique n | bound width at alpha=0.05 | feasible at 0.10 |
-|---|---|---|---|
-| feishu_zh | 64 | 0.3395 | no |
-| massive_intent_per_language | 2974 | 0.0498 | yes |
-| massive_intent_all_languages | 151674 | 0.0070 | yes |
-| typed_decisions | not opened | - | - |
+The bound is computed on independent cases, not on rows: MASSIVE's 51 language
+files are translations of the same 2,974 utterances, and feishu's 384 archive
+lines are 64 cases repeated. Counting either as sample size flatters the bound.
+
+| corpus | n_independent | n_rows | count basis | bound width at alpha=0.05 | feasible at 0.10 |
+|---|---|---|---|---|---|
+| feishu_zh | 64 | - | scanned from results/v1/{laya,jev}/raw.jsonl | 0.3395 | no |
+| massive_intent_per_language | 2974 | 2974 | test/de, en, sw.json.gz opened and counted | 0.0498 | yes |
+| massive_intent_all_languages | 2974 | 151674 | 3 of 51 files opened; the rest counted from the repo listing, and the rows are translations of the same utterances | 0.0498 | yes |
+| typed_decisions | not opened | - | dataset card size category 1K<n<10K only; no file opened | - | - |
 
 ## Certificates at coverage 0.95 (alpha=0.05), beta=0.05, seed=7
 
