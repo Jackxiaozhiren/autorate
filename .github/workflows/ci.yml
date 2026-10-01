@@ -3,12 +3,23 @@ on: [push, pull_request]
 jobs:
   offline:
     runs-on: ubuntu-latest
+    defaults:
+      # GitHub's default for `run` is `bash -e`, which hides a failing producer behind a
+      # succeeding consumer: `pytest | tee log` would report green on a red suite.
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
         with: { python-version: "3.12" }
       - run: uv sync --frozen --extra dev
-      - run: uv run --frozen ruff check src tests --select=E9,F63,F7,F82,F401,F811 --line-length=120
-      - run: uv run --frozen python -m compileall -q src tests
-      - run: uv run --frozen pytest -q
-      - run: uv run --frozen autorate verify
+      - run: uv run --frozen ruff check src tests --select=E9,F63,F7,F82,F401,F811 --line-length=120 | tee /tmp/ruff.log
+      - run: uv run --frozen python -m compileall -q src tests | tee /tmp/compileall.log
+      - run: uv run --frozen pytest -q | tee /tmp/pytest.log
+      - run: uv run --frozen autorate verify | tee /tmp/verify.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: /tmp/*.log
+          if-no-files-found: ignore
