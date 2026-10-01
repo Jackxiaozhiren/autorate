@@ -183,6 +183,23 @@ def test_json_round_trip_is_lossless():
     assert Record.from_dict(json.loads(json.dumps(r.to_dict()))) == r
 
 
+def test_the_errata_table_matches_the_function_that_produced_it():
+    """A correction can go stale like any number, so the errata file is checked too."""
+    from pathlib import Path
+
+    doc = Path(__file__).resolve().parents[1] / "docs" / "ERRATA.md"
+    assert doc.exists(), "docs/ERRATA.md missing"
+    lines = [l for l in doc.read_text().splitlines() if l.startswith("| `confidence >=")]
+    assert len(lines) == 2, lines
+    for line in lines:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        import re
+
+        tau = float(re.search(r"(\d+\.\d+)", cells[0]).group(1))
+        for k, quoted in zip((2, 4, 10, 20, 51), cells[1:]):
+            assert abs(_pmax_reaching(k, tau) - float(quoted)) <= 5e-5, (tau, k, quoted)
+
+
 def test_a_record_is_immutable_but_not_a_dict_key():
     from dataclasses import FrozenInstanceError
 
