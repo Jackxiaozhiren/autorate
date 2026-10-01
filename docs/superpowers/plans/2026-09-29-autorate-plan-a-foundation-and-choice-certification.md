@@ -590,11 +590,30 @@ def test_a_near_uniform_answer_is_low_on_both_scales_so_they_are_not_interchange
 
 
 def test_entropy_scale_moves_with_option_count_so_one_threshold_is_a_unit_error():
-    # confidence >= 0.85 means p_max >= ~0.93 at k=4 but a different number at k=2.
-    k4 = [0.93, 0.023, 0.023, 0.024]
-    k2 = [0.90, 0.10]
-    assert entropy_confidence(k4) >= 0.85 > entropy_confidence(k2)
-    assert max_confidence(k2) < max_confidence(k4)
+    # Corrected during Task 4: this draft asserted that a 0.93 answer at k=4 clears
+    # confidence >= 0.85. Measured, it is 0.7616 -- the ~0.93 figure belongs to k=20,
+    # and the requirement is STRICTER at small k, not looser. So the equivalence points
+    # are produced by bisection here rather than quoted from prose.
+    eq = {k: _pmax_reaching(k, 0.85) for k in (2, 4, 10, 20, 51)}
+    assert eq[2] > eq[4] > eq[10] > eq[20] > eq[51]
+    assert abs(eq[4] - 0.9609) < 6e-4
+    assert abs(eq[2] - 0.9785) < 6e-4
+    assert abs(eq[51] - 0.9203) < 6e-4
+    loose = {k: _pmax_reaching(k, 0.50) for k in (2, 51)}
+    assert loose[2] - loose[51] > 0.22
+
+
+def _pmax_reaching(k: int, target: float) -> float:
+    """Smallest p_max whose entropy-confidence reaches `target`, by bisection."""
+    lo, hi = 1.0 / k, 1.0
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        p = [mid] + [(1 - mid) / (k - 1)] * (k - 1)
+        if entropy_confidence(p) < target:
+            lo = mid
+        else:
+            hi = mid
+    return hi
 
 
 def test_validate_rejects_mismatched_option_and_probability_lengths():
