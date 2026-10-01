@@ -330,7 +330,7 @@ This task does **not** build a larger corpus: it measures the one that is commit
 
 **Interfaces:**
 - Consumes: `/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh/` (`data/manifest.json`, `results/v1/{laya,jev}/raw.jsonl`, `audit.py`).
-- Produces: `inventory(path) -> dict` with `sources`, `lines_by_mode_backend`, `unique_ids`, `repeats`, `families`, `upstream_audit_rc`, `min_calibration_n`, and `n_feasible(alpha)` helper.
+- Produces: `inventory(path) -> dict` with `sources`, `records_by_mode_backend`, `unique_ids`, `repeats`, `families`, `upstream_audit_rc`, `min_calibration_n`, and `n_feasible(alpha)` helper.
 
 - [ ] **Step 1: Run upstream's own model-free audit first, and record its exit code**
 
@@ -361,7 +361,7 @@ def test_inventory_sees_the_recorded_shape():
     d = inventory(UPSTREAM)
     assert d["unique_ids"] == 64
     assert d["repeats"] == [0, 1, 2]
-    assert d["lines_by_mode_backend"] == {
+    assert d["records_by_mode_backend"] == {
         "choice|laya": 192, "choice|jev": 192,
         "four_noul|laya": 192, "four_noul|jev": 192,
     }
@@ -412,7 +412,7 @@ def test_inventory_md_numbers_come_from_the_code_not_from_typing(tmp_path):
 - [ ] **Step 3: Run it to verify it fails**
 
 Run: `uv run --frozen pytest tests/test_inventory.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'autorate.inventory'`. Confirm the counts in Step 2's expectations against what `inventory()` actually sees before trusting them; if `lines_by_mode_backend` differs, re-run the raw probe (`python3 -c` over `raw.jsonl`) and prefer the measured value.
+Expected: FAIL — `ModuleNotFoundError: No module named 'autorate.inventory'`. Confirm the counts in Step 2's expectations against what `inventory()` actually sees before trusting them; if `records_by_mode_backend` differs, re-run the raw probe (`python3 -c` over `raw.jsonl`) and prefer the measured value.
 
 - [ ] **Step 4: Implement**
 
@@ -473,7 +473,7 @@ def inventory(root: Path) -> dict:
     )
     return {
         "source": str(root),
-        "lines_by_mode_backend": {f"{m}|{b}": n for (m, b), n in per_mode.items()},
+        "records_by_mode_backend": {f"{m}|{b}": n for (m, b), n in per_mode.items()},
         "unique_ids": len(ids),
         "repeats": repeats,
         "families": sorted(manifest.get("families", {})),
@@ -516,7 +516,7 @@ def write_inventory(d: dict, out: Path) -> None:
         "| key | records |",
         "|---|---|",
     ]
-    for k, v in sorted(d["lines_by_mode_backend"].items()):
+    for k, v in sorted(d["records_by_mode_backend"].items()):
         lines.append(f"| {k} | {v} |")
     lines += ["", "## Feasibility of a bound at this n", ""]
     for alpha in (0.05, 0.10):
@@ -2209,8 +2209,8 @@ def cmd_verify(a) -> int:
     body = doc.read_text()
 
     inv = json.loads(Path("data/inventory.md.json").read_text())
-    inv_total = len(inv["lines_by_mode_backend"])
-    inv_ok = sum(1 for k, v in sorted(inv["lines_by_mode_backend"].items())
+    inv_total = len(inv["records_by_mode_backend"])
+    inv_ok = sum(1 for k, v in sorted(inv["records_by_mode_backend"].items())
                  if f"| {k} | {v} |" in body)
 
     recs = _records_from(Path("data/records_feishu.jsonl"))
@@ -2358,3 +2358,27 @@ is recorded as-is: <paste the two summaries and exit codes>."
 **Placeholders.** None. Two code fragments in T6/T7 are intentionally written garbled-then-corrected (`lac_score`, `_binom_cdf`'s `p >= 1.0` branch) so the implementer fixes a stated defect rather than inheriting it silently — the corrected form is given in full immediately below each.
 **Type consistency.** `Certificate` kwargs are defined once in T8 and used identically by T7's constructor and T9's `from_dict`; `autorate_ci` is a `tuple` in both. `Record.u` is the single randomisation source in T4/T5/T6/T7. `conformal_set(probs, qhat, u, method)` signature is shared by T6, T7, T8. `certify_choice` returns `Certificate`, and `Gate` consumes only `feasible/qhat/method`.
 **Known open risk for the next plan.** Plan A's honest terminal state may be "the only offline corpus is too small to certify". That is not a failure of Plan A — it is spec §14 R3 materialising, and it is the reason T3 exists. The decision it forces (generate MASSIVE per-case records with `laya_eval.py`, which needs a dataset download and an MPS/CPU run, or shrink the claim) belongs to Plan B's first task, made with measured `n` rather than assumed.
+
+---
+
+## Delivered deviations (appended as work lands; the text above is not retro-rewritten)
+
+Tasks 1–7 shipped with these differences from their specification. Each is also ruled in the SDD ledger; this section exists so an implementer reading only the plan does not code against a superseded value.
+
+| # | where the plan is now wrong | what was delivered instead | why |
+|---|---|---|---|
+| D1 | Task 1's `pyproject.toml` shows `addopts = "-q"` | key omitted | `-q` + `addopts -q` = `-qq`, which suppresses the `N passed` line Constraint 12 needs (R-1) |
+| D2 | Task 1's `test_lock_is_committed_and_frozen_run_does_not_rewrite_it` | renamed `test_lock_is_committed_and_up_to_date_with_pyproject`, asserts `uv lock --check` exit 0 | the byte-compare around a plain interpreter run can never fail (R-2) |
+| D3 | Task 1 has no entry-point guard | added `test_declared_console_script_entry_point_resolves_and_exits_zero`; Task 9 must convert it to a subprocess `returncode` check | neither ruff nor compileall resolves an entry-point string (R-5, R-6) |
+| D4 | Task 2's test has 4 tests and `ROW` id class `[a-z0-9]+` | 6 tests; widened id class; a census test that emits and asserts the counts | the plan's own regex matched 0 of 45 delivered rows, so the gate was blind (review I-1, I-2) |
+| D5 | Task 2 assumed 8 unresolved claims | 14 unresolved rows were found; ledger now 45 rows / 39 verified / 6 withdrawn, counts produced by the gate | the earlier web pass had invented a venue (UAI 2023, not AISTATS) and an acronym (KIGEL does not exist in the paper it was attributed to) |
+| D6 | Task 3's `records_by_mode_backend` | renamed `lines_by_mode_backend`; `n_feasible` expectations use measured widths (n=64 → 0.3395, not feasible at 0.25) | one word with two denominators; and the drafted assertion could never pass (PF-11, R-13) |
+| D7 | Task 3 | added `per_ask_gold()` and a named-quarantine gap for the one archived line whose probabilities sum to 0.99 | measured corpus defects belong in the inventory, not in a workaround |
+| D8 | Task 4's entropy claim ("0.85 ≈ p_max 0.93 at k=4") | measured: k=2 0.9785, k=4 0.9609, k=20 0.9319, k=51 0.9203 — stricter at small k, and 0.93 was the k=20 value | an earlier hand computation was wrong in value and direction (R-15); spec §7.4 now carries the table |
+| D9 | Task 5 | option order is preserved per backend and **not** comparable across backends; `stats` reports `lines_kept` separately from `records_kept` plus `quarantined` | measured: the same case arrives as `urgent,todo,valuable,noise` from laya and `noise,urgent,todo,valuable` from jev |
+| D10 | Task 6 | empty certified sets are counted as refusal (`refusal_rate`), not error or automation; power limits are stated: the Monte-Carlo suite does not detect a one-index quantile shift at n=800, the vacuity tests do | measured mean set size 0.948 (R-17, R-19); and the first falsification attempt was invalid because an editable install shadowed the scratch copy (R-18) |
+| D11 | Tasks 7 and 8 | `joint_error_bound` **removed** (it was the marginal event under a second name); `Certificate` gained `refusal_rate`/`mean_set_size` and two consistency guards; `Certificate.refused` carries `closest_attempt` diagnostics; `Task 8` split into 8a (certificate, done with Task 7) and 8b (gate) | one number one owner (R-20); a refusal with no evidence is unauditable (R-21); Task 7 could not be tested without the type Task 8 defined |
+| D12 | Task 7's synthetic generator `_records` | takes `error_rate`, and a test pins that it produces wrong argmaxes | the drafted generator always peaked on gold, so `errors_among_automated` was 0 at every difficulty and the error-budget sweep proved nothing |
+
+First real certificates, for context when Task 9 lands: `laya` → `NOT_CERTIFIABLE / empty_feasible_set` (22 of 96 automated, 15 errors, bound 0.840); `jev` → autorate 1.000 with conditional bound 0.031 at n_eval 96, which is the k=0 closed form `1 − 0.05^(1/96) = 0.03074` and therefore a bound rather than a precision claim.
+
