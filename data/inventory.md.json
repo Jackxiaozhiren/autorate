@@ -1,0 +1,76 @@
+{
+  "audit_interpreter": "/Users/jackson/laya/laya-0.3.20/.venv/bin/python",
+  "corpus_options": [
+    {
+      "bound_width_at_0.05": 0.3395,
+      "feasible_at_0.10": false,
+      "feasible_at_0.25": false,
+      "id": "feishu_zh",
+      "note": "paired laya/Jev archived responses, zh, 3 repeats",
+      "unique_ids": 64
+    },
+    {
+      "bound_width_at_0.05": 0.0498,
+      "feasible_at_0.10": true,
+      "feasible_at_0.25": true,
+      "id": "massive_intent_per_language",
+      "note": "test/en.json.gz parsed; de and sw also 2974",
+      "unique_ids": 2974
+    },
+    {
+      "bound_width_at_0.05": 0.007,
+      "feasible_at_0.10": true,
+      "feasible_at_0.25": true,
+      "id": "massive_intent_all_languages",
+      "note": "51 gzipped JSONL files, ~3.2 MB total, Apache-2.0",
+      "unique_ids": 151674
+    },
+    {
+      "bound_width_at_0.05": null,
+      "feasible_at_0.10": null,
+      "feasible_at_0.25": null,
+      "id": "typed_decisions",
+      "note": "size category 1K<n<10K from the dataset card; row count not yet opened",
+      "unique_ids": null
+    }
+  ],
+  "families": [
+    "conditional",
+    "cross_chat",
+    "knowledge",
+    "lifecycle",
+    "ownership",
+    "thread_context",
+    "untrusted_content",
+    "urgency"
+  ],
+  "gaps": [
+    "research/results/eval_english_51_languages.json: per-case records omitted; regenerate with research/eval/laya_eval.py --langs all --out <path>",
+    "mteb/amazon_massive_intent is not in the local HF dataset cache",
+    "the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here"
+  ],
+  "label_counts": {
+    "noise": 16,
+    "todo": 16,
+    "urgent": 16,
+    "valuable": 16
+  },
+  "min_calibration_n": 64,
+  "provenance": "AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.",
+  "records_by_mode_backend": {
+    "choice/jev": 192,
+    "choice/laya": 192,
+    "four_noul/jev": 192,
+    "four_noul/laya": 192
+  },
+  "repeats": [
+    0,
+    1,
+    2
+  ],
+  "source": "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh",
+  "unique_ids": 64,
+  "upstream_audit_rc": 0,
+  "upstream_audit_stderr_tail": "",
+  "upstream_audit_stdout_tail": "jev / choice: 64/64; 0 failed requests; p50=253.4769795020111 ms\njev / four_noul: 63/64; 0 failed requests; p50=249.7323334973771 ms\nlaya / choice: 20/64; 0 failed requests; p50=150.52629148704 ms\nlaya / four_noul: 18/64; 0 failed requests; p50=414.9067710095551 ms\n"
+}
