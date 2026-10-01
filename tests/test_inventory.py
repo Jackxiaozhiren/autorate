@@ -203,6 +203,41 @@ def test_the_published_inventory_file_is_structurally_valid():
     assert "archive LINES per mode and backend" in body or "Archive lines per mode" in body
 
 
+@skip
+def test_the_snapshot_records_upstreams_own_digests_and_they_match():
+    d = inventory(UPSTREAM)
+    assert d["digests"], "upstream SOURCE.json pins file digests; none were read"
+    assert all(x["match"] for x in d["digests"]), [x for x in d["digests"] if not x["match"]]
+    assert len({x["path"] for x in d["digests"]}) == len(d["digests"])
+
+
+def test_a_changed_corpus_file_breaks_its_own_digest_row(tmp_path):
+    """The digest row must be a comparison against bytes, not a transcription of `expected`.
+
+    A row that only echoes what SOURCE.json already says can never go red, so the gate
+    would report '9/9 match' forever -- including after the archive changed underneath it.
+    """
+    from autorate.inventory import corpus_digests
+
+    (tmp_path / "a").write_text("original")
+    (tmp_path / "b").write_text("stable")
+    (tmp_path / "SOURCE.json").write_text(json.dumps({"files": [
+        {"path": p, "sha256": _sha256(tmp_path / p)} for p in ("a", "b")]}))
+    clean = corpus_digests(tmp_path)
+    assert [x["match"] for x in clean] == [True, True], clean
+    (tmp_path / "a").write_text("tampered")
+    after = corpus_digests(tmp_path)
+    assert [x["match"] for x in after] == [False, True], after
+    assert after[0]["actual"] == _sha256(tmp_path / "a")
+    assert after[0]["expected"] != after[0]["actual"]
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def test_write_inventory_refuses_a_corpus_whose_audit_failed(tmp_path):
     fake = {
         "source": "x",
@@ -216,6 +251,7 @@ def test_write_inventory_refuses_a_corpus_whose_audit_failed(tmp_path):
         "upstream_audit_stdout_tail": "",
         "upstream_audit_stderr_tail": "boom",
         "min_calibration_n": 1,
+        "digests": [],
         "gaps": [],
         "audit_interpreter": sys.version.split()[0],
         "corpus_options": corpus_options(),
@@ -253,6 +289,7 @@ def _render() -> str:
         "label_counts": {"todo": 16}, "provenance": "p",
         "upstream_audit_rc": 0, "upstream_audit_stdout_tail": "",
         "upstream_audit_stderr_tail": "", "min_calibration_n": 64,
+        "digests": [],
         "gaps": ["g"], "audit_interpreter": "python", "corpus_options": corpus_options(),
     }
     with tempfile.TemporaryDirectory() as td:

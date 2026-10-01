@@ -1,13 +1,13 @@
 """Offline data inventory: which labelled per-case decision corpus exists, and whether n bounds.
 
-Integrity is owned by upstream's own model-free audit; this module calls it and
-records its verdict rather than re-deriving hashes we do not define (their
-`manifest.json` pins digests over a canonicalisation we do not own). Two refusals
-are the point of the module: publishing a corpus whose audit failed, and quoting a
-bound that the sample size cannot support.
+Integrity is owned by upstream's own model-free audit; this module records its verdict
+and transcribes -- without redefining -- the digests upstream pins in its own
+`SOURCE.json`. Two refusals are the point of the module: publishing a corpus whose audit
+failed, and quoting a bound that the sample size cannot support.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -110,6 +110,26 @@ def per_ask_gold(root: Path) -> dict:
     }
 
 
+def corpus_digests(root: Path) -> list:
+    """The digests upstream pins in its own `SOURCE.json`, recomputed against the files.
+
+    Upstream owns the expected values and the hashing definition (raw bytes, sha256);
+    this only transcribes them next to what the bytes actually hash to, so a fixture
+    that changed under the archive is visible rather than quoted from a stale record.
+    """
+    source = Path(root) / "SOURCE.json"
+    if not source.exists():
+        return []
+    entries = json.loads(source.read_text()).get("files", [])
+    out = []
+    for e in entries:
+        f = Path(root) / e["path"]
+        actual = hashlib.sha256(f.read_bytes()).hexdigest() if f.exists() else None
+        out.append({"path": e["path"], "expected": e["sha256"], "actual": actual,
+                    "match": actual == e["sha256"]})
+    return out
+
+
 def inventory(root: Path) -> dict:
     root = Path(root)
     gold = per_ask_gold(root)
@@ -147,6 +167,7 @@ def inventory(root: Path) -> dict:
         "probs_not_closing": unclosed,
         "sum_tolerance": SUM_TOL,
         "per_ask_gold": gold,
+        "digests": corpus_digests(root),
         "corpus_options": corpus_options(),
         "gaps": [
             "research/results/eval_english_51_languages.json: per-case records omitted; "
@@ -215,6 +236,15 @@ def write_inventory(d: dict, out: Path) -> None:
         "- upstream `audit.py` exit code: **%d** (interpreter `%s`)" % (
             d["upstream_audit_rc"], d["audit_interpreter"]),
         "- provenance: %s" % d["provenance"],
+    ]
+    if d["digests"]:
+        bad = [x["path"] for x in d["digests"] if not x["match"]]
+        lines.append("- upstream `SOURCE.json` file digests: **%d/%d match**%s" % (
+            len(d["digests"]) - len(bad), len(d["digests"]),
+            "" if not bad else "; MISMATCH: " + ", ".join(bad)))
+    else:
+        lines.append("- upstream `SOURCE.json` file digests: none recorded by that file")
+    lines += [
         "",
         "## Archive lines per mode x backend",
         "",

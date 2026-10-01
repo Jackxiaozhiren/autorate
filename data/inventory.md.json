@@ -34,6 +34,62 @@
       "unique_ids": null
     }
   ],
+  "digests": [
+    {
+      "actual": "56bdd8cbb96fc65a07e1caf0c1ebcac03cb6a56079944a7af4bf03d71846e3ba",
+      "expected": "56bdd8cbb96fc65a07e1caf0c1ebcac03cb6a56079944a7af4bf03d71846e3ba",
+      "match": true,
+      "path": "data/cases.jsonl"
+    },
+    {
+      "actual": "c5c93e043cd993f7dd0fd11a0b71f1ef7702684396c7b961df98eb51e0f62cae",
+      "expected": "c5c93e043cd993f7dd0fd11a0b71f1ef7702684396c7b961df98eb51e0f62cae",
+      "match": true,
+      "path": "data/manifest.json"
+    },
+    {
+      "actual": "9135a8924bb45ac0dc16b8a768540d5b6bd821e8e2dcecaa8749a3001e14f3f4",
+      "expected": "9135a8924bb45ac0dc16b8a768540d5b6bd821e8e2dcecaa8749a3001e14f3f4",
+      "match": true,
+      "path": "results/v1/jev/metadata.json"
+    },
+    {
+      "actual": "a1dfd4de1819117cbd1470a187e2e8dd8f4cce7469c9c3c98befe1a282beab23",
+      "expected": "a1dfd4de1819117cbd1470a187e2e8dd8f4cce7469c9c3c98befe1a282beab23",
+      "match": true,
+      "path": "results/v1/jev/raw.jsonl"
+    },
+    {
+      "actual": "999851aa84a713ebd983d3d05ca074eadc5d2fe70af6dfa0efc546582607c40a",
+      "expected": "999851aa84a713ebd983d3d05ca074eadc5d2fe70af6dfa0efc546582607c40a",
+      "match": true,
+      "path": "results/v1/laya/metadata.json"
+    },
+    {
+      "actual": "1c8dab17062f9244888f580907b62a845cf1e7b199e7041810a9301bd55c28e0",
+      "expected": "1c8dab17062f9244888f580907b62a845cf1e7b199e7041810a9301bd55c28e0",
+      "match": true,
+      "path": "results/v1/laya/raw.jsonl"
+    },
+    {
+      "actual": "ec4a60b495b6d47192f8a82a1258bcf46db1e33396b1caf3cff706f0435a934c",
+      "expected": "ec4a60b495b6d47192f8a82a1258bcf46db1e33396b1caf3cff706f0435a934c",
+      "match": true,
+      "path": "results/v1/summary.json"
+    },
+    {
+      "actual": "f8b75b7ac5fbe5b1f298542b217e5d7b6d43407b5542ff816256d8ff5c21711a",
+      "expected": "f8b75b7ac5fbe5b1f298542b217e5d7b6d43407b5542ff816256d8ff5c21711a",
+      "match": true,
+      "path": "results/v1/environment_check.json"
+    },
+    {
+      "actual": "d9b8b97e858ed4561bea0dd9344c99d523f9c26cb8e85cfb220636cbd3a13d4a",
+      "expected": "d9b8b97e858ed4561bea0dd9344c99d523f9c26cb8e85cfb220636cbd3a13d4a",
+      "match": true,
+      "path": "results/v1/option_token_audit.json"
+    }
+  ],
   "families": [
     "conditional",
     "cross_chat",

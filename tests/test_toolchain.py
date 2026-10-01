@@ -39,12 +39,22 @@ def test_ruff_gate_matches_the_upstream_shape():
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_declared_console_script_entry_point_resolves_and_exits_zero():
-    # Guards pyproject's `autorate = "autorate.cli:main"`: neither ruff nor compileall resolves an
-    # entry-point string, so without this test renaming or deleting `autorate.cli.main` stays green.
-    # Task 9 rewrites cli.py, so the target must keep resolving and returning 0.
+def test_declared_console_script_entry_point_resolves_and_runs():
+    """R-6: resolve the declared target, then run it as a subprocess -- never in-process.
+
+    Neither ruff nor compileall resolves `autorate = "autorate.cli:main"`, so without this
+    a rename or deletion of `main` stays green. Calling `scripts[0].load()()` in-process
+    did resolve it, but Task 9's `main(argv=None)` reads pytest's own `sys.argv`, so the
+    only honest entry-point check is the one that runs the installed script and reads its
+    exit code -- the same contract a shell user gets.
+    """
     from importlib.metadata import entry_points
 
     scripts = [ep for ep in entry_points(group="console_scripts") if ep.name == "autorate"]
     assert len(scripts) == 1, f"expected one `autorate` console script, got {scripts}"
-    assert scripts[0].load()() == 0
+    assert scripts[0].value == "autorate.cli:main", scripts[0].value
+    script = Path(sys.executable).parent / "autorate"
+    assert script.exists(), "the declared console script is not installed"
+    proc = subprocess.run([str(script), "--help"], capture_output=True, text=True, cwd=ROOT)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "verify" in proc.stdout, proc.stdout

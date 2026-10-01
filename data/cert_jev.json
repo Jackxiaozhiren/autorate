@@ -1,0 +1,42 @@
+{
+  "alpha": 0.05,
+  "autorate": 1.0,
+  "autorate_ci": [
+    0.8613893444806278,
+    1.0
+  ],
+  "beta": 0.05,
+  "conditional_error_bound": 0.030723676833532887,
+  "delta": 0.05,
+  "envelope": [
+    "exchangeability within group assumed; no group conditioning applied",
+    "marginal certificate only - not group-conditional",
+    "certified on archived responses; live traffic shift is not covered",
+    "finite-sample: n_cal=95, n_eval=96, joint level 0.90",
+    "empty certified sets counted as refusal, not automation (refusal 0.000)"
+  ],
+  "feasible": true,
+  "grid_alpha": 0.02,
+  "level": 0.9,
+  "marginal_error_bound": 0.030723676833532887,
+  "mean_set_size": 1.0,
+  "meta": {
+    "alpha": 0.05,
+    "automated": 96,
+    "beta": 0.05,
+    "empties": 0,
+    "errors_among_automated": 0,
+    "grid_size": 29,
+    "multi_label": 0,
+    "seed": 7,
+    "skipped_no_gold": 0,
+    "skipped_wrong_qtype": 768,
+    "total_labelled": 191
+  },
+  "method": "aps",
+  "n_cal": 95,
+  "n_eval": 96,
+  "qhat": 0.5,
+  "reason": null,
+  "refusal_rate": 0.0
+}

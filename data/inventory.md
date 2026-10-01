@@ -9,6 +9,7 @@ not typed. Re-run `uv run --frozen pytest tests/test_inventory.py -q` to reprodu
 - label balance: {'urgent': 16, 'todo': 16, 'valuable': 16, 'noise': 16}
 - upstream `audit.py` exit code: **0** (interpreter `/Users/jackson/laya/laya-0.3.20/.venv/bin/python`)
 - provenance: AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.
+- upstream `SOURCE.json` file digests: **9/9 match**
 
 ## Archive lines per mode x backend
 

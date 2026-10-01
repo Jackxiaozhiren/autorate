@@ -1,2 +1,251 @@
-def main() -> int:
+"""The only module that prints: certify / compare / gate / report / verify / export-feishu."""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from .certify_choice import certify_choice
+from .gate import Gate
+from .inventory import inventory
+from .records import Record
+from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, RECORDS, SEED, build_report,
+                     certify_all, load_records, read_certificate, write_report)
+
+EXIT_CERTIFIED = 0
+EXIT_NOT_CERTIFIABLE = 3
+EXIT_USAGE = 2
+EXIT_DRIFT = 4
+RESULTS = Path("docs/RESULTS.md")
+FROM_CORPUS = "recomputed from the corpus"
+FROM_SNAPSHOT = "committed %s" % INVENTORY_JSON
+# Written by the environment that can reach the corpus, so they cannot be compared
+# anywhere else. They are excluded by name, not by luck: everything else in the
+# snapshot must match what a fresh scan produces.
+SNAPSHOT_MACHINE_KEYS = ("source", "audit_interpreter", "upstream_audit_stdout_tail",
+                         "upstream_audit_stderr_tail")
+
+
+def expect_snapshot_is_current(expect, inv: dict) -> None:
+    """Police the committed snapshot from the only environment that can see its truth.
+
+    A corpus-less `verify` reads this file, so a snapshot that drifted from the corpus
+    would otherwise be published as fact forever and never contradict anyone.
+    """
+    path = Path(INVENTORY_JSON)
+    if not path.exists():
+        expect("%s committed" % INVENTORY_JSON, path.exists(), True)
+        return
+    committed = json.loads(path.read_text())
+    for key in sorted(set(inv) | set(committed)):
+        if key in SNAPSHOT_MACHINE_KEYS:
+            continue
+        expect("snapshot %s" % key, inv.get(key), committed.get(key))
+
+
+def _records_from(path: Path, backend=None, mode=None) -> list:
+    out = []
+    for line in Path(path).read_text().splitlines():
+        if not line.strip():
+            continue
+        r = Record.from_dict(json.loads(line))
+        if backend and r.backend != backend:
+            continue
+        if mode and r.slices.get("mode") != mode:
+            continue
+        out.append(r)
+    return out
+
+
+def _root(args) -> Path:
+    import os
+
+    return Path(os.environ.get(
+        "AUTORATE_FEISHU_ROOT",
+        "/Users/jackson/laya/laya-0.3.20/research/benchmarks/feishu_zh"))
+
+
+def cmd_export_feishu(args) -> int:
+    from .readers.feishu_zh import read_archive
+
+    stats: dict = {}
+    recs = read_archive(_root(args), backend=args.backend, repeat=args.repeat,
+                        mode=args.mode, stats=stats)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(json.dumps(r.to_dict(), sort_keys=True, ensure_ascii=False) + "\n"
+                           for r in recs))
+    print("exported %d records from %d archive lines to %s (by mode %s, dropped_not_ok=%d)"
+          % (stats["records_kept"], stats["lines_kept"], out, stats["lines_by_mode"],
+             stats["lines_dropped_not_ok"]))
+    for q in stats.get("quarantined", []):
+        print("quarantined: %s/%s repeat=%s probs_sum=%s" % (
+            q["backend"], q["id"], q["repeat"], q["probs_sum"]))
     return 0
+
+
+def cmd_certify(args) -> int:
+    recs = _records_from(Path(args.records), backend=args.backend, mode=args.mode)
+    cert = certify_choice(recs, alpha=args.alpha, beta=args.beta, delta=args.delta,
+                          seed=args.seed)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(cert.to_json())
+    print(cert.summary())
+    for line in cert.envelope:
+        print("  envelope:", line)
+    return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
+
+
+def cmd_compare(args) -> int:
+    left, right = (read_certificate(Path(f)) for f in args.files)
+    print("paired by request_sha256; both sides certified on identical rubrics")
+    for name, c in (("A", left), ("B", right)):
+        print("  %s: %s" % (name, c.summary()))
+        for line in c.envelope:
+            print("    envelope:", line)
+    return 0
+
+
+def cmd_gate(args) -> int:
+    cert = read_certificate(Path(args.cert))
+    gate = Gate(cert)
+    recs = _records_from(Path(args.records))
+    if args.backend:
+        recs = [r for r in recs if r.backend == args.backend]
+    for r in recs[: args.limit]:
+        d = gate.decide(r)
+        print("%s/%s: action=%s set=%s label=%s why=%s" % (
+            r.backend, r.id, d["action"], d["set"], d.get("label"), d.get("why")))
+    return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
+
+
+def _inventory() -> tuple:
+    """Recompute the inventory when the corpus is on this machine; else read its committed copy.
+
+    The fallback is what makes `verify` runnable on a machine that has never seen the
+    vendored tree -- which is the whole point of a reproduction gate, and the CI case.
+    The label is disclosure only: it never enters the report body, so the report stays
+    byte-identical either way, and it tells `verify` which of its checks are real
+    re-derivations rather than transcriptions of the committed snapshot.
+    """
+    root = _root(argparse.Namespace())
+    if (root / "data" / "manifest.json").exists():
+        return inventory(root), FROM_CORPUS
+    cached = Path(INVENTORY_JSON)
+    if not cached.exists():
+        raise SystemExit("no corpus and no committed %s: nothing to verify against" % cached)
+    return json.loads(cached.read_text()), FROM_SNAPSHOT
+
+
+def cmd_report(args) -> int:
+    records = load_records(Path(RECORDS))
+    inv, _ = _inventory()
+    out = Path(args.out)
+    write_report(build_report(inv, certify_all(records),
+                              {b: len(rs) for b, rs in records.items()}), out)
+    print("wrote %s" % out)
+    return 0
+
+
+def cmd_verify(args) -> int:
+    """Recompute every published number from committed inputs and fail on drift."""
+    checked = total = 0
+    failures = []
+
+    def expect(label, actual, wanted):
+        nonlocal checked, total
+        total += 1
+        if actual == wanted:
+            checked += 1
+        else:
+            failures.append("%s: recomputed %r, published %r" % (label, actual, wanted))
+
+    records = load_records(Path(RECORDS))
+    for backend, path in sorted(CERTS.items()):
+        stored = read_certificate(Path(path))
+        # the real comparison: re-derive the certificate from the committed records
+        fresh = certify_choice(records.get(backend, []), alpha=stored.alpha,
+                               beta=stored.beta, delta=stored.delta,
+                               seed=stored.meta.get("seed", SEED))
+        for field in ("feasible", "reason", "autorate", "autorate_ci", "qhat",
+                      "conditional_error_bound", "marginal_error_bound",
+                      "refusal_rate", "mean_set_size", "n_cal", "n_eval", "envelope"):
+            expect("cert %s.%s" % (backend, field), getattr(fresh, field),
+                   getattr(stored, field))
+        expect("cert %s.summary" % backend, fresh.summary(), stored.summary())
+
+    inv, source = _inventory()
+    rebuilt = build_report(inv, certify_all(records),
+                           {b: len(rs) for b, rs in records.items()})
+    expect("docs/RESULTS.md byte-identical", rebuilt, RESULTS.read_text())
+
+    if source == FROM_CORPUS:
+        for d in inv["digests"]:
+            expect("corpus digest %s" % d["path"], d["actual"], d["expected"])
+        expect_snapshot_is_current(expect, inv)
+        disclosure = "corpus present: inventory, digests and the snapshot all re-derived"
+    else:
+        disclosure = (
+            "corpus absent: %d `SOURCE.json` digests and the inventory snapshot are "
+            "transcribed from the committed %s, not recomputed -- this run cannot see "
+            "whether that snapshot went stale" % (len(inv["digests"]), INVENTORY_JSON))
+
+    print("inventory source: %s" % source)
+    print("disclosure: %s" % disclosure)
+    print("re-derived %d /%d values" % (checked, total))
+    for f in failures:
+        print("DRIFT:", f, file=sys.stderr)
+    return EXIT_DRIFT if failures else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="autorate")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    e = sub.add_parser("export-feishu", help="archive responses -> records")
+    e.add_argument("--out", required=True)
+    e.add_argument("--backend")
+    e.add_argument("--mode")
+    e.add_argument("--repeat", type=int)
+    e.set_defaults(fn=cmd_export_feishu)
+
+    c = sub.add_parser("certify", help="records -> certificate")
+    c.add_argument("records")
+    c.add_argument("--backend")
+    c.add_argument("--mode")
+    c.add_argument("--alpha", type=float, default=ALPHA)
+    c.add_argument("--beta", type=float, default=BETA)
+    c.add_argument("--delta", type=float, default=0.05)
+    c.add_argument("--seed", type=int, default=SEED)
+    c.add_argument("--out", default="cert.json")
+    c.set_defaults(fn=cmd_certify)
+
+    m = sub.add_parser("compare", help="two certificates side by side")
+    m.add_argument("files", nargs=2)
+    m.set_defaults(fn=cmd_compare)
+
+    g = sub.add_parser("gate", help="apply a certificate to records")
+    g.add_argument("records")
+    g.add_argument("--cert", required=True)
+    g.add_argument("--backend")
+    g.add_argument("--limit", type=int, default=20)
+    g.set_defaults(fn=cmd_gate)
+
+    r = sub.add_parser("report", help="write docs/RESULTS.md from the inputs")
+    r.add_argument("--out", default=str(RESULTS))
+    r.set_defaults(fn=cmd_report)
+
+    v = sub.add_parser("verify", help="re-derive every published number")
+    v.set_defaults(fn=cmd_verify)
+    return p
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

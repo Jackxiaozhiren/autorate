@@ -1,0 +1,46 @@
+{
+  "alpha": 0.05,
+  "autorate": null,
+  "autorate_ci": null,
+  "beta": 0.05,
+  "conditional_error_bound": null,
+  "delta": 0.05,
+  "envelope": [
+    "no certificate exists, so no action is certified",
+    "exchangeability within group assumed; none of it is usable here"
+  ],
+  "feasible": false,
+  "grid_alpha": null,
+  "level": 0.9,
+  "marginal_error_bound": null,
+  "mean_set_size": null,
+  "meta": {
+    "alpha": 0.05,
+    "automated": 22,
+    "beta": 0.05,
+    "closest_attempt": {
+      "automated": 22,
+      "conditional_error_bound": 0.8400586961448866,
+      "empties": 0,
+      "errors": 15,
+      "grid_alpha": 0.28,
+      "multi_label": 74,
+      "observed_automation_rate": 0.22916666666666666,
+      "observed_conditional_error": 0.6818181818181818,
+      "qhat": 0.7756000000000001
+    },
+    "detail": "no set size on the grid meets the conditional error budget 0.050; closest attempt at grid_alpha=0.28 automated 22/96 with 15 errors (bound 0.840)",
+    "errors_among_automated": 15,
+    "grid_size": 29,
+    "seed": 7,
+    "skipped_no_gold": 0,
+    "skipped_wrong_qtype": 768,
+    "total_labelled": 192
+  },
+  "method": "aps",
+  "n_cal": 96,
+  "n_eval": 96,
+  "qhat": null,
+  "reason": "empty_feasible_set",
+  "refusal_rate": null
+}
