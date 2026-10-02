@@ -161,7 +161,12 @@ def inventory(root: Path) -> dict:
         "upstream_audit_stdout_tail": audit.stdout[-400:],
         "upstream_audit_stderr_tail": audit.stderr[-400:],
         "audit_interpreter": _interpreter_label(cmd[0]),
-        "min_calibration_n": manifest.get("cases", len(ids)),
+        # What upstream's own manifest DECLARES, with no fallback to our recount: the
+        # old `min_calibration_n` published the corpus's total case count under a
+        # floor-shaped name and substituted `len(ids)` when the manifest said nothing.
+        # The calibration half is the certifier's (`n_cal_cases`), and the floor is
+        # `certify_choice.MIN_CAL`; neither quantity is owned here.
+        "manifest_declared_cases": manifest.get("cases"),
         "probs_not_closing": unclosed,
         "sum_tolerance": SUM_TOL,
         "per_ask_gold": gold,

@@ -271,7 +271,6 @@ def test_write_inventory_refuses_a_corpus_whose_audit_failed(tmp_path):
         "upstream_audit_rc": 1,
         "upstream_audit_stdout_tail": "",
         "upstream_audit_stderr_tail": "boom",
-        "min_calibration_n": 1,
         "digests": [],
         "gaps": [],
         "audit_interpreter": sys.version.split()[0],
@@ -309,7 +308,7 @@ def _render() -> str:
         "unique_ids": 64, "repeats": [0, 1, 2], "families": ["lifecycle"],
         "label_counts": {"todo": 16}, "provenance": "p",
         "upstream_audit_rc": 0, "upstream_audit_stdout_tail": "",
-        "upstream_audit_stderr_tail": "", "min_calibration_n": 64,
+        "upstream_audit_stderr_tail": "",
         "digests": [],
         "gaps": ["g"], "audit_interpreter": "python", "corpus_options": corpus_options(),
     }
@@ -364,3 +363,77 @@ def test_audit_is_invoked_with_bytecode_writing_disabled():
     cmd, env = audit_command(UPSTREAM)
     assert env.get("PYTHONDONTWRITEBYTECODE") == "1"
     assert cmd[-2:] == ["audit.py"] or str(cmd[-1]).endswith("audit.py")
+
+
+def _tiny_corpus(tmp_path: Path, *, declare_cases=None, n_ids: int = 2) -> Path:
+    """A corpus root small enough to build in a test, so both CI lanes run these.
+
+    `inventory()` shells out to upstream's audit with `cwd=root`, so the stub `audit.py`
+    is the only integrity verdict a synthetic corpus can carry; the real one is asserted
+    by the corpus-gated tests above.
+    """
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    manifest = {"asks": {"a1": "question?"}, "labels": {"a": 1}, "families": ["f"],
+                "provenance": "test-fixture"}
+    if declare_cases is not None:
+        manifest["cases"] = declare_cases
+    (tmp_path / "data" / "manifest.json").write_text(json.dumps(manifest))
+    lines = [json.dumps({"id": "c%d" % i, "expected": "a"}) for i in range(n_ids)]
+    (tmp_path / "data" / "cases.jsonl").write_text("\n".join(lines) + "\n")
+    rows = [json.dumps({
+        "id": "c%d" % i, "mode": "choice", "repeat": 0, "status": "ok", "expected": "a",
+        "response": {"model": "m", "answers": {"category": {
+            "type": "choice", "choice": "a",
+            "probabilities": {"a": 0.5, "b": 0.5}}}}}) for i in range(n_ids)]
+    for backend in ("laya", "jev"):
+        d = tmp_path / "results" / "v1" / backend
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "raw.jsonl").write_text("\n".join(rows) + "\n")
+    (tmp_path / "audit.py").write_text("import sys\nsys.exit(0)\n")
+    return tmp_path
+
+
+def _inventory_keys() -> list:
+    return sorted(json.loads(Path("data/inventory.md.json").read_text()))
+
+
+def test_the_published_inventory_names_no_key_that_claims_a_calibration_number():
+    """`min_calibration_n` published the corpus's TOTAL case count under a floor-shaped name.
+
+    It was never a minimum, never the calibration half (R-44's case-level split puts ~32 of
+    the 64 cases there), and never asserted by a test -- while the real floor is
+    `certify_choice.MIN_CAL` and the real calibration size is the certifier's own published
+    `n_cal_cases`. A published name that claims a quantity this module never measured is the
+    same defect class as the 151,674-row over-claim the same file already confesses to.
+    """
+    keys = _inventory_keys()
+    assert len(keys) > 20, "reading a stub artefact would make this pass by being empty"
+    bad = [k for k in keys if "calibration" in k]
+    assert bad == [], bad
+
+
+def test_that_calibration_key_check_proves_it_can_fire():
+    """The guard must be able to catch the historical key, before and after it is gone.
+
+    Asserting a count delta rather than an empty list keeps this control meaningful once
+    the fix lands: it proves the predicate fires exactly once per injected key, so the guard
+    above cannot be green because its filter matched nothing at all.
+    """
+    keys = _inventory_keys()
+    clean = [k for k in keys if "calibration" in k]
+    caught = [k for k in keys + ["min_calibration_n"] if "calibration" in k]
+    assert len(caught) == len(clean) + 1, (clean, caught)
+
+
+def test_a_manifest_that_declares_no_case_count_publishes_none_not_our_recount(tmp_path):
+    d = inventory(_tiny_corpus(tmp_path, n_ids=2))
+    assert d["unique_ids"] == 2
+    assert d["manifest_declared_cases"] is None, (
+        "the fallback to len(ids) published a number this module counted as if the manifest "
+        "had declared it")
+
+
+def test_the_declared_case_count_stays_the_manifest_s_even_where_we_disagree(tmp_path):
+    d = inventory(_tiny_corpus(tmp_path, declare_cases=7, n_ids=2))
+    assert d["manifest_declared_cases"] == 7, "recounting would hide a manifest/archive gap"
+    assert d["unique_ids"] == 2

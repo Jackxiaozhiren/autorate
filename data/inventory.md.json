@@ -131,7 +131,7 @@
     "four_noul/jev": 192,
     "four_noul/laya": 192
   },
-  "min_calibration_n": 64,
+  "manifest_declared_cases": 64,
   "per_ask_gold": {
     "asks": [
       "action",
