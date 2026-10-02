@@ -41,19 +41,19 @@ def _draw(rng, k, sharpness, error_rate=0.0, jitter=0.0):
     return gold, [x / s for x in p]
 
 
-def _one_trial(seed, k, sharpness, error_rate=0.0):
+def _one_trial(seed, k, sharpness, error_rate=0.0, jitter=0.0):
     """Returns raw counts, not rates: rates multiply wrongly and rounding hides it."""
     rng = random.Random(seed)
     cal_scores = []
     for _ in range(N_CAL):
-        g, p = _draw(rng, k, sharpness, error_rate)
+        g, p = _draw(rng, k, sharpness, error_rate, jitter)
         cal_scores.append(aps_score(p, g, rng.random()))
     qhat, vacuous = split_quantile(cal_scores, ALPHA)
     if vacuous:
         return None
     misses = autom = auto_wrong = empties = multi = size_sum = 0
     for _ in range(N_EVAL):
-        g, p = _draw(rng, k, sharpness, error_rate)
+        g, p = _draw(rng, k, sharpness, error_rate, jitter)
         C = conformal_set(p, qhat, rng.random(), "aps")
         size_sum += len(C)
         if g not in C:
@@ -95,37 +95,87 @@ def test_marginal_coverage_holds_within_the_derived_allowance(k, sharpness):
         % (violations, TRIALS, slack, worst))
 
 
-@pytest.mark.parametrize("k,sharpness", [(4, 6.0), (4, 1.2), (20, 3.0)])
-def test_the_set_is_never_vacuous_and_its_refusal_mass_is_bounded(k, sharpness):
-    """Non-vacuity plus the over-refusal mass that randomized sets produce.
+@pytest.mark.parametrize("k,sharpness,jitter",
+                         [(4, 6.0, 0.0), (4, 1.2, 1.5), (20, 3.0, 1.5)])
+def test_the_refusal_mass_is_an_identity_at_the_certified_level(k, sharpness, jitter):
+    """R-17: an empty certified set is a REFUSAL, part of the mass the rate excludes.
 
-    Measured, not assumed: with `u` drawn fresh at prediction time the argmax label's
-    score is `u * p_max > 0`, so when qhat falls below it the certified set is EMPTY.
-    An empty set is a REFUSAL, not an error, and it must be counted: a certificate that
-    ignores it overstates how much of the traffic it automates.
+    Two things were wrong with the first version. Its assertion compared an empty-set
+    count against the coverage level -- different quantities -- and on every shape it
+    swept the empties were 0, so the inequality could not fail and proved nothing about
+    refusals. Measured here: with the three non-gold options exactly tied (jitter=0) APS
+    admits a tie together or not at all, so a set is a singleton or the whole ballot, the
+    mean size cannot fall below 1, and sharpness 6.0 and 1.2 produced IDENTICAL counts --
+    a collapsed harness, not a proof. The jittered rows break the tie, so partial sets, a
+    mean size between the poles, and the real refusal mass appear.
     """
-    total = empty = autom = size_sum = 0
-    for t in range(TRIALS):
-        r = _one_trial(777000 + t, k, sharpness)
+    total = empty = autom = multi = size_sum = 0
+    for trial in range(TRIALS):
+        r = _one_trial(777000 + trial, k, sharpness, jitter=jitter)
         assert r is not None
         total += N_EVAL
         empty += r["empties"]
         autom += r["autom"]
+        multi += r["multi"]
         size_sum += int(round(r["mean_size"] * N_EVAL))
-    assert total > 0
     mean_size = size_sum / total
     assert 0.0 < mean_size < k, "vacuous or degenerate: mean set size %.4f" % mean_size
-    empty_rate = empty / total
-    slack = 3.0 * math.sqrt(ALPHA * (1.0 - ALPHA) / total)
-    assert empty_rate <= ALPHA + slack, (
-        "refusal mass %.4f exceeds alpha+%.4f" % (empty_rate, slack))
-    # The decomposition is an identity, not an inequality: every evaluated case is
-    # empty, singleton, or multi-label, and `autom + empty <= total` was satisfied by
-    # any two of the three counts being wrong.
-    for t2 in range(1):
-        r = _one_trial(777000, k, sharpness)
-        assert r["autom"] + r["empties"] + r["multi"] == N_EVAL, r
+    # An identity, not an inequality: a sum over two of the three buckets passes with any
+    # one of them wrong.
+    assert autom + empty + multi == total, (autom, empty, multi, total)
+    # Measured at the certified level (alpha=0.05): the threshold sits above every label's
+    # own score floor, so nothing is empty here. The empty branch is exercised in the next
+    # test, at the levels where shrinking a set can exclude the truth.
+    assert empty == 0, "empties appeared at the certified level: re-read the claim"
 
+
+@pytest.mark.parametrize("level", [0.90, 0.95])
+def test_the_empty_branch_appears_once_the_set_shrinks(level):
+    """R-17 was triggered by a measured mean set size below 1, which needs empties.
+
+    So the claim is checked where it can hold: a looser coverage level drives qhat under
+    the top label's score, sets go empty, and an automation rate that ignored them would
+    be counting refusals as successes.
+    """
+    global ALPHA
+    saved = ALPHA
+    empties = autom = multi = total = 0
+    try:
+        ALPHA = level
+        for trial in range(TRIALS):
+            r = _one_trial(500000 + trial, 4, 6.0, jitter=1.5)
+            assert r is not None
+            total += N_EVAL
+            empties += r["empties"]
+            autom += r["autom"]
+            multi += r["multi"]
+    finally:
+        ALPHA = saved
+    assert autom + empties + multi == total, (autom, empties, multi, total)
+    # Measured at both levels with this seed family: empties appear and are a minority.
+    assert 0 < empties < total / 2, (empties, total)
+
+
+@pytest.mark.parametrize("k,sharpness", [(4, 6.0), (4, 1.2), (20, 3.0)])
+def test_a_looser_coverage_level_never_misses_less(k, sharpness):
+    """Coverage must move monotonically with alpha: a smaller set misses more often.
+
+    Sweeping the grid was retired from the certifier (R-28), so this is where the shape
+    of that assumption gets measured instead.
+    """
+    global ALPHA
+    saved = ALPHA
+    rows = []
+    try:
+        for a in (0.05, 0.35, 0.65):
+            ALPHA = a
+            r = _one_trial(99000, k, sharpness)
+            assert r is not None
+            rows.append((a, r["misses"] / N_EVAL))
+    finally:
+        ALPHA = saved
+    assert all(later >= earlier for (_, earlier), (_, later) in zip(rows, rows[1:])), rows
+    assert rows[-1][1] > rows[0][1], "identical misses across levels: the sweep collapsed"
 
 @pytest.mark.parametrize("k,sharpness,error_rate", [(4, 6.0, 0.3), (4, 1.2, 0.4),
                                                    (20, 3.0, 0.25)])

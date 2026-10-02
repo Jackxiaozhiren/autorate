@@ -51,7 +51,7 @@ def corpus_label(root: Path) -> str:
     An absolute `/Users/<name>/...` literal in a committed artefact passes every local
     gate, survives a clean-clone re-run on the same disk, and only shows up in the one
     environment nobody can see. A checkout-relative label carries the same information
-    and is portable. tests/test_inventory.py guards the class.
+    and is portable. tests/test_cli.py guards the class.
     """
     root = Path(root).resolve()
     return "/".join(root.parts[-4:])
@@ -73,7 +73,7 @@ def _audit_python(root: Path) -> str:
     for parent in (root, *list(root.parents)[:3]):
         venv = parent / ".venv" / "bin" / "python"
         if venv.exists():
-            return str(venv)
+            return str(venv.resolve())
     return sys.executable
 
 
@@ -272,7 +272,7 @@ def write_inventory(d: dict, out: Path) -> None:
     lines = [
         "# Offline data inventory",
         "",
-        "Produced by `python -m autorate.cli snapshot` -- every number here is computed",
+        "Produced by `uv run --frozen autorate snapshot` -- every number here is computed",
         "from the corpus or opened from a file, and the count basis is named per row.",
         "",
         "- corpus: `%s`" % d["source"],

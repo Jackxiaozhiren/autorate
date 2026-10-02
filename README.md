@@ -6,16 +6,21 @@ A benchmark answers "how good is the model". A certificate answers a question an
 operator can actually be held to: "what share of this model's decisions may run
 unattended while keeping the probability that an automated decision is wrong at most
 `beta`, given the held-out data we really have". When the data cannot support that
-claim, `autorate` prints `NOT_CERTIFIABLE` with a reason code and the closest attempt
-it made, and exits 3. It does not publish a number about nothing.
+claim, `autorate` prints `NOT_CERTIFIABLE` with a reason code, the observation at the
+requested coverage that caused it, and a diagnostic sweep of the neighbouring coverage
+levels -- evidence for the refusal, not a certificate. It exits 3 and does not publish a
+number about nothing.
 
 ## What a certificate carries
 
-`feasible`, `reason`, `backend`, `alpha`, `beta`, `delta`, `level`, `method`,
-`autorate`, `autorate_ci`, `conditional_error_bound`, `marginal_error_bound`,
-`mean_set_size`, `qhat`, `n_cal`, `n_eval`, `envelope`, `meta`. `refusal_rate` is
-derived as `1 - autorate` rather than stored, because every evaluated case is empty,
-singleton, or multi-label -- one number, one owner.
+Stored: `feasible`, `reason`, `backend`, `method`, `alpha`, `beta`, `delta`, `autorate`,
+`autorate_ci`, `conditional_error_bound`, `marginal_error_bound`, `mean_set_size`,
+`qhat`, `n_cal`, `n_eval`, `envelope`, `meta`.
+
+Derived, never stored, because each is a pure function of a stored field -- storing them
+gave one number two owners and a guard that could not see the disagreement: `refusal_rate`
+= `1 - autorate` (every evaluated case is empty, singleton, or multi-label) and `level`
+= `1 - N_CLAIMS * delta` (three bounds are published per certificate).
 
 Two of those rows carry the whole argument:
 

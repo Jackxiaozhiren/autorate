@@ -15,7 +15,6 @@ from ..records import NOUL_SLOTS, SUM_TOL, Record
 BACKENDS = ("laya", "jev")
 MODES = ("choice", "four_noul")
 CHOICE_QUESTION = "category"
-NOUL_ASKS = ("action", "related", "urgent", "value")
 
 
 def _quarantine(obj: dict, backend: str, probs, reason: str) -> dict:

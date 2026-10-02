@@ -17,6 +17,17 @@ EXIT_CERTIFIED = 0
 EXIT_NOT_CERTIFIABLE = 3
 EXIT_USAGE = 2
 EXIT_DRIFT = 4
+
+
+class UsageError(ValueError):
+    """The inputs are wrong: no corpus to read, no snapshot to fall back to.
+
+    It used to be `SystemExit("<text>")`, which Python exits with **1** for -- a code the
+    README does not document and which no test could pin. Carrying ValueError means
+    `main`'s existing mapping turns it into EXIT_USAGE and the contract closes.
+    """
+
+
 RESULTS = Path("docs/RESULTS.md")
 INVENTORY_MD = Path("data/inventory.md")
 FROM_CORPUS = "recomputed from the corpus"
@@ -86,7 +97,7 @@ def _root(args) -> Path:
 def _require_root(args) -> Path:
     root = _root(args)
     if root is None or not (root / "data" / "manifest.json").exists():
-        raise SystemExit(
+        raise UsageError(
             "no corpus found: pass --root or set AUTORATE_FEISHU_ROOT (looked for a "
             "sibling `laya*/research/benchmarks/feishu_zh`)")
     return root
@@ -126,12 +137,15 @@ def cmd_certify(args) -> int:
 
 RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
 
-NON_CHOICE_REASON = "qtype_not_covered"
-# Every number a certificate publishes that verify re-derives. It is a named constant so
-# the corpus-less lane can assert a count DERIVED from it instead of a typed one.
-CERT_COMPARE_FIELDS = ("feasible", "reason", "backend", "autorate", "autorate_ci", "qhat",
-                       "conditional_error_bound", "marginal_error_bound",
-                       "refusal_rate", "mean_set_size", "n_cal", "n_eval", "envelope")
+# Every number a certificate publishes that verify re-derives, named so the corpus-less
+# lane can assert a count DERIVED from it rather than typed. `method` and `meta` are on the
+# list because the first version omitted them: a certificate edited to "method": "lac"
+# verified 56/56 green and the gate then automated with a rule nobody measured, and
+# `meta.eval_ids` -- which `compare` prints a pairing claim from -- was free to invent.
+CERT_COMPARE_FIELDS = ("feasible", "reason", "backend", "method", "meta", "autorate",
+                       "autorate_ci", "qhat", "conditional_error_bound",
+                       "marginal_error_bound", "refusal_rate", "mean_set_size", "n_cal",
+                       "n_eval", "envelope")
 
 
 def _rubric(cert) -> dict:
@@ -142,12 +156,14 @@ def cmd_compare(args) -> int:
     """Print only what was actually checked; `compare` has no authority to pair anything."""
     labels = (Path(args.files[0]).name, Path(args.files[1]).name)
     certs = tuple(read_certificate(Path(f)) for f in args.files)
+    not_comparable = False
     rubrics = [_rubric(c) for c in certs]
     off = [f for f in RUBRIC_FIELDS if rubrics[0][f] != rubrics[1][f]]
     if off:
         print("comparable: NO -- the two sides disagree on %s" % ", ".join(
             "%s (%s=%r, %s=%r)" % (f, labels[0], rubrics[0][f], labels[1], rubrics[1][f])
             for f in off))
+        not_comparable = True
     else:
         print("comparable: yes -- identical %s" % ", ".join(
             "%s=%s" % (f, rubrics[0][f]) for f in RUBRIC_FIELDS))
@@ -156,6 +172,7 @@ def cmd_compare(args) -> int:
     if None in backends or backends[0] == backends[1] or not all(ids):
         print("halves not paired: subjects %r, evaluation ids named %r" % (
             backends, [len(x) for x in ids]))
+        not_comparable = True
     else:
         print("evaluation halves: %s has %d records over %d distinct request ids, %s has "
               "%d over %d, and they have %d request ids in common" % (
@@ -165,7 +182,7 @@ def cmd_compare(args) -> int:
         print("  %s: %s" % (name, c.summary()))
         for line in c.envelope:
             print("    envelope:", line)
-    return 0
+    return EXIT_USAGE if not_comparable else 0
 
 
 def cmd_gate(args) -> int:
@@ -199,7 +216,7 @@ def _inventory() -> tuple:
         return inventory(root), FROM_CORPUS
     cached = Path(INVENTORY_JSON)
     if not cached.exists():
-        raise SystemExit("no corpus and no committed %s: nothing to verify against" % cached)
+        raise UsageError("no corpus and no committed %s: nothing to verify against" % cached)
     return json.loads(cached.read_text()), FROM_SNAPSHOT
 
 

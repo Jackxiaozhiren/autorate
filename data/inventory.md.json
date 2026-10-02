@@ -1,5 +1,5 @@
 {
-  "audit_interpreter": "laya-0.3.20/.venv/bin/python",
+  "audit_interpreter": "Versions/3.12/bin/python3.12",
   "corpus_options": [
     {
       "basis": "scanned from results/v1/{laya,jev}/raw.jsonl",

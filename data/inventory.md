@@ -1,13 +1,13 @@
 # Offline data inventory
 
-Produced by `python -m autorate.cli snapshot` -- every number here is computed
+Produced by `uv run --frozen autorate snapshot` -- every number here is computed
 from the corpus or opened from a file, and the count basis is named per row.
 
 - corpus: `laya-0.3.20/research/benchmarks/feishu_zh`
 - unique ids: **64**   repeats: [0, 1, 2]
 - slice keys (families): `conditional`, `cross_chat`, `knowledge`, `lifecycle`, `ownership`, `thread_context`, `untrusted_content`, `urgency`
 - label balance: {'urgent': 16, 'todo': 16, 'valuable': 16, 'noise': 16}
-- upstream `audit.py` exit code: **0** (interpreter `laya-0.3.20/.venv/bin/python`)
+- upstream `audit.py` exit code: **0** (interpreter `Versions/3.12/bin/python3.12`)
 - provenance: AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.
 - upstream `SOURCE.json` file digests: **9/9 match**
 

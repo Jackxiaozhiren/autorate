@@ -28,9 +28,6 @@ def split_quantile(scores: Sequence[float], alpha: float) -> tuple:
     k = math.ceil((1.0 - alpha) * (n + 1))
     if k > n:
         return 1.0, True
-    if k < 1:
-        raise ValueError("alpha=%r drives the corrected index below 1 on n=%d; the coverage "
-                         "floor must stay inside (0,1)" % (alpha, n))
     return float(sorted(float(s) for s in scores)[k - 1]), False
 
 

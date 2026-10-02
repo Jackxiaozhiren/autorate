@@ -37,9 +37,19 @@ class Gate:
                 "set size OVERRIDDEN to qhat=%.4f (certificate measured %.4f); the "
                 "published automation rate and error bounds do not describe this "
                 "threshold" % (self.qhat_override, self.cert.qhat)]
-        if self.cert.backend is not None and record.backend != self.cert.backend:
+        if not self.cert.feasible:
+            # Ordered first on purpose: a refusal has no threshold to apply to anything,
+            # so its reason is more fundamental than whose traffic this is.
+            return {"action": "abstain", "certified": False, "set": None, "label": None,
+                    "reason": self.cert.reason, "why": "certificate refused",
+                    "u": record.u, "envelope": envelope}
+        if self.cert.backend != record.backend:
             # A certificate certifies ONE model's traffic. Applying jev's threshold to a
-            # laya record published "auto" for a backend that was never calibrated.
+            # laya record published "auto" for a backend that was never calibrated. The
+            # test is equality rather than "skip when unknown": a mixed-subject
+            # certificate (backend None) measured nobody's traffic, so it authorises
+            # nothing -- leaving it unguarded made the R-29 guard inert for exactly the
+            # certificate whose subject is least certain.
             return {"action": "abstain", "certified": False, "set": None, "label": None,
                     "reason": "subject_mismatch",
                     "why": "this certificate was measured on %r, not %r" % (
@@ -49,10 +59,6 @@ class Gate:
             return {"action": "abstain", "certified": False, "set": None, "label": None,
                     "reason": "qtype_not_covered",
                     "why": "not a choice question; this certificate covers choice only",
-                    "u": record.u, "envelope": envelope}
-        if not self.cert.feasible:
-            return {"action": "abstain", "certified": False, "set": None, "label": None,
-                    "reason": self.cert.reason, "why": "certificate refused",
                     "u": record.u, "envelope": envelope}
         C = conformal_set(record.probs, self.threshold, record.u, self.method)
         kind = classify_set(C)

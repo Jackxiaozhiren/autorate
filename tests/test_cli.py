@@ -73,7 +73,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     from autorate.cli import CERT_COMPARE_FIELDS
 
     expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 1
-    assert total == expected == 29, (total, expected, p.stdout)
+    assert total == expected, (total, expected, p.stdout)
 
 
 def test_report_is_byte_identical_with_and_without_the_corpus(tmp_path):
@@ -185,10 +185,14 @@ def test_compare_refuses_to_call_different_rubrics_comparable(tmp_path):
     assert c.returncode in (0, 3), c.stdout + c.stderr
     p = run("compare", "data/cert_jev.json", str(off))
     assert "comparable: NO" in p.stdout, p.stdout
+    assert p.returncode == 2, (p.returncode, p.stdout)  # not comparable is an input error
     for f in ("alpha", "beta", "seed"):
         assert f in p.stdout.splitlines()[0] or f in p.stdout, f
+    # The same file twice shares a subject, so it is not a pair: the tool must say the
+    # halves are not paired and exit 2, not quietly report a comparison of one thing.
     q = run("compare", "data/cert_jev.json", "data/cert_jev.json")
-    assert "comparable: yes" in q.stdout, q.stdout
+    assert "halves not paired" in q.stdout, q.stdout
+    assert q.returncode == 2, (q.returncode, q.stdout)
 
 
 @skip
@@ -237,6 +241,65 @@ def test_installed_console_script_exit_codes(tmp_path):
     assert noargs.returncode == 2, (noargs.returncode, noargs.stderr)
 
 
+def test_verify_sees_an_edited_method_or_meta(tmp_path):
+    """The re-review's Important item: verify's compared list omitted `method` and `meta`.
+
+    A certificate edited to method=lac verified 56/56 green, and `meta.eval_ids` -- which
+    `compare` prints its pairing claim from -- was free to invent. Each field is planted
+    with a different defect and each must turn the gate red.
+    """
+    for field, mutate in (("method", lambda d: d.update(method="lac")),
+                          ("meta", lambda d: d["meta"].update(eval_ids=["invented-0"]))):
+        work = tmp_path / field
+        for d in ("data", "docs"):
+            shutil.copytree(REPO / d, work / d)
+        cert = work / "data" / "cert_jev.json"
+        doc = json.loads(cert.read_text())
+        mutate(doc)
+        cert.write_text(json.dumps(doc, sort_keys=True))
+        assert doc["method"] == "lac" if field == "method" else \
+            doc["meta"]["eval_ids"] == ["invented-0"], "tampering did not land"
+        r = run("verify", cwd=work)
+        assert r.returncode == 4, (field, r.returncode, r.stdout, r.stderr)
+        assert "cert jev.%s" % field in r.stderr, (field, r.stderr)
+
+
+def test_no_corpus_is_a_usage_error_not_rc_one(tmp_path):
+    """I-1 again: `_require_root` raised SystemExit(text), which Python exits with 1."""
+    for cmd in (["snapshot"], ["export-feishu", "--out", str(tmp_path / "r.jsonl")]):
+        r = run(*cmd, root=Path("/nonexistent-corpus-dir"))
+        assert r.returncode == 2, (cmd, r.returncode, r.stdout, r.stderr)
+        assert "Traceback" not in r.stderr, r.stderr
+        assert "no corpus found" in r.stderr, (cmd, r.stderr)
+
+
+def test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error(tmp_path):
+    work = tmp_path / "no_data"
+    (work / "data").mkdir(parents=True)
+    shutil.copytree(REPO / "docs", work / "docs")
+    shutil.copy(REPO / "data" / "records_feishu.jsonl", work / "data")
+    shutil.copy(REPO / "data" / "cert_laya.json", work / "data")
+    shutil.copy(REPO / "data" / "cert_jev.json", work / "data")
+    r = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+    assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
+    assert "nothing to verify against" in r.stderr, r.stderr
+
+
+def test_a_mixed_subject_certificate_gates_nothing():
+    """The R-29 guard was inert for backend=None: it skipped the comparison it needed."""
+    cert = json.loads((REPO / "data" / "cert_jev.json").read_text())
+    cert["backend"] = None
+    from autorate.certificate import Certificate
+    from autorate.gate import Gate
+    from autorate.records import Record
+    c = Certificate.from_dict(cert)
+    rec = Record(id="x", qtype="choice", backend="jev", repeat=0,
+                 options=("a", "b", "c", "d"), probs=(0.9, 0.03, 0.03, 0.04), gold="a",
+                 predicted="a", slices={}, scores={}, seed=1, u=0.0, meta={})
+    d = Gate(c).decide(rec)
+    assert d["action"] == "abstain" and d["reason"] == "subject_mismatch", d
+
+
 def test_a_missing_input_is_a_usage_error_not_a_traceback(tmp_path):
     """I-1: rc 1 was reachable outside the documented 0/2/3/4 contract."""
     p = run("certify", str(tmp_path / "nope.jsonl"), "--out", str(tmp_path / "c.json"))
@@ -267,7 +330,7 @@ def test_the_inventory_names_a_command_the_cli_actually_has(tmp_path):
     corpus still catches a header that names a command nobody implemented.
     """
     header = (REPO / "data" / "inventory.md").read_text().splitlines()[2]
-    named = __import__("re").search(r"autorate\.cli ([a-z-]+)", header)
+    named = __import__("re").search(r"`uv run --frozen autorate ([a-z-]+)`", header)
     assert named, header
     help_text = __import__("autorate.cli", fromlist=["build_parser"]).build_parser(
     ).format_help()

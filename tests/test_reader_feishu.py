@@ -1,4 +1,8 @@
-"""Task 5: the feishu_zh reader. No field is invented, and no order is normalised.
+"""Task 5: the feishu_zh reader. No field is invented, and no OPTION order is normalised.
+
+Asks inside a `four_noul` line are emitted in sorted order, which is a stable record order
+for the archive; the option order of a `choice` line is never touched, because that is the
+order the backend published and the probabilities are keyed to it.
 
 Measured facts this suite encodes (2026-10-01, from the archive itself):
 - laya presents options as urgent,todo,valuable,noise; jev presents the SAME case as

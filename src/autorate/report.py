@@ -172,11 +172,11 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "that refuses is the correct output. A published number here would be a number "
         "about nothing." % scores[("laya", "choice")],
         "- The evaluation halves hold %d and %d RECORDS over %d and %d distinct request "
-        "ids (the corpus repeats each case three times), and %d request ids are in common. "
+        "ids (the corpus repeats each case %d times), and %d request ids are in common. "
         "So the pair is a case-by-case comparison only where they overlap; the rest is two "
         "marginal certificates on the same corpus." % (
             certs["laya"].n_eval, certs["jev"].n_eval, len(ids["laya"]), len(ids["jev"]),
-            shared),
+            len(inv["repeats"]), shared),
         "- n_eval is ~96 because the corpus has 64 unique cases. Per-slice certification, "
         "the ordinal `score` family and the `noul` budgets are Plan B, gated on a corpus with "
         "enough records to bound them.",
