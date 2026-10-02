@@ -234,6 +234,21 @@ def cmd_snapshot(args) -> int:
     return 0
 
 
+def _rendered_inventory(inv: dict) -> str:
+    """What `write_inventory` would render from these inputs, written to a scratch file.
+
+    The committed markdown is a published artefact and the snapshot beside it is what a
+    corpus-less `verify` reads, so the pair has to be checked against each other wherever
+    they are -- the renderer needs no corpus, only the dict.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "inventory.md"
+        write_inventory(inv, out)
+        return out.read_text()
+
+
 def cmd_report(args) -> int:
     records = load_records(Path(RECORDS))
     inv, _ = _inventory()
@@ -273,6 +288,8 @@ def cmd_verify(args) -> int:
     rebuilt = build_report(inv, certify_all(records),
                            {b: len(rs) for b, rs in records.items()})
     expect("docs/RESULTS.md byte-identical", rebuilt, RESULTS.read_text())
+    expect("data/inventory.md byte-identical", _rendered_inventory(inv),
+           INVENTORY_MD.read_text())
 
     if source == FROM_CORPUS:
         for d in inv["digests"]:

@@ -1,7 +1,35 @@
-"""Exact binomial tails, with no scipy. n up to a few thousand is the whole design space."""
+"""The closed-form intervals a certificate publishes. No scipy; n up to a few thousand.
+
+Owns both the exact binomial tail with its Clopper-Pearson inversion, and the DKW-style
+width behind the automation-rate interval. The width lived in `inventory.py` until the
+whole-branch review pointed out what that meant: the certifier imported the module that
+spawns subprocesses and transcribes upstream manifests in order to do arithmetic.
+
+`alpha` here is the tail of an interval. It is not the `alpha` on a certificate, which is
+the coverage floor of the set -- the plan names both `alpha`, so the collision is
+documented rather than renamed.
+"""
 from __future__ import annotations
 
 import math
+
+ALPHA_DEFAULT = 0.05
+
+
+def bound_width(n: int, alpha: float = ALPHA_DEFAULT) -> float:
+    """Width of the two-sided DKW-style interval on an automation-rate estimate.
+
+    2 * sqrt(ln(2/alpha) / (2n)). The honest answer to "is this corpus big enough to
+    certify anything", and the reason a refusal is a result.
+    """
+    if n <= 1:
+        return float("inf")
+    return 2.0 * math.sqrt(math.log(2.0 / alpha) / (2.0 * n))
+
+
+def n_feasible(unique_n: int, alpha: float = ALPHA_DEFAULT,
+               max_bound_width: float = 0.10) -> bool:
+    return bound_width(unique_n, alpha) <= max_bound_width
 
 
 def binom_cdf(k: int, n: int, p: float) -> float:

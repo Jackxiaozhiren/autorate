@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import subprocess
 import sys
@@ -17,25 +16,12 @@ from pathlib import Path
 from typing import Optional
 
 from .records import SUM_TOL
+# The interval arithmetic has one home (tails.py); this module reads it and publishes it,
+# so the inventory's feasibility verdict and the certificate's interval cannot drift apart.
+from .tails import bound_width, n_feasible
 
 MODES = ("choice", "four_noul")
 BACKENDS = ("laya", "jev")
-ALPHA_DEFAULT = 0.05
-
-
-def bound_width(n: int, alpha: float = ALPHA_DEFAULT) -> float:
-    """Width of the two-sided DKW-style interval on an automation-rate estimate.
-
-    2 * sqrt(ln(2/alpha) / (2n)). It is the honest answer to "is this corpus big
-    enough to certify anything", and it is why a refusal is a result.
-    """
-    if n <= 1:
-        return float("inf")
-    return 2.0 * math.sqrt(math.log(2.0 / alpha) / (2.0 * n))
-
-
-def n_feasible(unique_n: int, alpha: float = ALPHA_DEFAULT, max_bound_width: float = 0.10) -> bool:
-    return bound_width(unique_n, alpha) <= max_bound_width
 
 
 def _interpreter_label(path: str) -> str:
@@ -278,9 +264,11 @@ def write_inventory(d: dict, out: Path) -> None:
         "- corpus: `%s`" % d["source"],
         "- unique ids: **%d**   repeats: %s" % (d["unique_ids"], d["repeats"]),
         "- slice keys (families): %s" % ", ".join("`%s`" % f for f in d["families"]),
-        "- label balance: %s" % d["label_counts"],
-        "- upstream `audit.py` exit code: **%d** (interpreter `%s`)" % (
-            d["upstream_audit_rc"], d["audit_interpreter"]),
+        "- label balance: %s" % ", ".join("%s=%d" % kv for kv in sorted(
+            d["label_counts"].items())),
+        "- upstream `audit.py` exit code: **%d** (the interpreter that ran it is recorded "
+        "in `%s.json`, because it is a path on one machine and stale for every other "
+        "reader)" % (d["upstream_audit_rc"], out.name),
         "- provenance: %s" % d["provenance"],
     ]
     if d["digests"]:

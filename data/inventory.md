@@ -6,8 +6,8 @@ from the corpus or opened from a file, and the count basis is named per row.
 - corpus: `laya-0.3.20/research/benchmarks/feishu_zh`
 - unique ids: **64**   repeats: [0, 1, 2]
 - slice keys (families): `conditional`, `cross_chat`, `knowledge`, `lifecycle`, `ownership`, `thread_context`, `untrusted_content`, `urgency`
-- label balance: {'urgent': 16, 'todo': 16, 'valuable': 16, 'noise': 16}
-- upstream `audit.py` exit code: **0** (interpreter `Versions/3.12/bin/python3.12`)
+- label balance: noise=16, todo=16, urgent=16, valuable=16
+- upstream `audit.py` exit code: **0** (the interpreter that ran it is recorded in `inventory.md.json`, because it is a path on one machine and stale for every other reader)
 - provenance: AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.
 - upstream `SOURCE.json` file digests: **9/9 match**
 

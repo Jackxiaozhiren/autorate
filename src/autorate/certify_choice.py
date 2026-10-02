@@ -25,8 +25,7 @@ from typing import Optional, Sequence
 
 from .certificate import N_CLAIMS, Certificate, Reason
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
-from .tails import clopper_pearson_upper
-from .inventory import bound_width
+from .tails import bound_width, clopper_pearson_upper
 
 MIN_CAL = 60
 MIN_EVAL = 60

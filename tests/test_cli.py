@@ -72,7 +72,9 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # list rather than typed, so a row that quietly disappears changes the expectation too.
     from autorate.cli import CERT_COMPARE_FIELDS
 
-    expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 1
+    # two certificates x (each compared field + its summary), then the two published
+    # artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md
+    expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 2
     assert total == expected, (total, expected, p.stdout)
 
 
@@ -373,6 +375,18 @@ def test_snapshot_command_reproduces_the_committed_inventory(tmp_path):
         "the committed inventory is not what `snapshot` writes"
     assert json.loads((Path(str(out) + ".json")).read_text()) == \
         json.loads((REPO / "data" / "inventory.md.json").read_text())
+
+
+def test_verify_catches_an_edited_inventory_markdown(tmp_path):
+    """The published inventory is now byte-checked in both lanes, so prove it can fail."""
+    for d in ("data", "docs"):
+        shutil.copytree(REPO / d, tmp_path / d)
+    doc = tmp_path / "data" / "inventory.md"
+    doc.write_text(doc.read_text().replace("label balance: noise=16", "label balance: noise=99"))
+    assert "noise=99" in doc.read_text(), "tampering did not land"
+    p = run("verify", cwd=tmp_path)
+    assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
+    assert "data/inventory.md byte-identical" in p.stderr, p.stderr
 
 
 def test_no_committed_file_carries_an_absolute_home_path():

@@ -6,9 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_package_imports_and_declares_version():
+def test_package_version_has_one_owner():
+    import tomllib
+
     import autorate
 
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    assert autorate.__version__ == declared, (autorate.__version__, declared)
     assert autorate.__version__.count(".") == 2
 
 
@@ -30,13 +34,31 @@ def test_lock_is_committed_and_up_to_date_with_pyproject():
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+def _ci_lint_command() -> list:
+    """Read the gate's own command out of ci.yml rather than restating it here.
+
+    Two literals for one gate is how a lint rule list drifts: this test would stay green
+    while the runner stopped checking the same things.
+    """
+    import re
+
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    line = [l for l in text.splitlines() if "ruff check" in l]
+    assert len(line) == 1, line
+    step = line[0].strip().lstrip("-").strip()
+    assert step.startswith("run:"), step
+    command = step.split("run:", 1)[1].split("|")[0]
+    return [tok.strip("\"'") for tok in re.findall(r"[^\s]+", command)]
+
+
 def test_ruff_gate_matches_the_upstream_shape():
-    proc = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "src", "tests",
-         "--select=E9,F63,F7,F82,F401,F811", "--line-length=120"],
-        capture_output=True, text=True, cwd=ROOT,
-    )
+    cmd = _ci_lint_command()
+    assert cmd[:4] == ["uv", "run", "--frozen", "ruff"], cmd
+    proc = subprocess.run([sys.executable, "-m", *cmd[3:]],
+                          capture_output=True, text=True, cwd=ROOT)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert any(tok.startswith("--select=") for tok in cmd), cmd
+    assert any(tok.startswith("--line-length=") for tok in cmd), cmd
 
 
 def test_declared_console_script_entry_point_resolves_and_runs():
