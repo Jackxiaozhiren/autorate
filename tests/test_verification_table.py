@@ -158,3 +158,50 @@ def test_the_spec_does_not_re_assert_a_withdrawn_identifier_without_citing_its_r
             if token in line and guard not in line:
                 bad.append((n, token, line[:80]))
     assert not bad, "withdrawn identifier without its ledger row: %s" % bad
+
+def test_every_ledger_row_sits_under_its_own_table_header():
+    """The defect this guards: a row appended after prose renders as text, not a table.
+
+    The `competitor-age-stars-packaging` row was found that way -- counted by the census,
+    invisible on the page. So the check is block structure: every contiguous run of `|`
+    lines that holds ledger rows must open with the five-column header and a delimiter
+    row. A cell-count check was tried and rejected -- these rows quote grep patterns
+    containing `|`, so counting separators reported ten columns on a five-column table.
+    """
+    blocks = _table_blocks(DOC.read_text())
+    assert len(blocks) >= 2, "expected one table per ledger section"
+    total = 0
+    for head, rows in blocks:
+        assert head.strip().startswith("| id | claim |"), head[:40]
+        assert rows and set(rows[0].strip()) <= set("|-: "), rows[:1]
+        total += len(rows) - 1
+    assert total == CENSUS_ROWS, total
+
+
+def _table_blocks(body: str) -> list:
+    """(header line, [delimiter, ...rows]) per contiguous `|` run holding ledger rows."""
+    out, buf = [], []
+    for line in body.splitlines() + [""]:
+        if line.lstrip().startswith("|"):
+            buf.append(line)
+            continue
+        if any(l.lstrip().startswith("| id=") for l in buf):
+            out.append((buf[0], buf[1:]))
+        buf = []
+    return out
+
+
+def test_the_block_check_proves_it_can_fire():
+    """The orphan-row defect, planted: a ledger row with no header above it."""
+    body = DOC.read_text()
+    lines = body.splitlines(keepends=True)
+    prose = [i for i, l in enumerate(lines)
+             if l.strip() and not l.lstrip().startswith("|") and not l.startswith("#")]
+    assert prose, "no prose to plant against"
+    planted = ("\n| id=planted-orphan | a claim | https://e | 2026-10-02 | "
+               "status: verified |\n")
+    broken = "".join(lines[:prose[0]] + [planted] + lines[prose[0]:])
+    orphans = [head for head, _ in _table_blocks(broken)
+               if not head.strip().startswith("| id | claim |")]
+    assert orphans, "the check cannot see a headerless row"
+    assert not [h for h, _ in _table_blocks(body) if not h.strip().startswith("| id | claim |")]

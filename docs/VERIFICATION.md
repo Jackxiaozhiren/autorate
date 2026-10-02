@@ -59,7 +59,7 @@ permalinks and the local tree the same bytes.
 | id=ordinal-cp-literature-size | §1's "roughly four papers and no implementation" is wrong in both halves (counted 2026-09-30 by one arXiv abstract query, so the count is a floor, not a census). Six ordinal-CP works are openable: arXiv 2207.02238 (Lu, Angelopoulos and Pomerantz, 2022; the authors' own repository records it as a MICCAI 2022 paper), UAI 2023 PMLR 216:2346-2355 (arXiv 2405.00417), COPA 2024 PMLR 230:120-139 (arXiv 2404.16610), NeurIPS 2023 (row above), AAAI-26 (row above, arXiv 2511.16845) and arXiv 2606.24959. Four of them ship public research code (xrty/OCP, clu5/lumbar-conformal, yx8njit/ordinal-conformal-risk-control, stefanahaas41/rps-ordinal-conformal-prediction), so "no implementation" is false; the defensible weaker claim, made in §1 now, is that none is a maintained library | https://export.arxiv.org/api/query?search_query=abs:%22ordinal%22+AND+abs:%22conformal+prediction%22 (the query that enumerated them) | 2026-09-30 | status: verified |
 | id=laya-vendored-tree-matches-tag | the ten `[local]` rows above are re-openable at the tag, not merely on this laptop: `git hash-object` of each vendored file equals the blob SHA listed by the v0.3.20 recursive tree for `laya/common.py`, `README.md`, `laya/hooks.py`, `laya/serve.py`, `research/scripts/bench_apps.py`, `research/eval/README.md`, `research/eval/metamorphic.py`, `research/benchmarks/feishu_zh/README.md`, `research/README.md` and `AGENTS.md`. Only `laya/integrations/langchain.py` differs from the tag, and that difference is the author's own unsubmitted patch, which is why no row above cites a line of it | https://api.github.com/repos/NandhaKishorM/laya/git/trees/v0.3.20?recursive=1 | 2026-09-30 | status: verified |
 
-## Rows re-opened at code level (R-7) and added by R-9
+## Rows re-opened at code level (R-7, R-9, R-10) and added by R-11
 
 These rows carry the same five columns as the table above; the header and the delimiter are repeated
 so the block is a GFM table rather than a paragraph. They are kept separate because each was opened
@@ -126,4 +126,12 @@ at a pinned commit of a third-party repository, or at a paper's own PDF, rather 
   a re-grep confirms the plan now contains zero occurrences of either dead name.
 * The star count and the PyPI availability are dated observations; any text that re-quotes them
   re-opens them.
+## Row re-measured after the owed-items list (R-11)
+
+It was appended after the bullet list above with no header, so it rendered as a list
+continuation rather than a ledger row -- found by the whole-branch review, and the block
+check in `tests/test_verification_table.py` now fails the build if that happens again.
+
+| id | claim | primary source | opened | status |
+|---|---|---|---|---|
 | id=competitor-age-stars-packaging | age, stars and packaging of the three open conformal-gate projects cited in §1 | `gh api repos/<r>`: Manavarya09/verdict 2 stars created 2026-09-23 pushed 2026-09-24; FeiLiuEM/open-medical-jev 38 created 2026-09-25; rupeshpoojary9/poorjev 10 created 2026-09-19 (a search result a day earlier said 11, so the figure moves). PyPI JSON endpoints: open-medical-jev 404, verdict 200, poorjev 200 -- the two 200s name registered projects of unknown ownership, so packaging is NOT asserted, only immaturity | https://api.github.com/repos/rupeshpoojary9/poorjev and https://pypi.org/pypi/verdict/json | 2026-10-01 | status: verified |

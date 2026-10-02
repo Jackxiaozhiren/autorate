@@ -1585,6 +1585,11 @@ def certify_choice(records, alpha: float = 0.05, beta: float = 0.05, delta: floa
     cal_scores = _scores(cal, method)
     best: Optional[Certificate] = None
     saw_vacuous = False
+    # SUPERSEDED -- do not implement this loop. R-28 (whole-branch review I-4) removed the
+    # grid search: it chose a coverage level on the evaluation half and then bounded the
+    # error on that same half, while printing the requested alpha. The shipped certifier
+    # takes qhat from split_quantile(cal_scores, alpha) alone; the grid survives only as a
+    # diagnostic attached to refusals. R-44 then moved every denominator to cases.
     for a in (grid or DEFAULT_GRID):
         qhat, vacuous = split_quantile(cal_scores, a)
         if vacuous:
@@ -2371,7 +2376,7 @@ Tasks 1–7 shipped with these differences from their specification. Each is als
 | D2 | Task 1's `test_lock_is_committed_and_frozen_run_does_not_rewrite_it` | renamed `test_lock_is_committed_and_up_to_date_with_pyproject`, asserts `uv lock --check` exit 0 | the byte-compare around a plain interpreter run can never fail (R-2) |
 | D3 | Task 1 has no entry-point guard | added `test_declared_console_script_entry_point_resolves_and_exits_zero`; Task 9 must convert it to a subprocess `returncode` check | neither ruff nor compileall resolves an entry-point string (R-5, R-6) |
 | D4 | Task 2's test has 4 tests and `ROW` id class `[a-z0-9]+` | 6 tests; widened id class; a census test that emits and asserts the counts | the plan's own regex matched 0 of 45 delivered rows, so the gate was blind (review I-1, I-2) |
-| D5 | Task 2 assumed 8 unresolved claims | 14 unresolved rows were found; ledger now 45 rows / 39 verified / 6 withdrawn, counts produced by the gate | the earlier web pass had invented a venue (UAI 2023, not AISTATS) and an acronym (KIGEL does not exist in the paper it was attributed to) |
+| D5 | Task 2 assumed 8 unresolved claims | 14 unresolved rows were found; census owned by the gate that prints it (see the correction in this row) | the earlier web pass had invented a venue (UAI 2023, not AISTATS) and an acronym (KIGEL does not exist in the paper it was attributed to). **Corrected by review finding I-4: the row counts are not restated here.** `tests/test_verification_table.py::test_ledger_census_matches_the_published_counts` emits and asserts the census, and spec §17 quotes its line; a typed copy in a plan goes stale on the next row and no gate reads this file |
 | D6 | Task 3's `records_by_mode_backend` | renamed `lines_by_mode_backend`; `n_feasible` expectations use measured widths (n=64 → 0.3395, not feasible at 0.25) | one word with two denominators; and the drafted assertion could never pass (PF-11, R-13) |
 | D7 | Task 3 | added `per_ask_gold()` and a named-quarantine gap for the one archived line whose probabilities sum to 0.99 | measured corpus defects belong in the inventory, not in a workaround |
 | D8 | Task 4's entropy claim ("0.85 ≈ p_max 0.93 at k=4") | measured: k=2 0.9785, k=4 0.9609, k=20 0.9319, k=51 0.9203 — stricter at small k, and 0.93 was the k=20 value | an earlier hand computation was wrong in value and direction (R-15); spec §7.4 now carries the table |
@@ -2380,5 +2385,16 @@ Tasks 1–7 shipped with these differences from their specification. Each is als
 | D11 | Tasks 7 and 8 | `joint_error_bound` **removed** (it was the marginal event under a second name); `Certificate` gained `refusal_rate`/`mean_set_size` and two consistency guards; `Certificate.refused` carries `closest_attempt` diagnostics; `Task 8` split into 8a (certificate, done with Task 7) and 8b (gate) | one number one owner (R-20); a refusal with no evidence is unauditable (R-21); Task 7 could not be tested without the type Task 8 defined |
 | D12 | Task 7's synthetic generator `_records` | takes `error_rate`, and a test pins that it produces wrong argmaxes | the drafted generator always peaked on gold, so `errors_among_automated` was 0 at every difficulty and the error-budget sweep proved nothing |
 
-First real certificates, for context when Task 9 lands: `laya` → `NOT_CERTIFIABLE / empty_feasible_set` (22 of 96 automated, 15 errors, bound 0.840); `jev` → autorate 1.000 with conditional bound 0.031 at n_eval 96, which is the k=0 closed form `1 − 0.05^(1/96) = 0.03074` and therefore a bound rather than a precision claim.
+First real certificates, for context when Task 9 lands — and superseded twice by review. What Task 9 first published was `laya` → `NOT_CERTIFIABLE / empty_feasible_set` and `jev` → certified `autorate 1.000, conditional ≤ 0.031` at `n_eval = 96`. The whole-branch review found the denominator behind that row invalid: the split was over archive records, so 44 of jev's 53 evaluation cases also sat in its calibration half, and the repeats are not independent observations (laya's three per case are byte-identical). After R-44 both backends refuse — laya because no evaluation case yields a single-label set at coverage 0.95, jev because a zero-error run over 32 cases bounds at 0.089 against a 0.050 budget. The current numbers are the ones `autorate report` emits in `docs/RESULTS.md`; nothing in this plan quotes a certificate value any more.
+
+
+## Plan A close-out deviations (added after D1-D12, at review time)
+
+| # | Deviation | What changed | Why |
+|---|---|---|---|
+| D13 | Task 4's Interfaces named `noul_as_confidence` as the third confidence scale | not implemented; no export, no test | Spec §7's three-field audit (gate G2) is the only consumer and it is Plan B/C work. Ruled **in Plan B's `noul` task**, not dropped: the name is recorded here so no later dispatch treats the plan text as a live surface |
+| D14 | Certificate shape changed twice after Task 8's review | removed `grid_alpha`, stored `refusal_rate`, stored `level`, `meta.grid_size`; added `backend`, `case_id` on records, `meta.eval_ids`/`cal_ids`, `n_cal_cases`/`n_eval_cases`/`automated_cases`/`erroneous_cases` | R-28 (no selected coverage level), R-29 (a certificate names its subject), R-30/R-31 (derived, not stored), R-44 (the bound's unit is the case). `Certificate.from_dict` now refuses a stored artefact that does not match, naming the fields — a version tag is ruled into Plan B |
+| D15 | `verify` compares `meta` and `method` | the whole-branch re-review found the compared-field list omitted both: a certificate edited to `method: lac` verified green and the gate automated with an unmeasured rule | R-42; both fields now have planted-defect tests |
+| D16 | File structure never listed `report.py`, `snapshot`, or the case key | `src/autorate/report.py` owns the published document, `autorate snapshot` owns `data/inventory.md(.json)`, `Record.case_id` owns the split unit | They were created by Task 9 and by review, not by the plan; this row is the amendment so Plan B reads one list |
+| D17 | Plan A publishes no certified row | both backends refuse at alpha=beta=0.05 on a 64-case corpus | The tool's own feasibility table said a 5% claim was out of reach before any certificate was written. Publishing one anyway would have made Plan A a demonstration of the opposite of what it argues |
 
