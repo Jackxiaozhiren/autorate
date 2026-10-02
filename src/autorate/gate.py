@@ -70,7 +70,11 @@ class Gate:
         else:
             action, why, label = "escalate", "certified set has %d labels" % len(C), None
         return {
-            "action": action, "certified": True, "bound": self.cert.alpha,
+            # `bound` used to hold alpha -- the coverage level -- next to `beta`, which
+            # is not a bound on anything either. The number that bounds an automated
+            # decision is the certificate's conditional error bound, so it is on the row.
+            "action": action, "certified": True, "coverage_alpha": self.cert.alpha,
+            "error_bound": self.cert.conditional_error_bound,
             "beta": self.cert.beta, "why": why, "set": C, "label": label,
             "u": record.u, "method": self.method, "qhat": self.threshold,
             "envelope": envelope,

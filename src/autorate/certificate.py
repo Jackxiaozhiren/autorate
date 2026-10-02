@@ -110,10 +110,13 @@ class Certificate:
     @classmethod
     def refused(cls, reason: Reason, alpha: float, beta: float, n_cal: int, n_eval: int,
                 detail: str, meta: Optional[dict] = None, delta: float = 0.05,
-                backend: Optional[str] = None) -> "Certificate":
+                backend: Optional[str] = None,
+                method: str = "aps") -> "Certificate":
+        # `method` is a rubric field: compare() treats it as one, and a refusal that
+        # reports "aps" while the caller asked for LAC records a rule it never ran.
         return cls(
             feasible=False, reason=reason.value, alpha=alpha, beta=beta, delta=delta,
-            method="aps", backend=backend, qhat=None, autorate=None, autorate_ci=None,
+            method=method, backend=backend, qhat=None, autorate=None, autorate_ci=None,
             conditional_error_bound=None, marginal_error_bound=None, mean_set_size=None,
             n_cal=n_cal, n_eval=n_eval,
             envelope=("no certificate exists, so no action is certified",

@@ -50,13 +50,37 @@ def _eligible(records: Sequence):
     return kept, dropped
 
 
+def case_key(record) -> str:
+    return record.case_id or record.id
+
+
 def split_cal(records: Sequence, seed: int = 0):
+    """Split by CASE, not by record.
+
+    A random record-level split put repeats of the same case in both halves: measured on
+    the committed archive, 44 of the 53 cases in jev's evaluation half also sat in its
+    calibration half, so the quantile was fixed on the very cases later held out to test
+    it. That violates the exchangeability unit of the guarantee rather than loosening it.
+    Whole cases now go to one side; the halves stay balanced by record count.
+    """
     recs, dropped = _eligible(records)
-    rng = random.Random(seed)
-    idx = list(range(len(recs)))
-    rng.shuffle(idx)
-    half = len(idx) // 2
-    return [recs[i] for i in idx[:half]], [recs[i] for i in idx[half:]], dropped
+    groups = {}
+    for r in recs:
+        groups.setdefault(case_key(r), []).append(r)
+    keys = sorted(groups)
+    random.Random(seed).shuffle(keys)
+    half = len(recs) // 2
+    cal_keys = []
+    seen = 0
+    for k in keys:
+        if seen >= half:
+            break
+        cal_keys.append(k)
+        seen += len(groups[k])
+    inplace = set(cal_keys)
+    cal = [r for k in cal_keys for r in groups[k]]
+    ev = [r for r in recs if case_key(r) not in inplace]
+    return cal, ev, dropped
 
 
 def _scores(records, method: str) -> list:
@@ -65,8 +89,17 @@ def _scores(records, method: str) -> list:
 
 
 def _outcome(ev, qhat, method):
-    """Apply one threshold to the evaluation half. The gate uses the same classification."""
+    """Apply one threshold to the evaluation half, counting CASES as well as records.
+
+    A case is automated only when every one of its archived requests automates -- running a
+    case unattended means running all of it -- and it is erroneous when any automated
+    request in it is wrong. Those two buckets are exhaustive, so refusal = 1 - autorate
+    still holds at the unit the bound is computed on. Record counts stay on the certificate
+    because they are what the gate acts on; they are not a binomial denominator, because
+    repeats of one case are one observation (laya's three per case are byte-identical).
+    """
     autom = err = empties = multi = size_sum = 0
+    cases = {}
     for r in ev:
         C = conformal_set(r.probs, qhat, r.u, method)
         size_sum += len(C)
@@ -79,7 +112,16 @@ def _outcome(ev, qhat, method):
                 err += 1
         else:
             multi += 1
+        g = cases.setdefault(case_key(r), {"decisions": 0, "automated": 0, "wrong": 0})
+        g["decisions"] += 1
+        if kind == "auto":
+            g["automated"] += 1
+            if C[0] != r.gold_index:
+                g["wrong"] += 1
+    auto_cases = [g for g in cases.values() if g["automated"] == g["decisions"]]
     return {"automated": autom, "errors": err, "empties": empties, "multi_label": multi,
+            "n_cases": len(cases), "automated_cases": len(auto_cases),
+            "erroneous_cases": sum(1 for g in auto_cases if g["wrong"]),
             "mean_set_size": size_sum / len(ev) if ev else 0.0}
 
 
@@ -107,47 +149,56 @@ def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
             "eval_ids": sorted(r.id for r in ev), "cal_ids": sorted(r.id for r in cal)}
     if not (cal or ev):
         return Certificate.refused(Reason.NO_GOLD_LABELS, alpha=alpha, beta=beta,
-                                   n_cal=0, n_eval=0, delta=delta, backend=backend,
+                                   n_cal=0, n_eval=0, delta=delta, backend=backend, method=method,
                                    detail="no labelled choice records to calibrate on", meta=meta)
     if len(cal) < MIN_CAL or len(ev) < MIN_EVAL:
         return Certificate.refused(Reason.N_BELOW_MIN, alpha=alpha, beta=beta,
-                                   n_cal=len(cal), n_eval=len(ev), delta=delta, backend=backend,
+                                   n_cal=len(cal), n_eval=len(ev), delta=delta, backend=backend, method=method,
                                    detail="need %d/%d, have %d/%d" % (MIN_CAL, MIN_EVAL,
                                                                       len(cal), len(ev)),
                                    meta=meta)
     cal_scores = _scores(cal, method)
     n_ev = len(ev)
     qhat, vacuous = split_quantile(cal_scores, alpha)
-    half_width = bound_width(n_ev, delta) / 2.0
     observed = _outcome(ev, qhat, method)
     autom, err = observed["automated"], observed["errors"]
+    n_case, auto_case, err_case = (observed["n_cases"], observed["automated_cases"],
+                                   observed["erroneous_cases"])
+    half_width = bound_width(n_case, delta) / 2.0
     meta.update(empties=observed["empties"], multi_label=observed["multi_label"],
-                automated=autom, errors_among_automated=err)
+                automated=autom, errors_among_automated=err, n_eval_cases=n_case,
+                automated_cases=auto_case, erroneous_cases=err_case,
+                n_cal_cases=len({case_key(r) for r in cal}),
+                unit_note="%d evaluation records over %d distinct cases: the bounds use the "
+                          "case denominator, because repeats of one case are one "
+                          "observation" % (n_ev, n_case))
     if vacuous:
         return Certificate.refused(
             Reason.VACUOUS_QUANTILE, alpha=alpha, beta=beta, n_cal=len(cal), n_eval=n_ev,
-            delta=delta, backend=backend,
+            delta=delta, backend=backend, method=method,
             detail="the %.3f-quantile of %d calibration scores is above 1, so every label "
                    "would be certified" % (alpha, len(cal)),
             meta=_with_diagnostic(meta, cal_scores, ev, method, grid, beta, delta))
-    if autom == 0:
+    if autom == 0 or auto_case == 0:
         return Certificate.refused(
             Reason.EMPTY_FEASIBLE_SET, alpha=alpha, beta=beta, n_cal=len(cal), n_eval=n_ev,
-            delta=delta, backend=backend,
+            delta=delta, backend=backend, method=method,
             detail="at coverage %.3f no evaluation case produced a singleton set (%d empty, "
                    "%d multi-label of %d)" % (1.0 - alpha, observed["empties"],
                                               observed["multi_label"], n_ev),
             meta=_with_diagnostic(meta, cal_scores, ev, method, grid, beta, delta))
-    cond_hi = clopper_pearson_upper(err, autom, delta)
-    marg_hi = clopper_pearson_upper(err, n_ev, delta)
-    rate = autom / n_ev
+    cond_hi = clopper_pearson_upper(err_case, auto_case, delta)
+    marg_hi = clopper_pearson_upper(err_case, n_case, delta)
+    rate = auto_case / n_case
     envelope = _BASE_ENVELOPE + (
         "set size fixed by the requested alpha=%.3f (coverage %.3f); no grid selection on "
         "the evaluation half" % (alpha, 1.0 - alpha),
-        "finite-sample: n_cal=%d, n_eval=%d, %d claims at delta=%.3f, joint level %.2f" % (
-            len(cal), n_ev, N_CLAIMS, delta, 1.0 - N_CLAIMS * delta),
-        "empty certified sets counted as refusal, not automation (refusal %.3f)"
-        % ((observed["empties"] + observed["multi_label"]) / n_ev),
+        "finite-sample: bounds on CASES -- %d of %d evaluation cases automated, %d refused; "
+        "record counts n_cal=%d n_eval=%d (%d empty sets, %d multi-label); %d claims at "
+        "delta=%.3f, joint level %.2f" % (
+            auto_case, n_case, n_case - auto_case, len(cal), n_ev, observed["empties"],
+            observed["multi_label"], N_CLAIMS, delta, 1.0 - N_CLAIMS * delta),
+        "empty certified sets counted as refusal, not automation",
     )
     cert = Certificate(
         feasible=True, reason=None, alpha=alpha, beta=beta, delta=delta, method=method,
@@ -161,10 +212,10 @@ def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
     if cond_hi > beta:
         return Certificate.refused(
             Reason.EMPTY_FEASIBLE_SET, alpha=alpha, beta=beta, n_cal=len(cal), n_eval=n_ev,
-            delta=delta, backend=backend,
-            detail="at coverage %.3f the automated set has %d/%d errors, whose exact upper "
-                   "bound %.3f exceeds the budget %.3f" % (1.0 - alpha, err, autom, cond_hi,
-                                                            beta),
+            delta=delta, backend=backend, method=method,
+            detail="at coverage %.3f the %d automated cases include %d carrying a wrong "
+                   "automated request; the exact case-level upper bound %.3f exceeds the "
+                   "budget %.3f" % (1.0 - alpha, auto_case, err_case, cond_hi, beta),
             meta=_with_diagnostic({**meta, "at_requested_alpha": {
                 "automated": autom, "errors": err, "conditional_error_bound": cond_hi}},
                 cal_scores, ev, method, grid, beta, delta))

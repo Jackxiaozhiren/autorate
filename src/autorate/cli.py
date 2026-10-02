@@ -125,13 +125,18 @@ def cmd_export_feishu(args) -> int:
 def cmd_certify(args) -> int:
     recs = _records_from(Path(args.records), backend=args.backend, mode=args.mode)
     cert = certify_choice(recs, alpha=args.alpha, beta=args.beta, delta=args.delta,
-                          seed=args.seed)
+                          seed=args.seed, method=args.method)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(cert.to_json())
     print(cert.summary())
     for line in cert.envelope:
         print("  envelope:", line)
+    if cert.meta.get("diagnostic_curve"):
+        print("  diagnostic sweep: %d coverage levels in meta.diagnostic_curve of %s "
+              "(evidence only; nothing on it was certified)"
+              % (len(cert.meta["diagnostic_curve"]), args.out))
+    print("wrote %s" % args.out)
     return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
 
 
@@ -313,6 +318,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--beta", type=float, default=BETA)
     c.add_argument("--delta", type=float, default=0.05)
     c.add_argument("--seed", type=int, default=SEED)
+    c.add_argument("--method", default="aps", choices=("aps", "lac"),
+                   help="the nonconformity that sizes the set; lac is the comparison arm")
     c.add_argument("--out", default="cert.json")
     c.set_defaults(fn=cmd_certify)
 

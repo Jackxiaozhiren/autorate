@@ -29,10 +29,10 @@ lines are 64 cases repeated. Counting either as sample size flatters the bound.
 
 ## Certificates at coverage 0.95 (alpha=0.05), beta=0.05, seed=7
 
-| backend | verdict | autorate | ci | conditional <= | marginal <= | refusal | mean set size | n_cal/n_eval |
-|---|---|---|---|---|---|---|---|---|
-| laya | **NOT_CERTIFIABLE** (empty_feasible_set) | - | - | - | - | - | - | 96/96 |
-| jev | certified | 1.000 | 0.861..1.000 | 0.031 | 0.031 | 0.000 | 1.00 | 95/96 |
+| backend | verdict | autorate (cases) | ci | conditional <= | marginal <= | refusal | mean set size | records cal/eval | cases cal/eval |
+|---|---|---|---|---|---|---|---|---|---|
+| laya | **NOT_CERTIFIABLE** (empty_feasible_set) | - | - | - | - | - | - | 96/96 | 32/32 |
+| jev | **NOT_CERTIFIABLE** (empty_feasible_set) | - | - | - | - | - | - | 95/96 | 32/32 |
 
 ### Verbatim summaries
 
@@ -40,13 +40,13 @@ lines are 64 cases repeated. Counting either as sample size flatters the bound.
 laya: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=96 n_eval=96; at coverage 0.950 no evaluation case produced a singleton set (0 empty, 96 multi-label of 96)
 ```
 ```
-jev: at coverage 0.950 (alpha=0.050), beta=0.050: autorate 1.000 (ci 0.861..1.000), conditional error <= 0.031, marginal error <= 0.031; refusal (empty or multi-label set) 0.000; mean set size 1.00; joint level 0.85 over 3 claims at delta=0.050; n_cal=95 n_eval=96
+jev: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=95 n_eval=96; at coverage 0.950 the 32 automated cases include 0 carrying a wrong automated request; the exact case-level upper bound 0.089 exceeds the budget 0.050
 ```
 
 ### What this does and does not establish
 
-- The jev row is a **bound**, not a precision claim. With zero errors the exact one-sided bound is `clopper_pearson_upper(0, 96, 0.05)` = 0.0307, i.e. the 0.031 published above. It is a knife-edge: the same n gives 0.0485 with one error and 0.0641 with two, so the 0.05 budget holds only while the model keeps making none.
+- Both rows refuse at alpha=beta=0.05, and the two refusals say different things. laya: at coverage 0.950 not one evaluation case produced a single-label set (0 empty, 96 multi-label of 96 records), so there is nothing it may run unattended. jev: it automates 32 of its 32 evaluation cases with 0 wrong, yet the exact case-level upper bound on a zero-error run at n=32 is 0.089 -- above the 0.050 budget. That is the honest shape of a 64-case corpus: the same data at the record denominator would have looked certifiable, and it is not.
 - The laya row is the project's point, not its problem: on a Chinese workplace corpus where the archived audit scores its choice answers 20/64, a certificate that refuses is the correct output. A published number here would be a number about nothing.
-- The evaluation halves hold 96 and 96 RECORDS over 55 and 53 distinct request ids (the corpus repeats each case 3 times), and 52 request ids are in common. So the pair is a case-by-case comparison only where they overlap; the rest is two marginal certificates on the same corpus.
-- n_eval is ~96 because the corpus has 64 unique cases. Per-slice certification, the ordinal `score` family and the `noul` budgets are Plan B, gated on a corpus with enough records to bound them.
+- The evaluation halves hold 96 and 96 RECORDS over 32 and 32 distinct cases (the corpus repeats each case 3 times) and 32 cases are in common, so the pair is a case-by-case comparison on identical inputs.
+- The bounds are per CASE: repeats of one case are one observation (laya's three per case are byte-identical), so 96 records are 32 cases and the denominators above say which is which. Per-slice certification, the ordinal `score` family and the `noul` budgets are Plan B, gated on a corpus with enough independent cases to bound them.
 - Exchangeability is assumed within a backend and a question shape, not proven; the envelope on each certificate is the machine-readable statement of that limit.

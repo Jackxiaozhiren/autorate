@@ -119,13 +119,13 @@ def test_verify_catches_a_tampered_certificate(tmp_path):
     (tmp_path / "tests").mkdir()
     cert = tmp_path / "data" / "cert_jev.json"
     doc = json.loads(cert.read_text())
-    original = doc["autorate"]
-    doc["autorate"] = round(original - 0.001, 6)
+    original = doc["meta"]["automated_cases"]
+    doc["meta"]["automated_cases"] = original - 1
     cert.write_text(json.dumps(doc, sort_keys=True))
-    assert doc["autorate"] != original, "tampering did not land"
+    assert doc["meta"]["automated_cases"] != original, "tampering did not land"
     p = run("verify", cwd=tmp_path)
     assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
-    assert "cert jev.autorate" in p.stderr, p.stderr
+    assert "cert jev.meta" in p.stderr, p.stderr
     assert "DRIFT" in p.stderr
 
 
@@ -133,7 +133,7 @@ def test_verify_also_catches_a_hand_edited_results_file(tmp_path):
     for d in ("data", "docs"):
         shutil.copytree(REPO / d, tmp_path / d)
     results = tmp_path / "docs" / "RESULTS.md"
-    results.write_text(results.read_text().replace("0.0307", "0.0200"))
+    results.write_text(results.read_text().replace("0.3395", "0.2000"))
     p = run("verify", cwd=tmp_path)
     assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
     assert "RESULTS.md byte-identical" in p.stderr, p.stderr
@@ -152,21 +152,32 @@ def test_export_then_certify_reports_the_quarantine_and_its_exit_code(tmp_path):
         by_backend[d["backend"]] = by_backend.get(d["backend"], 0) + 1
     assert by_backend == {"laya": 960, "jev": 959}
 
-    laya = run("certify", str(recs), "--backend", "laya", "--out", str(tmp_path / "c.json"))
-    assert laya.returncode == 3, laya.stdout + laya.stderr     # 3 == NOT_CERTIFIABLE
-    assert "NOT_CERTIFIABLE" in laya.stdout
-    jev = run("certify", str(recs), "--backend", "jev", "--out", str(tmp_path / "j.json"))
-    assert jev.returncode == 0, jev.stdout + jev.stderr
-    cert = json.loads((tmp_path / "j.json").read_text())
-    assert cert["feasible"] is True and cert["autorate_ci"][0] <= cert["autorate"]
-    assert cert["envelope"], "a certificate without its envelope is invalid output"
+    for backend in ("laya", "jev"):
+        out = tmp_path / ("c_%s.json" % backend)
+        c = run("certify", str(recs), "--backend", backend, "--out", str(out))
+        # Both refuse, and the two refusals say different things: laya automates nothing at
+        # 95% coverage, and jev automates all 32 of its evaluation cases with zero errors
+        # yet still cannot meet a 0.05 budget at n=32 cases. Under the old record-level
+        # split jev "certified" -- on 44 cases that were also in its calibration half.
+        assert c.returncode == 3, (backend, c.stdout, c.stderr)
+        assert "NOT_CERTIFIABLE" in c.stdout, c.stdout
+        doc = json.loads(out.read_text())
+        assert doc["feasible"] is False and doc["envelope"], doc
+        assert doc["meta"]["n_eval_cases"] < doc["n_eval"], doc["meta"]
+        assert "wrote %s" % out in c.stdout, c.stdout
+        assert "diagnostic sweep" in c.stdout, c.stdout
+    lac = run("certify", str(recs), "--backend", "jev", "--method", "lac",
+              "--out", str(tmp_path / "lac.json"))
+    assert json.loads((tmp_path / "lac.json").read_text())["method"] == "lac", lac.stdout
 
 
 def test_compare_prints_both_verdicts_and_never_drops_the_envelope():
     p = run("compare", "data/cert_laya.json", "data/cert_jev.json")
     assert p.returncode == 0, p.stdout + p.stderr
-    assert "NOT_CERTIFIABLE" in p.stdout and "autorate 1.000" in p.stdout
-    assert p.stdout.count("envelope:") >= 5
+    assert p.stdout.count("NOT_CERTIFIABLE") == 2, p.stdout
+    assert "case-level upper bound" in p.stdout, p.stdout
+    # two refusals x the two assumptions a refusal is required to carry
+    assert p.stdout.count("envelope:") >= 4, p.stdout
     # What it claims about pairing is measured, with its denominators named.
     assert "comparable: yes" in p.stdout, p.stdout
     assert "records over" in p.stdout and "request ids in common" in p.stdout, p.stdout
@@ -287,16 +298,29 @@ def test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error(tmp_path):
 
 def test_a_mixed_subject_certificate_gates_nothing():
     """The R-29 guard was inert for backend=None: it skipped the comparison it needed."""
-    cert = json.loads((REPO / "data" / "cert_jev.json").read_text())
-    cert["backend"] = None
+    import random
+
     from autorate.certificate import Certificate
+    from autorate.certify_choice import certify_choice
     from autorate.gate import Gate
     from autorate.records import Record
-    c = Certificate.from_dict(cert)
-    rec = Record(id="x", qtype="choice", backend="jev", repeat=0,
-                 options=("a", "b", "c", "d"), probs=(0.9, 0.03, 0.03, 0.04), gold="a",
-                 predicted="a", slices={}, scores={}, seed=1, u=0.0, meta={})
-    d = Gate(c).decide(rec)
+
+    rng = random.Random(11)
+    recs = []
+    for i in range(400):
+        p = [0.7, 0.1, 0.1, 0.1]
+        rng.shuffle(p)
+        top = p.index(max(p))
+        recs.append(Record(id=str(i), qtype="choice", backend="jev", repeat=0,
+                           options=("a", "b", "c", "d"), probs=tuple(p),
+                           gold=("a", "b", "c", "d")[top],
+                           predicted=("a", "b", "c", "d")[top], slices={}, scores={},
+                           seed=11, u=0.0, meta={}))
+    live = certify_choice(recs, alpha=0.05, beta=0.20, seed=3)
+    assert live.feasible is True, live.summary()
+    assert Gate(live).decide(recs[0])["action"] == "auto"
+    stripped = Certificate(**{**live.to_dict(), "backend": None})
+    d = Gate(stripped).decide(recs[0])
     assert d["action"] == "abstain" and d["reason"] == "subject_mismatch", d
 
 

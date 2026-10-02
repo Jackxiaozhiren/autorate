@@ -96,6 +96,11 @@ class Record:
     probs: tuple
     gold: Optional[str]
     predicted: Optional[str]
+    # Upstream's own case identity (`request_sha256`). Repeats of one case are NOT
+    # independent observations -- measured on the committed archive: laya's three repeats
+    # per case carry byte-identical probability vectors, so 192 records are 64
+    # observations -- and a split that ignores this puts the same case in both halves.
+    case_id: Optional[str] = None
     slices: dict = field(default_factory=dict)
     scores: dict = field(default_factory=dict)
     seed: int = 0
@@ -153,6 +158,7 @@ class Record:
             "id": self.id, "qtype": self.qtype, "backend": self.backend,
             "repeat": self.repeat, "options": list(self.options),
             "probs": list(self.probs), "gold": self.gold, "predicted": self.predicted,
+            "case_id": self.case_id,
             "slices": dict(self.slices), "scores": dict(self.scores),
             "seed": self.seed, "u": self.u, "meta": dict(self.meta),
         }

@@ -27,10 +27,14 @@ Two of those rows carry the whole argument:
 - `conditional_error_bound` is `P(wrong | automated) <= beta`. `marginal_error_bound`
   is `P(wrong AND automated)`. They are different quantities, and a paper or a dashboard
   that quotes one while meaning the other is the failure mode this tool exists to stop.
+- Both are over **cases**, not archive rows. Repeats of one case are one observation -- on
+  this corpus each case appears three times per backend, and one backend's repeats are
+  byte-identical -- so the `n` in every bound counts cases and the record counts are
+  published beside it instead of standing in for it.
 - `envelope` is the machine-readable statement of what the bound assumed -- coverage
   level, group conditioning, drift, and how empty sets were counted. A certificate read
   without its envelope is invalid output, so `certify`, `compare` and `gate` all print it.
-- `alpha` is the coverage the certificate delivers, not a label on it. An earlier version
+- `alpha` is the coverage floor the certificate is held to, not a label on it. An earlier version
   swept a grid of coverage levels for the largest automation rate and tested the winner on
   the same evaluation half, then printed "at alpha=0.050" while operating at 0.89
   coverage. Selecting on the test half is snooping, so the set size now comes from the
@@ -85,11 +89,16 @@ that can see the corpus, where a stale key goes red.
 ## What is here, and what is not
 
 The first paired certificate pair is published in `docs/RESULTS.md`: on the archived
-Chinese workplace corpus, one backend certifies and the other refuses at the same
-budgets and the same 95% coverage. The refusal is the finding, not a defect: at that
-coverage the refusing backend never produced a single-label certified set, so there was
-nothing to automate -- a model that scores poorly on a corpus should not be able to buy
-an automation rate on it.
+Chinese workplace corpus **both backends refuse** at alpha = beta = 0.05, for different
+reasons. One automates nothing at 95% coverage -- not one evaluation case produced a
+single-label set. The other automates all 32 of its evaluation cases with zero errors, and
+a zero-error run over 32 cases still bounds at 0.089 against a 0.05 budget.
+
+That is the result, not a shortfall: the corpus holds 64 independent cases, and the
+project's own feasibility table said a 5% claim was out of reach before any certificate was
+written. A tool that certified anyway would have been selling the exact thing this one
+refuses to sell. Both evaluation halves cover the same 32 cases, so the pair is compared
+case by case on identical inputs.
 
 Covered: the `choice` primitive, marginal two-sided control, APS and LAC set sizes,
 Clopper-Pearson one-sided bounds, and the gate that turns a certificate into

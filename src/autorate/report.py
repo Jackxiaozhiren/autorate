@@ -131,20 +131,26 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "## Certificates at coverage %.2f (alpha=%.2f), beta=%.2f, seed=%d" % (
             1.0 - ALPHA, ALPHA, BETA, SEED),
         "",
-        "| backend | verdict | autorate | ci | conditional <= | marginal <= | refusal | mean set size | n_cal/n_eval |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| backend | verdict | autorate (cases) | ci | conditional <= | marginal <= | "
+        "refusal | mean set size | records cal/eval | cases cal/eval |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for b in BACKENDS:
         c = certs[b]
         if c.feasible:
             lo, hi = c.autorate_ci
-            lines.append("| %s | certified | %.3f | %.3f..%.3f | %.3f | %.3f | %.3f | %.2f | %d/%d |"
+            lines.append("| %s | certified | %.3f | %.3f..%.3f | %.3f | %.3f | %.3f | %.2f "
+                         "| %d/%d | %d/%d |"
                          % (b, c.autorate, lo, hi, c.conditional_error_bound,
                             c.marginal_error_bound, c.refusal_rate, c.mean_set_size,
-                            c.n_cal, c.n_eval))
+                            c.n_cal, c.n_eval, c.meta["n_cal_cases"],
+                            c.meta["n_eval_cases"]))
         else:
-            lines.append("| %s | **NOT_CERTIFIABLE** (%s) | - | - | - | - | - | - | %d/%d |"
-                         % (b, c.reason, c.n_cal, c.n_eval))
+            lines.append("| %s | **NOT_CERTIFIABLE** (%s) | - | - | - | - | - | - | %d/%d "
+                         "| %s/%s |"
+                         % (b, c.reason, c.n_cal, c.n_eval,
+                            c.meta.get("n_cal_cases", "-"),
+                            c.meta.get("n_eval_cases", "-")))
     lines += ["", "### Verbatim summaries", ""]
     for b in BACKENDS:
         lines.append("```")
@@ -154,32 +160,39 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "",
         "### What this does and does not establish",
         "",
-        "- The jev row is a **bound**, not a precision claim. With zero errors the exact "
-        "one-sided bound is `clopper_pearson_upper(0, %d, %.2f)` = %.4f, i.e. the %.3f "
-        "published above. It is a knife-edge: the same n gives %.4f with one error and %.4f "
-        "with two, so the %.2f budget holds only while the model keeps making none." % (
-            certs["jev"].n_eval, certs["jev"].delta,
-            clopper_pearson_upper(0, certs["jev"].n_eval, certs["jev"].delta),
-            certs["jev"].conditional_error_bound,
-            clopper_pearson_upper(1, certs["jev"].n_eval, certs["jev"].delta),
-            clopper_pearson_upper(2, certs["jev"].n_eval, certs["jev"].delta),
-            certs["jev"].beta)
-        if certs["jev"].feasible and certs["jev"].meta.get("errors_among_automated") == 0 else
-        "- Both backends refuse at these budgets, or certify with errors above zero; the "
-        "table and the summaries above carry the numbers either way.",
+        "- Both rows refuse at alpha=beta=0.05, and the two refusals say different things. "
+        "laya: at coverage 0.950 not one evaluation case produced a single-label set (%d "
+        "empty, %d multi-label of %d records), so there is nothing it may run unattended. "
+        "jev: it automates %d of its %d evaluation cases with %d wrong, yet the exact "
+        "case-level upper bound on a zero-error run at n=%d is %.3f -- above the %.3f "
+        "budget. That is the honest shape of a %d-case corpus: the same data at the record "
+        "denominator would have looked certifiable, and it is not." % (
+            certs["laya"].meta.get("empties", 0), certs["laya"].meta.get("multi_label", 0),
+            certs["laya"].n_eval, certs["jev"].meta["automated_cases"],
+            certs["jev"].meta["n_eval_cases"], certs["jev"].meta["erroneous_cases"],
+            certs["jev"].meta["n_eval_cases"],
+            clopper_pearson_upper(0, certs["jev"].meta["n_eval_cases"],
+                                  certs["jev"].delta), certs["jev"].beta,
+            inv["unique_ids"]),
         "- The laya row is the project's point, not its problem: on a Chinese workplace "
         "corpus where the archived audit scores its choice answers %s, a certificate "
         "that refuses is the correct output. A published number here would be a number "
         "about nothing." % scores[("laya", "choice")],
-        "- The evaluation halves hold %d and %d RECORDS over %d and %d distinct request "
-        "ids (the corpus repeats each case %d times), and %d request ids are in common. "
-        "So the pair is a case-by-case comparison only where they overlap; the rest is two "
-        "marginal certificates on the same corpus." % (
+        ("- The evaluation halves hold %d and %d RECORDS over %d and %d distinct cases (the "
+         "corpus repeats each case %d times) and %d cases are in common, so the pair is a "
+         "case-by-case comparison on identical inputs." if shared == len(ids["laya"])
+         == len(ids["jev"]) else
+         "- The evaluation halves hold %d and %d RECORDS over %d and %d distinct cases (the "
+         "corpus repeats each case %d times) and only %d cases are in common, so the pair is "
+         "a case-by-case comparison where they overlap and two marginal certificates "
+         "elsewhere.") % (
             certs["laya"].n_eval, certs["jev"].n_eval, len(ids["laya"]), len(ids["jev"]),
             len(inv["repeats"]), shared),
-        "- n_eval is ~96 because the corpus has 64 unique cases. Per-slice certification, "
-        "the ordinal `score` family and the `noul` budgets are Plan B, gated on a corpus with "
-        "enough records to bound them.",
+        "- The bounds are per CASE: repeats of one case are one observation (laya's three "
+        "per case are byte-identical), so %d records are %d cases and the denominators above "
+        "say which is which. Per-slice certification, the ordinal `score` family and the "
+        "`noul` budgets are Plan B, gated on a corpus with enough independent cases to bound "
+        "them." % (certs["jev"].n_eval, certs["jev"].meta["n_eval_cases"]),
         "- Exchangeability is assumed within a backend and a question shape, not proven; the "
         "envelope on each certificate is the machine-readable statement of that limit.",
         "",

@@ -12,8 +12,8 @@ The commit body says `45 passed overall`. The full-suite gate printed:
 ```
 
 The 45 was summed from an earlier focused run instead of read off the suite output. The
-commit was not amended (it is local and unpushed, and history is preferred over message
-accuracy); this entry is the correction, and the ledger repeats the measured number.
+commit was not amended (history is preferred over message accuracy); this entry is the
+correction, and the ledger repeats the measured number.
 
 ## 2026-10-01 — commit `a106cd2` quoted the wrong test count, again
 
@@ -77,3 +77,30 @@ so a spec that re-publishes withdrawn claims passed CI. Two responses, both land
 
 The hazard itself is gone: the two copies were collapsed to one file, with the workspace path now a
 symlink into the repository, so there is no longer a stale twin to copy backwards.
+
+
+## 2026-10-02 — the first certified number was computed on the wrong denominator
+
+`docs/RESULTS.md` published a jev row reading `autorate 1.000`, `conditional error <=
+0.031`. A whole-branch review found the denominator behind it was wrong, and the number
+went with it.
+
+What was measured afterwards, on the same committed inputs:
+
+- the split was over archive **records**, so repeats of one case landed on both sides: 44
+  of the 53 distinct cases in jev's evaluation half were also in its calibration half, and
+  the quantile was fixed on the cases later held out to test it;
+- the bound divided by 96 records where the corpus supplies 64 independent cases, and laya's
+  three records per case are byte-identical, so the repeats were not three observations;
+- at the case denominator, a zero-error run over 32 evaluation cases bounds at **0.089**,
+  above the 0.050 budget. The row is a refusal, not a certification.
+
+Both backends now refuse on this corpus, which is what the project's own n-feasibility
+table (`data/inventory.md`, width 0.3395 at n=64, "feasible at 0.10: no") had said all
+along. The certificate pair is still the deliverable — two refusals with their reasons and
+their observations — and the pair is now genuinely paired: both evaluation halves cover the
+same 32 cases.
+
+**Rule adopted (ledger R-44): the unit of certification is the case, and the bound's
+denominator is stated next to every published rate.** The record counts stay on the
+certificate because they are what the gate acts on, but they are never the `n`.

@@ -2,13 +2,14 @@
 import pytest
 
 from autorate.certificate import Certificate, Reason
-from autorate.certify_choice import split_cal
+from autorate.certify_choice import certify_choice, split_cal
 from autorate.gate import Gate
 from autorate.records import Record
 
 
-def _rec(probs, gold="opt0", u=0.0, qtype="choice", backend="laya"):
-    return Record(id="x", qtype=qtype, backend=backend, repeat=0,
+def _rec(probs, gold="opt0", u=0.0, qtype="choice", backend="laya", case_id=None,
+         rid="x", repeat=0):
+    return Record(id=rid, qtype=qtype, backend=backend, repeat=repeat, case_id=case_id,
                   options=tuple("opt%d" % i for i in range(len(probs))),
                   probs=tuple(probs), gold=gold, predicted=None, slices={},
                   scores={}, seed=13, u=u, meta={})
@@ -31,7 +32,11 @@ def _cert(qhat=0.3, feasible=True, **kw):
 def test_a_sharp_answer_in_a_singleton_set_is_automated_with_the_reason_stated():
     d = Gate(_cert()).decide(_rec([0.93, 0.02, 0.03, 0.02]))
     assert d["action"] == "auto"
-    assert d["certified"] is True and d["bound"] == 0.05 and d["beta"] == 0.05
+    assert d["certified"] is True
+    # The decision row must distinguish the coverage level from the budget from the bound
+    # that actually limits an automated decision; it used to label alpha "bound".
+    assert d["coverage_alpha"] == 0.05 and d["beta"] == 0.05
+    assert d["error_bound"] == 0.04, d
     assert d["label"] == "opt0" and d["set"] == [0]
     assert "singleton" in d["why"]
 
@@ -129,6 +134,78 @@ def test_the_gate_automates_exactly_the_cases_the_certificate_counted():
     gate = Gate(cert)
     automated = sum(1 for r in ev if gate.decide(r)["action"] == "auto")
     assert automated == cert.meta["automated"] == round(cert.autorate * cert.n_eval)
+
+
+def test_a_split_never_puts_two_repeats_of_one_case_on_opposite_sides():
+    """The group is the case, not the row.
+
+    40 cases x 3 byte-identical repeats. On the committed corpus a record-level split put
+    44 of jev's 53 evaluation cases in its calibration half too, which is not a looser
+    guarantee but a violated exchangeability unit.
+    """
+    recs = []
+    for i in range(40):
+        for rep in range(3):
+            recs.append(_rec([0.61, 0.13, 0.13, 0.13], gold="opt0",
+                             case_id="digest-%02d" % i, rid="case-%02d" % i, repeat=rep))
+    cal, ev, dropped = split_cal(recs, seed=7)
+    cal_keys = {r.case_id for r in cal}
+    ev_keys = {r.case_id for r in ev}
+    assert not (cal_keys & ev_keys), cal_keys & ev_keys
+    assert len(cal_keys) + len(ev_keys) == 40
+    assert len(cal) + len(ev) == 120 and not dropped["skipped_no_gold"]
+
+
+def test_bounds_use_the_case_denominator_not_the_record_count():
+    """A case automates only if every one of its requests does; any error voids it.
+
+    The flattering version counted 60 records; the honest one sees 20 cases, and a
+    zero-error bound at n=20 cannot meet a 0.05 budget. That the certificate refuses here
+    is the point of the change.
+    """
+    recs = []
+    for i in range(40):
+        for rep in range(3):
+            recs.append(_rec([0.61, 0.13, 0.13, 0.13], gold="opt0",
+                             case_id="d-%02d" % i, rid="c-%02d" % i, repeat=rep))
+    cert = certify_choice(recs, alpha=0.05, beta=0.05, seed=7)
+    assert cert.feasible is False, cert.summary()
+    assert cert.meta["n_eval_cases"] == 20 and cert.meta["n_cal_cases"] == 20
+    assert cert.n_eval == 60, "records are still published, just not as the denominator"
+    assert cert.meta["automated_cases"] == cert.meta["n_eval_cases"]
+    assert cert.meta["erroneous_cases"] == 0
+    # A refusal carries no headline number by design, so the bound is checked where it is
+    # published (the detail) and against the arithmetic it came from.
+    from autorate.tails import clopper_pearson_upper
+
+    case_bound = clopper_pearson_upper(0, cert.meta["n_eval_cases"], 0.05)
+    assert case_bound > 0.05, case_bound
+    assert str(round(case_bound, 3)) in cert.meta["detail"], cert.meta["detail"]
+
+
+def test_case_buckets_are_exhaustive_so_refusal_stays_derived():
+    """refusal = 1 - autorate, at the case unit, on a certificate that is neither pole.
+
+    Two of the twenty-five evaluation cases carry a near-uniform repeat, so they cannot
+    run unattended even though nothing is wrong: the refused share must be non-zero and
+    below one, or this asserts an identity no data was asked to contradict.
+    """
+    recs = []
+    for i in range(150):
+        probs = ([0.25, 0.25, 0.25, 0.25] if i % 3 == 2 and (i // 3) % 7 == 0
+                 else [0.61, 0.13, 0.13, 0.13])
+        # u varies: with the archive's u = 0 every set is either the argmax or the whole
+        # ballot, and the case buckets would be 0-or-all by construction.
+        recs.append(_rec(probs, gold="opt0", case_id="c-%03d" % (i // 3),
+                         rid="r-%03d" % i, repeat=i % 3, u=((i * 37) % 100) / 100.0))
+    cert = certify_choice(recs, alpha=0.05, beta=0.20, seed=5)
+    assert cert.feasible is True, cert.summary()
+    cases, automated = cert.meta["n_eval_cases"], cert.meta["automated_cases"]
+    assert 0 < automated < cases, (automated, cases)
+    assert cert.meta["erroneous_cases"] == 0
+    assert abs(cert.autorate - automated / cases) < 1e-12
+    assert abs(cert.refusal_rate - (cases - automated) / cases) < 1e-12
+    assert abs(cert.autorate + cert.refusal_rate - 1.0) < 1e-12
 
 
 def test_a_certificate_gates_only_the_backend_it_was_measured_on():

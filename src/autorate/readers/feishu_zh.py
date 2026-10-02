@@ -83,6 +83,7 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
             return []
         out.append(Record(
             id=obj["id"], qtype="choice", backend=backend, repeat=repeat,
+            case_id=obj.get("request_sha256"),
             options=options, probs=probs, gold=obj.get("expected"),
             predicted=a.get("choice"), slices=base_slices,
             scores={"reported_confidence": a.get("confidence"),
@@ -111,6 +112,7 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
                 continue
             out.append(Record(
                 id="%s#%s" % (obj["id"], ask), qtype="noul", backend=backend, repeat=repeat,
+                case_id=obj.get("request_sha256"),  # the four asks of one case are one case
                 options=NOUL_SLOTS, probs=(p_true,),
                 gold=_ask_gold(ask, obj, asks_with_gold),
                 predicted="true" if p_true >= 0.5 else "false",
