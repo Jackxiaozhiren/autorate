@@ -419,10 +419,13 @@ disturb the artifacts.
    to move none: the protocol freezes the rubric that produced the current artifacts, and if it cannot,
    that is a finding to publish, not to patch around.
 
-**Tests.** `tests/test_verification_table.py` still passes with the new rows; `tests/test_cli.py`'s
-machine-path guard covers `README.md`, `docs/`, and `protocol.json` — extend its file list explicitly
-and show it red on a planted path (a guard whose file list silently omits the newest published file is
-the exact blind spot already recorded once in this project's memory).
+**Tests.** `tests/test_verification_table.py` still passes with the new rows. The machine-path guard
+needs no file list — it walks `git ls-files`, so `README.md`, `docs/`, `protocol.json`, `docs/G5.md`
+and `docs/upstream/*` are covered the moment they are tracked; what this task adds is proof rather than
+coverage: plant a username-shaped literal in a newly tracked file and show the guard red on it, then
+add the assertion the guard's pattern cannot reach (see PF-D-6) — the scratch-path class
+`/var/…`/`/private/tmp/…`, which a clean-export transcript is most likely to contain and which today's
+regex matches nowhere.
 
 **Gate:** all four lanes, plus `uv run --frozen autorate verify --protocol protocol.json` → **0**.
 
@@ -475,7 +478,7 @@ repository public; submitting anything upstream.
 | PF-D-3 | Task 3 ↔ B1 Task 2b | Measured: the corpus-less lane is already 34/34 green at HEAD and stays green under 2b's code change, while the corpus-present lane goes red — because the published records file predates the fix. So 2b must re-export the records and land code + records + both certificates + `docs/RESULTS.md` in one commit, or a HEAD exists where the two lanes disagree. | Task 3 sequenced after 2b and after B1 Task 6; the single-commit obligation is carried into 2b's review, and the transcript records both lanes' counts rather than one |
 | PF-D-4 | Task 4 ↔ B1 Task 2d | Two tasks can each build a derived-prose renderer for the same sentences. | One mechanism. Whichever lands second imports the first and deletes its duplicate; the brief must name the existing function by path, verified by grep in the dispatch turn |
 | PF-D-5 | Task 2 ↔ the shipped `compare` semantics | `compare` currently refuses on rubric disagreement between two artifacts. Adding a protocol digest makes a *third* reason to refuse. Its exit code is already `EXIT_USAGE` for "not comparable". | Digest mismatch is `EXIT_USAGE` in `compare` (an operator error) and `EXIT_DRIFT` in `verify` (a published-number error). Different commands, different meanings; both pinned in tests |
-| PF-D-6 | Task 5 ↔ the machine-path guard | The guard enumerates files to scan. New tracked artefacts (`protocol.json`, `docs/G5.md`, `docs/REPORT.md`, `docs/upstream/*`) are outside its current list, so the guard would stay green over a path literal in exactly the files this plan adds. | Task 5 Step 5 extends the list **and** proves the extension can fire. Recorded here so the reviewer treats an unextended list as Important, not polish |
+| PF-D-6 | Task 5 ↔ the machine-path guard | This row's first draft claimed the guard "enumerates files to scan" and that new artefacts sit outside its list. Measured against the code and by running it: `test_no_committed_file_carries_an_absolute_home_path` walks `git ls-files`, so every tracked file — `protocol.json`, `docs/G5.md`, `docs/REPORT.md`, `docs/upstream/*` — is covered the moment it is committed, with no list to extend. The guard passed over this plan's own four new sections, which is how the claim got falsified. **The real blind spot is the pattern, not the file list:** the regex is `/(Users\|home)/[A-Za-z0-9._-]+/`, i.e. username-shaped paths only. A scratch directory on this machine — `/var/folders/…`, `/private/tmp/…` — is an absolute machine path and matches nothing. That is not hypothetical for Task 3: a clean-export transcript's most natural content is the export directory's own path. | Task 5 Step 5 drops the bogus "extend the list" instruction and instead (a) proves the existing guard fires on a planted literal in a newly tracked file, and (b) adds a second assertion for the tmp-shape class, applied to `docs/G5.md` in particular, with the transcript required to print scratch paths as `<export-dir>` rather than in full. Recorded because a guard that passes is not a guard that covers |
 | PF-D-7 | Task 6 ↔ Global Constraint 4 | `git apply` against the vendored checkout would write into a read-only corpus. | Scratch copy only, `--check` first, and the test asserts the vendored tree's mtimes and digests are unchanged after the task runs |
 | PF-D-8 | Task 3 ↔ the local proxy | Loopback and TLS on this machine are proxied; an "offline" proof that silently used the proxy is not offline, and `uv sync` can fail on a proxy rather than on a missing network. | `no_proxy` **and** `NO_PROXY` set in the export script, the deliberate failure probe recorded in the transcript, and any TLS/proxy failure disclosed in the transcript rather than retried away |
 
