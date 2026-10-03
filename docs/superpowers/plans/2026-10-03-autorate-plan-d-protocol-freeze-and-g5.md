@@ -78,22 +78,23 @@ that fails is not a grep that found nothing, so the failing form is recorded too
 | D-8 | The machine-dependent keys that a clean export must not compare | `cli.py:38-40` → `SNAPSHOT_MACHINE_KEYS = ("source", "audit_interpreter", "upstream_audit_stdout_tail", "upstream_audit_stderr_tail")` |
 | D-9 | The corpus-less lane is already reachable, already discloses itself, and is already green | Measured in a `git archive` export of `645e975`, run with the export as cwd: `re-derived 34 /34 values`, exit **0**, with the corpus-absent disclosure quoted in `cmd_verify`'s `else` branch. The count is exactly the shipped formula in `tests/test_cli.py:77`, `2 * (len(CERT_COMPARE_FIELDS) + 1) + 2` = 34. An implementer's report quoting `61 /61` for this lane does not reproduce and is not used here |
 
-D-9 carries a second, sharper consequence, measured the same way: overlaying B1 Task 2b's
-`case_id` fix on that export leaves the lane at **34/34, exit 0, no drift** — because the committed
-`data/records_feishu.jsonl` was exported before the fix and its rows carry no `case_id` for
-`from_dict` to lose. The fix therefore moves no published number **until the records file itself is
-re-exported from the archive**; re-certifying alone is a no-op. Two obligations follow, and they
-belong to 2b rather than to this plan: the re-export is part of the fix, and the code, the records
-file, both certificates and `docs/RESULTS.md` must land in **one** commit — any split leaves a HEAD
-where the corpus-less lane is green while the corpus-present lane disagrees, which is the state a
-reproduction gate exists to make impossible.
 | D-10 | `docs/VERIFICATION.md` is a parsed gate, not prose | `tests/test_verification_table.py` parses it; a `verified` row must name a URL and the date it was opened |
 | D-11 | The upstream channel is still empty — re-check it, do not cite this row | `gh search issues --author=<the author's handle> repo=<the upstream repo>` → `[]`, and the same for PRs, both re-run 2026-09-30 as recorded in spec §13. This plan *prepares* that channel; it does not use it (see §7) |
+| D-12 | The `case_id` fix's blast radius is reachable from the committed artefacts alone, and the corpus-less lane sees it | Same export, `records.from_dict` overlaid with the fix: `re-derived 29 /34 values`, exit **4**, first drift line reading "at coverage 0.950 the 32 automated cases include 1 carrying a wrong automated request; the exact case-level upper bound 0.140 exceeds the budget 0.050" — the 0.089 → 0.140 move and the `erroneous_cases` 0 → 1 that the Task 2b ruling predicted, reproduced by the controller independently of the agent that reported them. `data/records_feishu.jsonl` carries `case_id` on all 1919 rows already, so no re-export is involved |
 
-Why Task 3 waits for B1 Task 2b, stated precisely: the corpus-less lane is already green at HEAD, so
-a clean-export proof would *run* — it would simply certify a records file whose `case_id` fidelity is
-known-broken and a certificate pair this ledger already expects to move, which is a transcript of a
-state its own author is about to publish an ERRATA row for.
+The correction in D-12 has a second-order consequence for this plan's own argument, and it is stated
+rather than quietly rewritten. An earlier draft of §2 asserted that the corpus-less lane stays green
+under the fix — because the file it measured had *already been reverted by the agent mid-run*, and the
+first answer was therefore an artefact of measuring a moving tree. Since the records file is the
+corpus-less lane's input, that lane genuinely does detect a records-file/code-contract disagreement.
+What it cannot detect is which records file the protocol blessed. So `corpus.records_digest` still
+earns its place in §5, but as the thing that pins identity — "these numbers belong to that digest" —
+and not as the only check that survives an absent corpus.
+
+Why Task 3 waits for B1 Task 2b, stated precisely: at HEAD the corpus-less lane is green (34/34) and a
+clean-export proof would therefore *run* — but it would transcribe a certificate pair §2 D-12 shows is
+already one line shape away from red, and ERRATA is about to say so out loud. A transcript of a state
+its own author is publishing a correction for is not a reproduction proof.
 
 ---
 
@@ -276,11 +277,12 @@ input to this choice, not a guess).
    "the number does not reproduce" and "the number was produced under a rule we never promised" are
    different failures with different repairs.
 1a. Compare `sha256(data/records_feishu.jsonl)` against the protocol's `corpus.records_digest`, in
-   **both** lanes. This is the only guard that needs no corpus, and therefore the only one that can
-   catch a published records file produced by a reader no longer matching the code beside it — the
-   gap measured in §2 D-9, where the corpus-less lane reports a clean 34/34 over records no protocol
-   ever blessed. A records file is a published number's parent; treating it as outside the freeze is
-   how a corpus and a contract drift apart unnoticed.
+   **both** lanes. This is the only check that needs no corpus *and is not a fixed point*: every other
+   corpus-less check asks whether the published artefacts reproduce from the records beside them, so a
+   records file swapped wholesale, with its certificates regenerated against it in the same commit,
+   satisfies all of them. The digest asks a question the artefacts cannot answer for themselves — is
+   this the corpus the freeze named? — which is why §2 D-12's self-consistent-regeneration hole closes
+   here and nowhere else.
 2. Without it, behaviour is unchanged. That keeps today's CI line working until Task 3 replaces it,
    and it keeps the flag's effect *observable*: the same tree must be able to go from green to red by
    adding the flag alone.
@@ -308,16 +310,19 @@ the missing-digest test still reds — the check must not be reachable only when
 `AUTORATE_FEISHU_ROOT=/nonexistent uv run --frozen autorate verify --protocol protocol.json`, each
 with its exit code, before and after B1 Task 2b lands.
 
-Why the split, because it is the strongest argument this plan has: measured on a `git archive` export,
-overlaying 2b's `case_id` fix leaves the **corpus-less** lane at `34 /34`, exit **0** — no drift, no
-signal. Its input is the committed `data/records_feishu.jsonl`, and that file was exported by the
-*old* reader, so a machine without the corpus cannot see that the published records were produced by
-a different contract than the code beside them. Only the corpus-present lane, which re-reads the
-archive, goes red. Today nothing closes that gap on a clean machine. `--protocol` closes it by one
-check that needs no corpus at all: `sha256(data/records_feishu.jsonl)` against the protocol's
-`corpus.records_digest`. **So Task 2's own gate is that this digest check turns the corpus-less lane
-red for a records file the protocol did not bless** — demonstrated by touching one row of a copy, and
-reported as exit **4** with the digest named. A `verify` that cannot fail on the machine that runs it
+Why the split, because the corrected measurement sharpens the argument rather than weakening it. The
+corpus-less lane does see B1 Task 2b's fix — 29/34, exit **4** (§2 D-12) — since the records file is
+its input and the certificates no longer reproduce from it. What it cannot see is a *self-consistent*
+regeneration. `verify` re-derives the published certificates from whichever
+`data/records_feishu.jsonl` is present, and a fixed point is all it checks: swap the records file for a
+different corpus, regenerate the certificates against it, commit the pair together, and the corpus-less
+lane reports `34 /34`, exit **0**, for evidence that never existed. Only the corpus-present lane could
+notice, and CI has no corpus. `--protocol` closes the gap with the one check that needs no corpus and is
+not a fixed point: `sha256(data/records_feishu.jsonl)` against the protocol's `corpus.records_digest`,
+which was frozen before the numbers. **So Task 2's own gate is that this digest check turns the
+corpus-less lane red for a records file the protocol did not bless** — demonstrated by swapping one row
+of a copy, regenerating what that row implies, and seeing exit **4** name the digest while the shipped
+field-by-field comparison stays green. A `verify` that cannot fail on the machine that runs it
 in CI is not a reproduction gate.
 
 ### Task 3 — G5 on a clean export, with the transcript committed
