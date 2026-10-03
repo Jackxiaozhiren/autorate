@@ -236,8 +236,10 @@ from typing import Sequence
 from .records import entropy_confidence, max_confidence
 
 # Served probabilities are rounded to 4 decimals, so agreement inside 1e-3 is the same
-# quantity rather than a coincidence: at k=4 the two scales sit 0.058 apart at the README's
-# own 0.85 gate (spec 7.4), which is 58x this tolerance.
+# quantity rather than a coincidence: at k=4 the README's own 0.85 gate requires
+# p_max = 0.9609 (spec 7.4), which puts the two scales 0.1109 apart at that point -- 111x
+# this tolerance. (The 0.0582 figure belongs to a different quantity: the spread of
+# required p_max across option counts at gate 0.85, pinned in tests/test_records.py.)
 TOLERANCE = 1e-3
 
 
