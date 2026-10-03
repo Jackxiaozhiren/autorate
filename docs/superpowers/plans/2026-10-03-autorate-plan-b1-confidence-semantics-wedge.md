@@ -82,7 +82,9 @@ def _archive(tmp_path, objs, backends=("laya", "jev")):
 
 
 def test_a_line_that_is_not_json_is_quarantined_not_raised(tmp_path):
-    """I-9: this used to escape as JSONDecodeError -> rc 1, outside the exit-code contract."""
+    """I-9: measured against the pre-fix reader, a non-JSON line reached cli as ValueError
+    (rc 2, the wrong contract but non-zero), while a line missing a key the contract needs
+    reached it as KeyError -- rc 1, the one outcome the exit-code set forbids."""
     from autorate.readers.feishu_zh import read_archive
     root = _archive(tmp_path, ['{"id": "broken"\n', json.dumps(_line(id="ok-0")) + "\n"])
     stats = {}
@@ -545,8 +547,8 @@ def pair():
 def test_nothing_automating_and_the_budget_missing_are_different_reasons(pair):
     flat, noisy = pair
     assert flat.feasible is False and noisy.feasible is False, (flat, noisy)
-    assert flat.reason == "no_automation_at_coverage", flat.reason
-    assert noisy.reason == "empty_feasible_set", noisy.reason
+    assert flat.reason == Reason.NO_AUTOMATION_AT_COVERAGE.value, flat.reason
+    assert noisy.reason == Reason.EMPTY_FEASIBLE_SET.value, noisy.reason
 
 
 def test_a_stored_certificate_without_a_shape_version_is_refused_by_name(pair):
