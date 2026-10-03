@@ -169,6 +169,7 @@ class Record:
             id=d["id"], qtype=d["qtype"], backend=d["backend"], repeat=int(d["repeat"]),
             options=tuple(d["options"]), probs=tuple(float(x) for x in d["probs"]),
             gold=d.get("gold"), predicted=d.get("predicted"),
+            case_id=d.get("case_id"),
             slices=dict(d.get("slices", {})), scores=dict(d.get("scores", {})),
             seed=int(d.get("seed", 0)), u=float(d.get("u", 0.0)), meta=dict(d.get("meta", {})),
         )

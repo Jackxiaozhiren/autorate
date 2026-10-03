@@ -3,6 +3,9 @@
 Every constant quoted from upstream is measured against the archived record it comes
 from, not from upstream's prose.
 """
+import json
+from pathlib import Path
+
 import pytest
 
 from autorate.records import (
@@ -259,6 +262,50 @@ def test_json_round_trip_is_lossless():
 
     r = _rec()
     assert Record.from_dict(json.loads(json.dumps(r.to_dict()))) == r
+
+
+def test_case_id_survives_both_round_trips_because_it_is_the_bound_denominator():
+    """`to_dict` wrote `case_id` and `from_dict` never read it back, so every record
+    loaded from a stored artifact came back with no case identity at all.
+
+    The round-trip tests above build records without a `case_id`, so they compare
+    `None == None` and cannot see this field; R-44's denominator is the case, which is
+    why a lost `case_id` is a lost unit rather than a lost label.
+    """
+    r = _rec(case_id="0335649ad46e60fe72fb5eeac62ea5b657df0ed55e77e54491ce8285438ec574")
+    d = r.to_dict()
+    assert d["case_id"] == r.case_id
+    assert Record.from_dict(json.loads(json.dumps(d))) == r
+    assert Record.from_dict(d).case_id == d["case_id"]
+    # An artifact stored before the field existed must still load, hence `.get` and not
+    # `d["case_id"]`: a missing key is legal history, a KeyError would be a regression.
+    predating = {k: v for k, v in d.items() if k != "case_id"}
+    assert Record.from_dict(predating).case_id is None
+
+
+COMMITTED = Path(__file__).resolve().parents[1] / "data" / "records_feishu.jsonl"
+
+
+@pytest.mark.skipif(not COMMITTED.exists(), reason="committed records not present")
+def test_noul_asks_of_one_case_group_to_one_case_after_a_round_trip():
+    """64 archived cases x 4 asks x 3 repeats = 768 laya noul rows.
+
+    The case, not the ask, is the unit a bound may divide by (R-44). Before
+    `from_dict` read `case_id` back, this grouping came out 256.
+    """
+    from autorate.certify_choice import case_key
+
+    rows = [json.loads(l) for l in COMMITTED.read_text().splitlines() if l.strip()]
+    noul = [Record.from_dict(d) for d in rows
+            if d["qtype"] == "noul" and d["backend"] == "laya"]
+    assert len(noul) == 768
+    assert len({r.case_id for r in noul}) == 64, "case_id did not survive the round trip"
+    assert len({case_key(r) for r in noul}) == 64
+    choice = [Record.from_dict(d) for d in rows
+              if d["qtype"] == "choice" and d["backend"] == "laya"]
+    assert len({case_key(r) for r in choice}) == 64, (
+        "choice grouping must stay at 64 while noul is repaired -- the fallback to `id` "
+        "was hiding the bug here, and a fix that breaks this line is the wrong fix")
 
 
 def test_the_errata_table_matches_the_function_that_produced_it():

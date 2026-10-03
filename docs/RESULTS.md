@@ -37,15 +37,15 @@ lines are 64 cases repeated. Counting either as sample size flatters the bound.
 ### Verbatim summaries
 
 ```
-laya: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=96 n_eval=96; at coverage 0.950 no evaluation case produced a singleton set (0 empty, 96 multi-label of 96)
+laya: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=96 n_eval=96; at coverage 0.950 the 2 automated cases include 1 carrying a wrong automated request; the exact case-level upper bound 0.975 exceeds the budget 0.050
 ```
 ```
-jev: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=95 n_eval=96; at coverage 0.950 the 32 automated cases include 0 carrying a wrong automated request; the exact case-level upper bound 0.089 exceeds the budget 0.050
+jev: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=95 n_eval=96; at coverage 0.950 the 32 automated cases include 1 carrying a wrong automated request; the exact case-level upper bound 0.140 exceeds the budget 0.050
 ```
 
 ### What this does and does not establish
 
-- Both rows refuse at alpha=beta=0.05, and the two refusals say different things. laya: at coverage 0.950 not one evaluation case produced a single-label set (0 empty, 96 multi-label of 96 records), so there is nothing it may run unattended. jev: it automates 32 of its 32 evaluation cases with 0 wrong, yet the exact case-level upper bound on a zero-error run at n=32 is 0.089 -- above the 0.050 budget. That is the honest shape of a 64-case corpus: the same data at the record denominator would have looked certifiable, and it is not.
+- Both rows refuse at alpha=beta=0.05. laya: it automates 2 of its 32 evaluation cases and 1 of those carries a wrong automated request, so the exact case-level upper bound is 0.975 -- above the 0.050 budget; even had that request been right, a zero-error run over the same n=32 would still have bounded at 0.089, so this corpus cannot support a 5% claim at any error count. jev: it automates 32 of its 32 evaluation cases and 1 of those carries a wrong automated request, so the exact case-level upper bound is 0.140 -- above the 0.050 budget; even had that request been right, a zero-error run over the same n=32 would still have bounded at 0.089, so this corpus cannot support a 5% claim at any error count. The record denominator is what flatters this corpus: jev's 96 automated records would bound at 0.048, inside its 0.050 budget, where the 32 independent cases the corpus actually supplies put it at 0.140 -- and the case is the unit a bound may divide by (R-44).
 - The laya row is the project's point, not its problem: on a Chinese workplace corpus where the archived audit scores its choice answers 20/64, a certificate that refuses is the correct output. A published number here would be a number about nothing.
 - The evaluation halves hold 96 and 96 RECORDS over 32 and 32 distinct cases (the corpus repeats each case 3 times) and 32 cases are in common, so the pair is a case-by-case comparison on identical inputs.
 - The bounds are per CASE: repeats of one case are one observation (laya's three per case are byte-identical), so 96 records are 32 cases and the denominators above say which is which. Per-slice certification, the ordinal `score` family and the `noul` budgets are Plan B, gated on a corpus with enough independent cases to bound them.

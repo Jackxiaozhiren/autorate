@@ -90,9 +90,10 @@ that can see the corpus, where a stale key goes red.
 
 The first paired certificate pair is published in `docs/RESULTS.md`: on the archived
 Chinese workplace corpus **both backends refuse** at alpha = beta = 0.05, for different
-reasons. One automates nothing at 95% coverage -- not one evaluation case produced a
-single-label set. The other automates all 32 of its evaluation cases with zero errors, and
-a zero-error run over 32 cases still bounds at 0.089 against a 0.05 budget.
+reasons. One automates 2 of its 32 evaluation cases and one of those is wrong, so its case
+bound is 0.975. The other automates all 32 with one wrong, and the exact case bound is 0.140
+-- above a 0.05 budget. Even had that one request been right, a zero-error run over n=32
+would have bounded at 0.089, so the corpus cannot support a 5% claim at any error count.
 
 That is the result, not a shortfall: the corpus holds 64 independent cases, and the
 project's own feasibility table said a 5% claim was out of reach before any certificate was

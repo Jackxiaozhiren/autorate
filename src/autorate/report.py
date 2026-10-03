@@ -71,6 +71,49 @@ def _audit_scores(inv: dict) -> tuple:
     return out
 
 
+def _budget_clause(*certs) -> str:
+    """Name the budgets the rows actually carry, collapsing the shared case into `alpha=beta`."""
+    pairs = sorted({(c.alpha, c.beta) for c in certs if c is not None})
+    if len(pairs) == 1:
+        a, b = pairs[0]
+        return "alpha=beta=%.2f" % a if a == b else "alpha=%.2f, beta=%.2f" % (a, b)
+    return "row-specific budgets (" + ", ".join("alpha=%.2f/beta=%.2f" % p for p in pairs) + ")"
+
+
+def _refusal_clause(cert) -> str:
+    """Say what a refusal certificate actually says, in the shape its own numbers have.
+
+    The first version printed one fixed sentence per backend -- "not one evaluation case produced a
+    single-label set" for laya, a zero-error Clopper-Pearson bound for jev -- and each became a
+    published contradiction once the case denominator was repaired: an artifact can assert the opposite
+    of the counts printed inside it. Every figure here comes from the certificate, the zero-error figure
+    is labelled as the counterfactual it is, and the bound is read rather than re-derived because
+    `certify_choice` owns it.
+    """
+    automated = cert.meta["automated_cases"]
+    n_cases = cert.meta["n_eval_cases"]
+    wrong = cert.meta["erroneous_cases"]
+    if automated == 0:
+        return ("not one evaluation case produced a single-label set (%d empty, %d multi-label of %d "
+                "records), so there is nothing it may run unattended."
+                % (cert.meta.get("empties", 0), cert.meta.get("multi_label", 0), cert.n_eval))
+    bound = (cert.meta.get("at_requested_alpha") or {}).get("conditional_error_bound")
+    if bound is None:
+        return ("it automates %d of its %d evaluation cases and %d of those carries a wrong "
+                "automated request, which the %.3f budget does not license."
+                % (automated, n_cases, wrong, cert.beta))
+    if wrong == 0:
+        return ("it automates %d of its %d evaluation cases with zero errors, yet the exact "
+                "case-level upper bound on that run is %.3f -- above the %.3f budget."
+                % (automated, n_cases, bound, cert.beta))
+    return ("it automates %d of its %d evaluation cases and %d of those carries a wrong automated "
+            "request, so the exact case-level upper bound is %.3f -- above the %.3f budget; even had "
+            "that request been right, a zero-error run over the same n=%d would still have bounded at "
+            "%.3f, so this corpus cannot support a %.0f%% claim at any error count."
+            % (automated, n_cases, wrong, bound, cert.beta, n_cases,
+               clopper_pearson_upper(0, n_cases, cert.delta), 100 * cert.beta))
+
+
 def build_report(inv: dict, certs: dict, counts: dict) -> str:
     digests = inv["digests"]
     scores = _audit_scores(inv)
@@ -160,20 +203,17 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "",
         "### What this does and does not establish",
         "",
-        "- Both rows refuse at alpha=beta=0.05, and the two refusals say different things. "
-        "laya: at coverage 0.950 not one evaluation case produced a single-label set (%d "
-        "empty, %d multi-label of %d records), so there is nothing it may run unattended. "
-        "jev: it automates %d of its %d evaluation cases with %d wrong, yet the exact "
-        "case-level upper bound on a zero-error run at n=%d is %.3f -- above the %.3f "
-        "budget. That is the honest shape of a %d-case corpus: the same data at the record "
-        "denominator would have looked certifiable, and it is not." % (
-            certs["laya"].meta.get("empties", 0), certs["laya"].meta.get("multi_label", 0),
-            certs["laya"].n_eval, certs["jev"].meta["automated_cases"],
-            certs["jev"].meta["n_eval_cases"], certs["jev"].meta["erroneous_cases"],
-            certs["jev"].meta["n_eval_cases"],
-            clopper_pearson_upper(0, certs["jev"].meta["n_eval_cases"],
-                                  certs["jev"].delta), certs["jev"].beta,
-            inv["unique_ids"]),
+        "- Both rows refuse at %s. laya: %s jev: %s The record denominator is what flatters this "
+        "corpus: jev's %d automated records would bound at %.3f, inside its %.3f budget, where the %d "
+        "independent cases the corpus actually supplies put it at %.3f -- and the case is the unit a "
+        "bound may divide by (R-44)." % (
+            _budget_clause(certs["laya"], certs["jev"]), _refusal_clause(certs["laya"]),
+            _refusal_clause(certs["jev"]), certs["jev"].meta["automated"],
+            clopper_pearson_upper(certs["jev"].meta["errors_among_automated"],
+                                  certs["jev"].meta["automated"], certs["jev"].delta),
+            certs["jev"].beta, certs["jev"].meta["n_eval_cases"],
+            (certs["jev"].meta.get("at_requested_alpha") or {}).get("conditional_error_bound",
+                                                                    float("nan"))),
         "- The laya row is the project's point, not its problem: on a Chinese workplace "
         "corpus where the archived audit scores its choice answers %s, a certificate "
         "that refuses is the correct output. A published number here would be a number "

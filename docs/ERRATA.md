@@ -104,3 +104,39 @@ same 32 cases.
 **Rule adopted (ledger R-44): the unit of certification is the case, and the bound's
 denominator is stated next to every published rate.** The record counts stay on the
 certificate because they are what the gate acts on, but they are never the `n`.
+
+## 2026-10-03 — `Record.from_dict` dropped `case_id`, so the case denominator was not the one published
+
+The row above is correct about the unit and wrong about two numbers it quotes, because the round trip
+that produced them lost the field that carries the unit. `to_dict` wrote `case_id`; `from_dict` never
+read it back, so every record loaded from the committed artifact came home with `case_id = None` and
+`certify_choice.case_key` fell through to the record `id`. The partition over cases was unchanged — same
+64 groups — but the seeded split sorts those keys before shuffling, so the key strings re-rolled the
+permutation and 13 of 32 cases swapped halves. The held-out set became a different set of cases.
+
+What the published pair says now, regenerated from the same committed records (no re-export: all 1919
+rows already carried `case_id`; the defect was on read):
+
+- **jev** — `conditional_error_bound` **0.089 → 0.140**. It automates 32 of 32 evaluation cases and
+  **1** of them carries a wrong automated request, where the stale row reported 0 errors. The
+  `errors: 0` figure that made "a zero-error run over 32 cases" a description rather than a
+  counterfactual was itself an artefact of the lost key.
+- **laya** — it no longer automates nothing. On the re-rolled half it automates **2 of 32** cases, 1 of
+  them wrong, so its case-level bound is **0.975**. The reason code is unchanged
+  (`empty_feasible_set`), and the refusal still holds at the 0.050 budget.
+- Both evaluation halves still cover the same 32 cases, so the pair remains genuinely paired.
+- The zero-error bound over n=32 is still **0.089** — but as the counterfactual it always was: even had
+  that one request been right, this corpus could not support a 5% claim.
+
+Two published sentences were also refuted by the artifacts printed beside them, which is the same defect
+class in prose: the report asserted "not one evaluation case produced a single-label set" for laya while
+its own counts showed 2 automated cases, and it interpolated a zero-error bound while naming the actual
+error count. Both clauses are now derived from the certificate -- `report._refusal_clause` and
+`report._budget_clause`, plus the record-denominator clause rendered from the certificate's own counts —
+pinned by `tests/test_report_prose.py`, including a control
+that the old hardcoded prose *passed*, which is why it is kept and labelled as insufficient.
+
+**Rule adopted (ledger R-51): a field a published number depends on must survive the round trip that
+produces the number, and the round trip needs a test that carries that field — the existing `to_dict` /
+`from_dict` tests compared `None == None` and could not see it.** A rate whose denominator is rebuilt by
+a lossy read is not the denominator the bound claims.
