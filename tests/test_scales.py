@@ -322,3 +322,25 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
     separation = p_max_for_entropy(0.85, 4) - 0.85
     assert separation == pytest.approx(0.1109, abs=6e-4), separation
     assert TOLERANCE * 100 <= separation, (TOLERANCE, separation)
+
+    # The tolerance comment's other claim, produced: the window does not separate the scales
+    # once a k=4 row is near enough to one-hot, and such a row is absorbed by the `else` branch
+    # as `neither` (counted in `both`) instead of being named after a scale. The scoping in
+    # that comment is only honest because this is where the shape goes safe.
+    def scale_gap(p_max):
+        rest = (1.0 - p_max) / 3.0
+        probs = [p_max, rest, rest, rest]
+        return abs(max_confidence(probs) - entropy_confidence(probs))
+
+    lo, hi = 0.99, 0.9999999
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if scale_gap(mid) > TOLERANCE:
+            lo = mid
+        else:
+            hi = mid
+    assert hi == pytest.approx(0.999855, abs=1e-5), hi
+    absorbed = scale_attribution([_choice("b", (hi, (1.0 - hi) / 3.0, (1.0 - hi) / 3.0,
+                                                (1.0 - hi) / 3.0), hi)])
+    assert absorbed["verdict"] == "neither", absorbed
+    assert absorbed["both"] == 1 and absorbed["neither"] == 0, absorbed

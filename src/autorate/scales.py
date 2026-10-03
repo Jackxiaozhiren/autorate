@@ -26,9 +26,10 @@ from .records import entropy_confidence, max_confidence
 # 0.85 gate on the entropy scale needs p_max = 0.9609, which sits 0.1109 from the answer
 # scale. Measured over those records, no row has both scales inside this window while they
 # differ; that is a statement about laya's archived choice rows, not about every backend. A
-# near-one-hot row (p_max 0.9995 at k=4) does sit inside it on both scales at once, and the
+# k=4 row whose p_max is 0.999855 or higher does sit inside it on both scales at once, and the
 # outcome of meeting one is safe only because it falls into the `else` below -- it is reported
-# as `neither`, never renamed to whichever scale the comparison reached first.
+# as `neither`, never renamed to whichever scale the comparison reached first. Both figures
+# here (the crossing point and the absorbed row) are produced in tests/test_scales.py.
 TOLERANCE = 1e-3
 
 
