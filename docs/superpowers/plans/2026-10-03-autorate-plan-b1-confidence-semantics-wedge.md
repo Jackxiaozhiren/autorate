@@ -64,30 +64,48 @@ So: **B1 = the offline wedge and the contract closures (this plan). B2 = ordinal
 
 The ledger's I-9: one malformed line escapes as `KeyError` → rc 1, outside the documented contract. Plan B reads downloaded JSON rather than a curated archive, so this is the task that makes the reader safe on data it did not hand-pick.
 
-- [ ] **Step 1: Write the failing tests.** Append to `tests/test_reader_feishu.py`, reusing the existing `_corpus(tmp_path, lines)` helper that the Round-A re-review added:
+- [ ] **Step 1: Write the failing tests.** The repository has no corpus-building fixture -- `tests/test_reader_feishu.py:214-236` builds one inline out of the module's `_line(**kw)` helper, and that is the pattern to follow. Add a shared builder beside `_line` and two tests that use it:
 
 ```python
-def test_a_line_that_is_not_json_is_quarantined_not_raised(tmp_corpus):
+def _archive(tmp_path, objs, backends=("laya", "jev")):
+    """A corpus root of raw lines, built the way this file already builds them."""
+    import json
+    for b in backends:
+        f = tmp_path / "results" / "v1" / b / "raw.jsonl"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("".join(l if l.endswith("\n") else l + "\n" for l in objs))
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "manifest.json").write_text(json.dumps({"asks": ["urgent"]}))
+    (tmp_path / "data" / "cases.jsonl").write_text(
+        json.dumps({"id": "k-0", "expected": "a"}) + "\n")
+    return tmp_path
+
+
+def test_a_line_that_is_not_json_is_quarantined_not_raised(tmp_path):
     """I-9: this used to escape as JSONDecodeError -> rc 1, outside the exit-code contract."""
-    root, write = tmp_corpus
-    write("laya", ['{"id": "broken"', '{"id": "ok-0", "mode": "nope", "repeat": 0}'])
+    from autorate.readers.feishu_zh import read_archive
+    root = _archive(tmp_path, ['{"id": "broken"\n', json.dumps(_line(id="ok-0")) + "\n"])
     stats = {}
     recs = read_archive(root, stats=stats)
-    assert recs == []
-    assert stats["lines_malformed"] == 2, stats
-    assert stats["lines_read"] == stats["lines_kept"] + stats["lines_quarantined_only"] \
-        + stats["lines_dropped_not_ok"], stats
+    assert len(recs) == 1, stats
+    assert stats["lines_malformed"] == 2, stats          # once per backend
+    assert stats["lines_read"] == 4, stats               # the bad line still counts as seen
+    assert stats["lines_kept"] + sum(stats["lines_quarantined_only"].values()) \
+        == stats["lines_read"], stats
 
 
-def test_quarantine_names_which_line_and_why_without_quoting_its_bytes(tmp_corpus):
-    root, write = tmp_corpus
-    write("laya", ['{"id": "x", "mode": "choice", "response": {}}'])   # no `answers`
+def test_a_line_missing_a_key_the_contract_needs_is_named_not_fatal(tmp_path):
+    from autorate.readers.feishu_zh import read_archive
+    root = _archive(tmp_path, [json.dumps({"id": "x", "mode": "choice",
+                                           "repeat": 0, "status": "ok",
+                                           "response": {"model": "m"}}) + "\n"],
+                    backends=("laya",))
     stats = {}
     read_archive(root, stats=stats)
     q = [e for e in stats["quarantined"] if e["reason"] == "malformed_line"]
     assert len(q) == 1, q
-    assert q[0]["backend"] == "laya" and q[0]["line_no"] == 1
-    assert "KeyError" in q[0]["error"] or "answers" in q[0]["error"], q[0]
+    assert q[0]["backend"] == "laya" and q[0]["line_no"] == 1, q
+    assert "answers" in q[0]["error"] or "KeyError" in q[0]["error"], q[0]
     assert "raw" not in q[0], "the archive line's bytes are not copied into the artifact"
 ```
 
@@ -274,6 +292,7 @@ import random
 import pytest
 
 from autorate.case_count import count_outcome
+from autorate.certificate import Reason
 from autorate.certify_choice import certify_choice
 from autorate.certify_threshold import certify_threshold
 from autorate.records import Record
@@ -359,7 +378,9 @@ def test_a_field_that_is_constant_cannot_be_certified_and_says_which_failure_it_
     recs = [_rec(i, "b", "c%d" % i, (0.6, 0.3, 0.1), 0, 0, 0.5) for i in range(200)]
     cert = certify_threshold(recs, score_field="confidence", alpha=0.05, beta=0.05)
     assert cert.feasible is False
-    assert cert.reason == "empty_feasible_set", cert.reason
+    # By symbol, not by literal: Task 5 splits this label in two (PF-B1-2), and an
+    # assertion naming the enum member is one the rename can find.
+    assert cert.reason == Reason.EMPTY_FEASIBLE_SET.value, cert.reason
     assert "every record automates" in cert.summary() or "no discriminating" in \
         str(cert.meta.get("closest_attempt", "")), cert.summary()
 
@@ -480,7 +501,26 @@ def test_rendered_audit_contains_no_machine_path_and_no_unproduced_number(tmp_pa
 
 I-10: `empty_feasible_set` currently covers "nothing automates" (laya, Task 4 of Plan A) and "something automates but its bound misses the budget" (jev). They are different findings — one says the task is not automatable, the other says the data cannot certify it — and §5.5's whole claim is that the reason travels inside the certificate. D14 separately ruled in a version tag, because `from_dict` currently refuses a stale artifact by field-name diff alone.
 
-- [ ] **Step 1: Share the generator, then write the failing tests.** `tests/test_certify_choice.py:16` already owns the only good synthetic labelled-record generator in the repo (`_records(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0, error_rate=0.0)`), and this task needs two of its shapes. Move it verbatim to a new `tests/_synthetic.py`, add `from _synthetic import _records` to `tests/test_certify_choice.py`, and delete nothing else there -- the move is the step, and its gate is that the existing suite stays green afterwards.
+- [ ] **Step 1: Share the generator, then write the failing tests.** `tests/test_certify_choice.py:16` already owns the only good synthetic labelled-record generator in the repo (`_records(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0, error_rate=0.0)`), and this task needs two of its shapes. No test module in this suite imports another, and `tests/` has no `__init__.py` (PF-B1-4), so the shared helper goes where pytest guarantees it: a new `tests/conftest.py` exposing a `records_factory` fixture that wraps the generator verbatim, with `test_certify_choice.py` re-exporting it as `_records = records_factory` at module scope so its 40-odd existing call sites stay untouched.
+
+```python
+"""Shared synthetic-record source. Tests import this; nothing else crosses modules."""
+import pytest
+
+def _build(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0,
+           error_rate=0.0):
+    """Moved verbatim from tests/test_certify_choice.py:16 -- see its docstring for why
+    `error_rate` exists: a generator that can never be wrong cannot show a refusal.
+    """
+    ...   # the body, copied unchanged
+
+
+@pytest.fixture
+def records_factory():
+    return _build
+```
+
+Copy the body unchanged; the `...` above is this plan pointing at 18 lines that already exist in the repository, at a named line, in the file the task is moving them out of -- not a step to invent.
 
 ```python
 """Two refusals that used to share one label, and the tag the shape was written in."""
