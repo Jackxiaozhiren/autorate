@@ -262,7 +262,14 @@ def test_read_archive_conserves_every_line_it_read(tmp_path):
 
 
 def test_a_line_that_is_not_json_is_quarantined_not_raised(tmp_path):
-    """I-9: this used to escape as JSONDecodeError -> rc 1, outside the exit-code contract."""
+    """I-9: measured against the pre-fix reader, this line exited 2 -- the rc-1 shape is below.
+
+    `json.JSONDecodeError` subclasses `ValueError`, and `cli.main` maps `ValueError` to
+    EXIT_USAGE, so a line that failed to parse was already inside the documented exit set.
+    What genuinely escaped as rc 1, uncaught and with a traceback, was a line that parsed and
+    then raised `KeyError` on a key the contract needs (`test_a_line_missing_a_key...`), and a
+    line that parsed as a JSON non-object and raised `AttributeError` (I-1).
+    """
     from autorate.readers.feishu_zh import read_archive
     root = _archive(tmp_path, ['{"id": "broken"\n', json.dumps(_line(id="ok-0")) + "\n"])
     stats = {}
@@ -291,6 +298,108 @@ def test_a_line_missing_a_key_the_contract_needs_is_named_not_fatal(tmp_path):
     assert "raw" not in q[0], "the archive line's bytes are not copied into the artifact"
 
 
+def test_a_line_that_is_valid_json_but_not_an_object_is_quarantined_not_fatal(tmp_path):
+    """I-1: `null`/`123`/`"x"`/`[...]` parse, then reach `obj.get` and raise AttributeError.
+
+    AttributeError is outside the guard's catch set and outside `cli.main`'s mapping, so the
+    class of line the task exists to close was still escaping as rc 1.
+    """
+    from autorate.readers.feishu_zh import read_archive
+    shapes = ["null", "123", '"x"', "[1, 2]"]
+    root = _archive(tmp_path, list(shapes), backends=("laya",))
+    stats = {}
+    assert read_archive(root, backend="laya", stats=stats) == []
+    assert stats["lines_read"] == 4, stats           # every unread line is still a line seen
+    assert stats["lines_malformed"] == 4, stats
+    assert stats["lines_quarantined_only"] == {"malformed_line": 4}, stats
+    q = stats["quarantined"]
+    assert len(q) == 4, q
+    assert [e["line_no"] for e in q] == [1, 2, 3, 4], q
+    for e, shape in zip(q, shapes):
+        assert e["reason"] == "malformed_line", shape
+        # The shape is named by the reader, not by an attribute lookup three frames down.
+        assert e["error"].startswith("TypeError"), (shape, e["error"])
+        assert "not an object" in e["error"], (shape, e["error"])
+    assert stats["lines_kept"] + sum(stats["lines_quarantined_only"].values()) \
+        == stats["lines_read"], stats
+
+
+def test_a_line_that_fails_after_quarantining_publishes_one_entry_not_two(tmp_path):
+    """M-3: one line, one quarantine entry, identity closed.
+
+    `records_from_line` appends to the caller's shared list as it goes, so a line whose
+    first ask is quarantined and whose second ask raises used to publish two entries for a
+    line the accounting counts once -- and `inventory.py` publishes `len(quarantined)`.
+    """
+    from autorate.readers.feishu_zh import read_archive
+    bad_then_worse = _line(mode="four_noul", response={"model": "m", "answers": {
+        "action": {"type": "noul", "noul": 1.5},          # outside [0,1]: quarantined
+        "urgent": {"type": "noul", "confidence": 0.8}}})  # no `noul`: raises KeyError
+    root = _archive(tmp_path, [json.dumps(bad_then_worse)], backends=("laya",))
+    stats = {}
+    read_archive(root, backend="laya", stats=stats)
+    assert stats["lines_read"] == 1, stats
+    assert stats["lines_malformed"] == 1, stats
+    assert len(stats["quarantined"]) == 1, stats["quarantined"]
+    # the entry that survives is the one for the line, not the orphan from the failed call
+    assert [e["reason"] for e in stats["quarantined"]] == ["malformed_line"], stats["quarantined"]
+    assert stats["lines_quarantined_only"] == {"malformed_line": 1}, stats
+    assert stats["lines_kept"] + sum(stats["lines_quarantined_only"].values()) \
+        == stats["lines_read"], stats
+
+
+def test_a_malformed_entry_has_the_quarantine_schema_and_the_id_it_parsed(tmp_path):
+    """M-4: one owner for the quarantine shape, and `id` is the join key to `cases.jsonl`.
+
+    The malformed branch hand-rolled its own field set, so a field added to `_quarantine`
+    would skip the malformed class; and it hardcoded `"id": None` even for a line that
+    parsed and carried an id.
+    """
+    from autorate.readers.feishu_zh import _quarantine, read_archive
+    root = _archive(tmp_path, [json.dumps({"id": "x", "mode": "choice", "repeat": 0,
+                                           "status": "ok",
+                                           "response": {"model": "m"}})],
+                    backends=("laya",))
+    stats = {}
+    read_archive(root, backend="laya", stats=stats)
+    q = stats["quarantined"]
+    assert len(q) == 1, q
+    malformed = q[0]
+    assert malformed["id"] == "x", malformed      # the key that joins to cases.jsonl
+    assert malformed["mode"] == "choice" and malformed["repeat"] == 0, malformed
+    # Every field a well-formed-but-refused line carries is present here too, because the
+    # same builder owns both; only the two malformed-only fields may differ.
+    schema = set(_quarantine({"id": "y"}, "laya", (), "some other reason"))
+    assert set(malformed) - schema == {"line_no", "error"}, malformed
+    assert schema <= set(malformed), schema ^ set(malformed)
+
+
+def test_a_key_missing_line_under_an_active_filter_is_malformed_not_fatal(tmp_path):
+    """M-7: the filter reads live inside the guard, and nothing proves it but this test.
+
+    Under `--repeat`/`--mode` the loop reads `obj["repeat"]`/`obj["mode"]` straight off the
+    line before any status check, so a line missing that key is the last place rc 1 could
+    still escape. Negative control (measured, see the fix report): with those reads outside
+    the `try` the same corpus exits 1 with `KeyError: 'mode'`.
+    """
+    from autorate.readers.feishu_zh import read_archive
+    no_mode = {"id": "k-0", "repeat": 0, "status": "ok", "expected": "a",
+               "response": {"model": "m", "answers": {"category": {
+                   "type": "choice", "choice": "a",
+                   "probabilities": {"a": 0.5, "b": 0.5}}}}}
+    root = _archive(tmp_path, [json.dumps(no_mode)], backends=("laya",))
+    stats = {}
+    read_archive(root, backend="laya", mode="choice", stats=stats)
+    assert stats["lines_read"] == 1, stats
+    assert stats["lines_filtered"] == 0, stats
+    assert stats["lines_malformed"] == 1, stats
+    q = [e for e in stats["quarantined"] if e["reason"] == "malformed_line"]
+    assert len(q) == 1 and q[0]["line_no"] == 1, q
+    assert "mode" in q[0]["error"] and "KeyError" in q[0]["error"], q[0]
+    assert stats["lines_kept"] + sum(stats["lines_quarantined_only"].values()) \
+        == stats["lines_read"], stats
+
+
 def test_a_filter_that_matches_nothing_says_so(tmp_path):
     # Green-on-empty was the old shape: a filter typo returned [] with no counter.
     import json
@@ -311,11 +420,38 @@ def test_a_filter_that_matches_nothing_says_so(tmp_path):
 def test_the_per_ask_gold_tripwire_can_fire():
     # I-4: `_ask_gold` hardcoded None, so the "a per-ask gold appeared" branch was
     # unreachable and the guard proved nothing. It now consumes the measured set.
-    from autorate.readers.feishu_zh import records_from_line
+    #
+    # I-2 changed the exception CLASS, deliberately: as a ValueError the refusal was swallowed
+    # by `read_archive`'s per-line guard, counted as `malformed_line`, and the run exited 0.
+    # A refusal is a RuntimeError here so the guard cannot catch it.
+    from autorate.readers.feishu_zh import ReaderContractError, records_from_line
 
     obj = _line(mode="four_noul", response={"model": "m", "answers": {
         "urgent": {"type": "noul", "noul": 0.8, "confidence": 0.8}}})
     assert records_from_line(obj, "laya", [])[0].gold is None
     import pytest
-    with pytest.raises(ValueError, match="now supervised"):
+    with pytest.raises(ReaderContractError, match="now supervised"):
         records_from_line(obj, "laya", [], asks_with_gold=("urgent",))
+
+
+def test_a_supervised_per_ask_gold_escapes_the_guard_and_is_never_a_malformed_line(tmp_path):
+    """I-2: a corpus that supervises an ask is READABLE, so it is not a parse failure.
+
+    The guard catches ValueError/KeyError/TypeError -- the errors of a line the reader cannot
+    read. Before the refusal had its own class, the same corpus reached `lines_malformed`,
+    published a quarantine entry, and exited 0: a policy refusal filed under "cannot read
+    this line" and a certificate built on invented labels with nothing to show for it.
+    """
+    from autorate.readers.feishu_zh import ReaderContractError, read_archive
+    # The class is only outside the catch set if it is not a ValueError in disguise.
+    assert not issubclass(ReaderContractError, ValueError), "the guard would absorb it again"
+    noul = _line(mode="four_noul", response={"model": "m", "answers": {
+        "urgent": {"type": "noul", "noul": 0.8, "confidence": 0.8}}})
+    root = _archive(tmp_path, [json.dumps(noul)], backends=("laya",))
+    (root / "data" / "cases.jsonl").write_text(
+        json.dumps({"id": "k-0", "expected": "a", "urgent": "true"}) + "\n")
+    stats: dict = {}
+    with pytest.raises(ReaderContractError, match="now supervised"):
+        read_archive(root, backend="laya", stats=stats)
+    # Nothing gets published, so nothing was counted as a line that could not be read.
+    assert stats == {}, stats

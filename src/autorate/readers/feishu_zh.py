@@ -21,6 +21,18 @@ CHOICE_QUESTION = "category"
 MALFORMED_LINE = "malformed_line"
 
 
+class ReaderContractError(RuntimeError):
+    """The corpus contradicts this reader's own contract, so reading it must stop (R-14).
+
+    Deliberately NOT a `ValueError`: `read_archive` catches `ValueError` to quarantine a line
+    it cannot read and carry on, and a policy refusal is not an unreadable line -- filing it
+    under `malformed_line` would absorb the one error this class exists to name, and the run
+    would exit 0 on a corpus it refused to certify. It is raised so that it escapes the
+    per-line guard, and `cli.main` maps it to `EXIT_USAGE`: loud, non-zero, never mislabelled,
+    and rc 1 stays unreachable.
+    """
+
+
 def _quarantine(obj: dict, backend: str, probs, reason: str) -> dict:
     """Name a record the contract refuses, instead of widening the contract or dropping it.
 
@@ -148,7 +160,9 @@ def _ask_gold(ask: str, obj: dict, asks_with_gold=()) -> Optional[str]:
     rather than silently keep returning None.
     """
     if ask in asks_with_gold:
-        raise ValueError(
+        # A refusal, not a parse failure: `ReaderContractError` escapes `read_archive`'s
+        # per-line guard so it cannot be counted as one more malformed line.
+        raise ReaderContractError(
             "ask %r is now supervised in the corpus fixtures, but this reader still "
             "returns gold=None for noul records; join it from data/cases.jsonl instead "
             "of guessing it from the composite `expected` label" % ask)
@@ -172,8 +186,21 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
             if not line.strip():
                 continue
             lines_read += 1          # before parsing: an unread line is still a line seen
+            # `obj` starts empty so the quarantine entry below has a shape to read even when
+            # nothing parsed, and `q_before` is this line's snapshot of the shared list:
+            # `records_from_line` appends as it goes, so a line that quarantines one ask and
+            # then fails on the next would publish two entries for the one line the
+            # conservation identity counts.
+            obj: dict = {}
+            q_before = len(quarantine)
             try:
-                obj = json.loads(line)
+                parsed = json.loads(line)
+                if not isinstance(parsed, dict):
+                    # Name the shape here, in the branch that knows how to record it. Left to
+                    # the reads below, a JSON `null` / `123` / `"x"` / `[...]` raises
+                    # AttributeError -- outside the catch set and outside the CLI's mapping.
+                    raise TypeError("line is a JSON %s, not an object" % type(parsed).__name__)
+                obj = parsed
                 # The filters read `repeat` and `mode` straight out of the line, so they
                 # are inside the same guard: a line missing either key is malformed, and a
                 # filtered read must not become the one place rc 1 can still escape.
@@ -184,17 +211,23 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
                 if obj.get("status") != "ok":
                     lines_dropped += 1
                     continue
-                before, q_before = len(records), len(quarantine)
+                before = len(records)
                 records.extend(records_from_line(obj, b, quarantine, gold))
             except (ValueError, KeyError, TypeError) as exc:
                 # A line this contract cannot read is named, not dropped and not fatal:
                 # rc 1 is not in the exit-code set, and a malformed line in a corpus we
                 # downloaded (Plan C) is ordinary, not exceptional. The bytes stay out --
                 # an archive line can carry content no reader should republish.
-                quarantine.append({"id": None, "backend": b, "mode": None, "repeat": None,
-                                   "probs": [], "probs_sum": 0.0, "tolerance": SUM_TOL,
-                                   "reason": MALFORMED_LINE, "line_no": line_no,
-                                   "error": "%s: %s" % (type(exc).__name__, exc)})
+                # `ReaderContractError` is a RuntimeError and is deliberately NOT caught:
+                # a refusal to certify this corpus is not a line that cannot be read.
+                del quarantine[q_before:]          # drop the failed call's orphaned entries
+                # One owner for the quarantine shape, plus the two fields only an unreadable
+                # line can carry. The id survives when the line parsed: it is the join key to
+                # `data/cases.jsonl`, so a reader of the artefact can still find the case.
+                entry = _quarantine(obj, b, (), MALFORMED_LINE)
+                entry.update({"line_no": line_no,
+                              "error": "%s: %s" % (type(exc).__name__, exc)})
+                quarantine.append(entry)
                 lines_malformed += 1
                 lines_quarantined_only[MALFORMED_LINE] = \
                     lines_quarantined_only.get(MALFORMED_LINE, 0) + 1

@@ -334,6 +334,35 @@ def test_a_missing_input_is_a_usage_error_not_a_traceback(tmp_path):
     assert p.stderr.strip(), "a usage error that prints nothing is not diagnosable"
 
 
+def test_a_supervised_per_ask_gold_is_a_non_zero_refusal_not_a_malformed_line(tmp_path):
+    """I-2: the R-14 per-ask-gold tripwire is a policy refusal, not an unreadable line.
+
+    `read_archive` quarantines what it cannot read and keeps going, and the refusal travelled
+    with it: the line IS readable, so the corpus condition got filed under
+    `reason: malformed_line` and the command exited 0. A refusal has to stay loud and
+    non-zero, and it must never be counted as a parse failure.
+    """
+    raw = tmp_path / "results" / "v1" / "laya" / "raw.jsonl"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text(json.dumps({
+        "id": "c-0", "mode": "four_noul", "repeat": 0, "status": "ok", "family": "f",
+        "response": {"model": "m", "answers": {
+            "urgent": {"type": "noul", "noul": 0.8, "confidence": 0.8}}}}) + "\n")
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "manifest.json").write_text(json.dumps({"asks": ["urgent"]}))
+    # The ask name now appears among the fixture keys: that is the condition R-14 names.
+    (tmp_path / "data" / "cases.jsonl").write_text(
+        json.dumps({"id": "c-0", "expected": "a", "urgent": "true"}) + "\n")
+    p = run("export-feishu", "--backend", "laya", "--out", str(tmp_path / "out.jsonl"),
+            root=tmp_path)
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert "Traceback" not in p.stderr, p.stderr
+    assert "now supervised" in p.stderr, (p.stdout, p.stderr)
+    # Not absorbed: no quarantine reason is published for a refusal, and no line is counted.
+    assert "malformed_line" not in p.stdout + p.stderr, (p.stdout, p.stderr)
+    assert "quarantined:" not in p.stdout, p.stdout
+
+
 def test_a_stored_certificate_that_violates_its_shape_is_a_usage_error(tmp_path):
     # The brief's own Step-2 tamper: feasible with an empty envelope. Certificate raises
     # ValueError, which used to escape as rc 1 with a traceback and no DRIFT row.

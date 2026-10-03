@@ -9,6 +9,7 @@ from pathlib import Path
 from .certify_choice import certify_choice
 from .gate import Gate
 from .inventory import corpus_label, inventory, write_inventory
+from .readers.feishu_zh import ReaderContractError
 from .records import Record
 from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, RECORDS, SEED, build_report,
                      certify_all, load_records, read_certificate, write_report)
@@ -364,6 +365,13 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.fn(args)
+    except ReaderContractError as exc:
+        # I-2: the reader refusing a corpus condition (R-14) is not a line it could not
+        # parse. It is a RuntimeError, so the tuple below would not see it and it would
+        # escape as rc 1; mapping it here keeps the refusal loud and non-zero, and keeps it
+        # out of the quarantine accounting entirely.
+        print("%s: %s" % (type(exc).__name__, exc), file=sys.stderr)
+        return EXIT_USAGE
     except (OSError, ValueError) as exc:
         # OSError: an input path that is not there. ValueError: a stored certificate that
         # violates its own shape rules. Both are "the inputs are wrong", and both used to
