@@ -15,6 +15,10 @@ from ..records import NOUL_SLOTS, SUM_TOL, Record
 BACKENDS = ("laya", "jev")
 MODES = ("choice", "four_noul")
 CHOICE_QUESTION = "category"
+# One owner for the name, because it is both the quarantine reason and the line-accounting
+# bucket: an unreadable line has no readable `mode` to key on, so the conservation identity
+# in `read_archive` closes over it under this label rather than a mode label.
+MALFORMED_LINE = "malformed_line"
 
 
 def _quarantine(obj: dict, backend: str, probs, reason: str) -> dict:
@@ -158,26 +162,43 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
     gold = per_ask_gold(root)["asks_with_gold"] if (root / "data" / "manifest.json").exists() else ()
     records: list = []
     quarantine: list = []
-    lines_read = lines_kept = lines_dropped = lines_filtered = 0
+    lines_read = lines_kept = lines_dropped = lines_filtered = lines_malformed = 0
     unaccounted: list = []
     lines_by_mode: dict = {}
     lines_quarantined_only: dict = {}
     for b in backends:
         path = root / "results" / "v1" / b / "raw.jsonl"
-        for line in path.read_text().splitlines():
+        for line_no, line in enumerate(path.read_text().splitlines(), start=1):
             if not line.strip():
                 continue
-            obj = json.loads(line)
-            lines_read += 1
-            if (repeat is not None and int(obj["repeat"]) != repeat) or (
-                    mode is not None and obj["mode"] != mode):
-                lines_filtered += 1
+            lines_read += 1          # before parsing: an unread line is still a line seen
+            try:
+                obj = json.loads(line)
+                # The filters read `repeat` and `mode` straight out of the line, so they
+                # are inside the same guard: a line missing either key is malformed, and a
+                # filtered read must not become the one place rc 1 can still escape.
+                if (repeat is not None and int(obj["repeat"]) != repeat) or (
+                        mode is not None and obj["mode"] != mode):
+                    lines_filtered += 1
+                    continue
+                if obj.get("status") != "ok":
+                    lines_dropped += 1
+                    continue
+                before, q_before = len(records), len(quarantine)
+                records.extend(records_from_line(obj, b, quarantine, gold))
+            except (ValueError, KeyError, TypeError) as exc:
+                # A line this contract cannot read is named, not dropped and not fatal:
+                # rc 1 is not in the exit-code set, and a malformed line in a corpus we
+                # downloaded (Plan C) is ordinary, not exceptional. The bytes stay out --
+                # an archive line can carry content no reader should republish.
+                quarantine.append({"id": None, "backend": b, "mode": None, "repeat": None,
+                                   "probs": [], "probs_sum": 0.0, "tolerance": SUM_TOL,
+                                   "reason": MALFORMED_LINE, "line_no": line_no,
+                                   "error": "%s: %s" % (type(exc).__name__, exc)})
+                lines_malformed += 1
+                lines_quarantined_only[MALFORMED_LINE] = \
+                    lines_quarantined_only.get(MALFORMED_LINE, 0) + 1
                 continue
-            if obj.get("status") != "ok":
-                lines_dropped += 1
-                continue
-            before, q_before = len(records), len(quarantine)
-            records.extend(records_from_line(obj, b, quarantine, gold))
             if len(records) > before:
                 lines_kept += 1
                 lines_by_mode[obj["mode"]] = lines_by_mode.get(obj["mode"], 0) + 1
@@ -204,6 +225,7 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
         stats["lines_kept"] = lines_kept
         stats["lines_filtered"] = lines_filtered
         stats["lines_dropped_not_ok"] = lines_dropped
+        stats["lines_malformed"] = lines_malformed
         stats["lines_quarantined_only"] = dict(sorted(lines_quarantined_only.items()))
         stats["lines_by_mode"] = dict(sorted(lines_by_mode.items()))
         stats["records_kept"] = len(records)

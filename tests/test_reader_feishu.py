@@ -191,6 +191,20 @@ def _line(**kw):
     return base
 
 
+def _archive(tmp_path, objs, backends=("laya", "jev")):
+    """A corpus root of raw lines, built the way this file already builds them."""
+    import json
+    for b in backends:
+        f = tmp_path / "results" / "v1" / b / "raw.jsonl"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("".join(l if l.endswith("\n") else l + "\n" for l in objs))
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "data" / "manifest.json").write_text(json.dumps({"asks": ["urgent"]}))
+    (tmp_path / "data" / "cases.jsonl").write_text(
+        json.dumps({"id": "k-0", "expected": "a"}) + "\n")
+    return tmp_path
+
+
 def test_an_unknown_mode_line_raises_rather_than_vanishing():
     # The first version returned [] for any mode outside {choice, four_noul}: a corpus
     # that gained a mode would silently shrink the sample every certificate bounds.
@@ -245,6 +259,36 @@ def test_read_archive_conserves_every_line_it_read(tmp_path):
     assert stats["records_kept"] == len(recs) == 3 * 2, stats
     assert len(stats["quarantined"]) == 6, stats
     assert sum(stats["lines_by_mode"].values()) == stats["lines_kept"]
+
+
+def test_a_line_that_is_not_json_is_quarantined_not_raised(tmp_path):
+    """I-9: this used to escape as JSONDecodeError -> rc 1, outside the exit-code contract."""
+    from autorate.readers.feishu_zh import read_archive
+    root = _archive(tmp_path, ['{"id": "broken"\n', json.dumps(_line(id="ok-0")) + "\n"])
+    stats = {}
+    recs = read_archive(root, stats=stats)
+    # One well-formed line per backend: the builder writes the same two lines to both, so
+    # 4 lines read is 2 malformed + 2 kept, and each kept line is one record.
+    assert len(recs) == 2, stats
+    assert stats["lines_malformed"] == 2, stats          # once per backend
+    assert stats["lines_read"] == 4, stats               # the bad line still counts as seen
+    assert stats["lines_kept"] + sum(stats["lines_quarantined_only"].values()) \
+        == stats["lines_read"], stats
+
+
+def test_a_line_missing_a_key_the_contract_needs_is_named_not_fatal(tmp_path):
+    from autorate.readers.feishu_zh import read_archive
+    root = _archive(tmp_path, [json.dumps({"id": "x", "mode": "choice",
+                                           "repeat": 0, "status": "ok",
+                                           "response": {"model": "m"}}) + "\n"],
+                    backends=("laya",))
+    stats = {}
+    read_archive(root, backend="laya", stats=stats)
+    q = [e for e in stats["quarantined"] if e["reason"] == "malformed_line"]
+    assert len(q) == 1, q
+    assert q[0]["backend"] == "laya" and q[0]["line_no"] == 1, q
+    assert "answers" in q[0]["error"] or "KeyError" in q[0]["error"], q[0]
+    assert "raw" not in q[0], "the archive line's bytes are not copied into the artifact"
 
 
 def test_a_filter_that_matches_nothing_says_so(tmp_path):
