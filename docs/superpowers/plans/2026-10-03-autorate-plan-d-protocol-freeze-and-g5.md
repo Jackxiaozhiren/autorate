@@ -3,8 +3,9 @@
 Plan file: `docs/superpowers/plans/2026-10-03-autorate-plan-d-protocol-freeze-and-g5.md`
 Spec: `docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md` (§2 G5, §10, §13 weeks 11–12)
 Branch this plan lands on: `plan/d-protocol-freeze`, forked from the tip that carries B1–B3 and C.
-Prerequisite: Plan B1 Tasks 1–6, Plan B2, Plan B3, Plan C Tasks 1–4. **Task 1 of this plan is a
-predecessor of Plan C Task 5** — see §3, "the ordering ruling", which is the one thing in this plan
+Prerequisite for Tasks 2–6: Plan B1 Tasks 1–6, Plan B2, Plan B3. Prerequisite for Task 1: Plan B1
+Task 5 (it defines `SHAPE_VERSION`) and Plan C Task 1 (it produces the pins). **Task 1 of this plan is
+a predecessor of Plan C Task 4** — see §3, "the ordering ruling", which is the one thing in this plan
 that changes another plan's schedule.
 
 ---
@@ -75,12 +76,24 @@ that fails is not a grep that found nothing, so the failing form is recorded too
 | D-6 | The number of simultaneous claims is fixed in `certificate.py` | `certificate.py:19` → `N_CLAIMS = 3` |
 | D-7 | Every published artefact's path | `report.py:20-22` → `data/records_feishu.jsonl`, `data/cert_laya.json`, `data/cert_jev.json`, `data/inventory.md.json`; `cli.py:32-33` → `docs/RESULTS.md`, `data/inventory.md` |
 | D-8 | The machine-dependent keys that a clean export must not compare | `cli.py:38-40` → `SNAPSHOT_MACHINE_KEYS = ("source", "audit_interpreter", "upstream_audit_stdout_tail", "upstream_audit_stderr_tail")` |
-| D-9 | The corpus-less lane is already reachable and already discloses itself | `cmd_verify`'s `else` branch prints "corpus absent: %d `SOURCE.json` digests and the inventory snapshot are transcribed … this run cannot see whether that snapshot went stale"; today that run exits 4 with 5 `DRIFT:` lines, which are the known-stale certificates that B1 Task 2b is regenerating |
+| D-9 | The corpus-less lane is already reachable, already discloses itself, and is already green | Measured in a `git archive` export of `645e975`, run with the export as cwd: `re-derived 34 /34 values`, exit **0**, with the corpus-absent disclosure quoted in `cmd_verify`'s `else` branch. The count is exactly the shipped formula in `tests/test_cli.py:77`, `2 * (len(CERT_COMPARE_FIELDS) + 1) + 2` = 34. An implementer's report quoting `61 /61` for this lane does not reproduce and is not used here |
+
+D-9 carries a second, sharper consequence, measured the same way: overlaying B1 Task 2b's
+`case_id` fix on that export leaves the lane at **34/34, exit 0, no drift** — because the committed
+`data/records_feishu.jsonl` was exported before the fix and its rows carry no `case_id` for
+`from_dict` to lose. The fix therefore moves no published number **until the records file itself is
+re-exported from the archive**; re-certifying alone is a no-op. Two obligations follow, and they
+belong to 2b rather than to this plan: the re-export is part of the fix, and the code, the records
+file, both certificates and `docs/RESULTS.md` must land in **one** commit — any split leaves a HEAD
+where the corpus-less lane is green while the corpus-present lane disagrees, which is the state a
+reproduction gate exists to make impossible.
 | D-10 | `docs/VERIFICATION.md` is a parsed gate, not prose | `tests/test_verification_table.py` parses it; a `verified` row must name a URL and the date it was opened |
 | D-11 | The upstream channel is still empty — re-check it, do not cite this row | `gh search issues --author=<the author's handle> repo=<the upstream repo>` → `[]`, and the same for PRs, both re-run 2026-09-30 as recorded in spec §13. This plan *prepares* that channel; it does not use it (see §7) |
 
-D-9 is the reason Task 3 cannot start before B1 Task 2b lands: a clean-export proof is worthless if
-the command it demonstrates exits 4.
+Why Task 3 waits for B1 Task 2b, stated precisely: the corpus-less lane is already green at HEAD, so
+a clean-export proof would *run* — it would simply certify a records file whose `case_id` fidelity is
+known-broken and a certificate pair this ledger already expects to move, which is a transcript of a
+state its own author is about to publish an ERRATA row for.
 
 ---
 
@@ -88,11 +101,17 @@ the command it demonstrates exits 4.
 
 Ruling D-a (controller, this plan's authorship). **`protocol.json` is committed before the first
 certificate it governs is produced, and any certificate whose rubric is not in the committed
-protocol is refused by `verify` rather than tolerated.** Consequence: this plan's Task 1 moves
-*earlier* than Plan C Task 5 (the inference run that yields G1's first real number), and Plan C's
-Task 5 must be dispatched with the protocol digest as an input. Recorded against Plan C's ledger on
-the first execution turn of this plan; Plan C's own text gets one cross-reference line, and no other
-change.
+protocol is refused by `verify` rather than tolerated.** Consequence: this plan's Task 1 sits
+*between* two of Plan C's tasks — after **C Task 1** (the pin, because `corpus.pinned_builds` is
+that task's provenance output and the protocol records its digests) and before **C Task 4** (the
+inference-derived certificates that first populate `claims`). C Task 4 must therefore be dispatched
+with the protocol digest as an input. Recorded against Plan C's ledger on the first execution turn of
+this plan; Plan C's own text gets one cross-reference line, and no other change.
+
+(Fixed on re-read: this section first said "before Plan C Task 5", and named Task 5 as the inference
+run. Task 5 is `Make the new artifacts checkable where CI can see them`; the driver is Task 2 and G1's
+certificates are Task 4. A cross-reference that points at the wrong task number is worse than none —
+the same reason PF-B1-1 exists in the B1 ledger.)
 
 Why it is a ruling and not a preference: the alternative ordering — run the inference, then freeze
 whatever rubric happened to be in the code — produces a `protocol.json` that is a transcript of the
@@ -256,6 +275,12 @@ input to this choice, not a guess).
    mismatch** — a distinct line in the output, not folded into the existing `DRIFT:` strings, because
    "the number does not reproduce" and "the number was produced under a rule we never promised" are
    different failures with different repairs.
+1a. Compare `sha256(data/records_feishu.jsonl)` against the protocol's `corpus.records_digest`, in
+   **both** lanes. This is the only guard that needs no corpus, and therefore the only one that can
+   catch a published records file produced by a reader no longer matching the code beside it — the
+   gap measured in §2 D-9, where the corpus-less lane reports a clean 34/34 over records no protocol
+   ever blessed. A records file is a published number's parent; treating it as outside the freeze is
+   how a corpus and a contract drift apart unnoticed.
 2. Without it, behaviour is unchanged. That keeps today's CI line working until Task 3 replaces it,
    and it keeps the flag's effect *observable*: the same tree must be able to go from green to red by
    adding the flag alone.
@@ -278,9 +303,22 @@ to the shipped output for the current tree, asserted by comparing captured stdou
 control:** reorder the new clause so the missing-digest check runs after the value checks, and show
 the missing-digest test still reds — the check must not be reachable only when nothing else failed.
 
-**Gate:** the four gates from Task 1, plus `AUTORATE_FEISHU_ROOT=/nonexistent uv run --frozen autorate
-verify --protocol protocol.json; echo $?` → **4** while B1 Task 2b's regeneration is uncommitted, and
-**0** after it lands. The transition from 4 to 0 is the demonstration; both numbers go in the ledger.
+**Gate:** the four gates from Task 1, plus both lanes of the same command, reported separately —
+`uv run --frozen autorate verify --protocol protocol.json` (corpus present) and
+`AUTORATE_FEISHU_ROOT=/nonexistent uv run --frozen autorate verify --protocol protocol.json`, each
+with its exit code, before and after B1 Task 2b lands.
+
+Why the split, because it is the strongest argument this plan has: measured on a `git archive` export,
+overlaying 2b's `case_id` fix leaves the **corpus-less** lane at `34 /34`, exit **0** — no drift, no
+signal. Its input is the committed `data/records_feishu.jsonl`, and that file was exported by the
+*old* reader, so a machine without the corpus cannot see that the published records were produced by
+a different contract than the code beside them. Only the corpus-present lane, which re-reads the
+archive, goes red. Today nothing closes that gap on a clean machine. `--protocol` closes it by one
+check that needs no corpus at all: `sha256(data/records_feishu.jsonl)` against the protocol's
+`corpus.records_digest`. **So Task 2's own gate is that this digest check turns the corpus-less lane
+red for a records file the protocol did not bless** — demonstrated by touching one row of a copy, and
+reported as exit **4** with the digest named. A `verify` that cannot fail on the machine that runs it
+in CI is not a reproduction gate.
 
 ### Task 3 — G5 on a clean export, with the transcript committed
 
@@ -429,7 +467,7 @@ repository public; submitting anything upstream.
 |---|---|---|---|
 | PF-D-1 | Task 1 ↔ Task 2 | Both edit `cli.py`. Task 1 adds the `protocol` subcommand and `--protocol` to `certify`; Task 2 adds `--protocol` to `verify` and rewrites `cmd_verify`. Disjoint functions, same file — sequential dispatch only, never parallel. | Accepted; tasks are sequential in the SDD loop by rule |
 | PF-D-2 | Task 1 ↔ Plan B1 Task 5 | `record_contract.shape_version` needs a value B1 Task 5 defines. If Task 1 runs first it will invent one. | **Task 1 must not start until B1 Task 5 has landed**, or the field is emitted as `null` with the loader accepting `null` only while no shape version exists — decide from the ledger at dispatch, and record which branch was taken |
-| PF-D-3 | Task 3 ↔ B1 Task 2b | The clean-export demonstration requires `verify` to exit 0; today's corpus-less lane exits 4 on five known-stale values that only 2b's regeneration fixes. | Task 3 sequenced after 2b and after B1 Task 6; the 4→0 transition is recorded in both ledgers |
+| PF-D-3 | Task 3 ↔ B1 Task 2b | Measured: the corpus-less lane is already 34/34 green at HEAD and stays green under 2b's code change, while the corpus-present lane goes red — because the published records file predates the fix. So 2b must re-export the records and land code + records + both certificates + `docs/RESULTS.md` in one commit, or a HEAD exists where the two lanes disagree. | Task 3 sequenced after 2b and after B1 Task 6; the single-commit obligation is carried into 2b's review, and the transcript records both lanes' counts rather than one |
 | PF-D-4 | Task 4 ↔ B1 Task 2d | Two tasks can each build a derived-prose renderer for the same sentences. | One mechanism. Whichever lands second imports the first and deletes its duplicate; the brief must name the existing function by path, verified by grep in the dispatch turn |
 | PF-D-5 | Task 2 ↔ the shipped `compare` semantics | `compare` currently refuses on rubric disagreement between two artifacts. Adding a protocol digest makes a *third* reason to refuse. Its exit code is already `EXIT_USAGE` for "not comparable". | Digest mismatch is `EXIT_USAGE` in `compare` (an operator error) and `EXIT_DRIFT` in `verify` (a published-number error). Different commands, different meanings; both pinned in tests |
 | PF-D-6 | Task 5 ↔ the machine-path guard | The guard enumerates files to scan. New tracked artefacts (`protocol.json`, `docs/G5.md`, `docs/REPORT.md`, `docs/upstream/*`) are outside its current list, so the guard would stay green over a path literal in exactly the files this plan adds. | Task 5 Step 5 extends the list **and** proves the extension can fire. Recorded here so the reviewer treats an unextended list as Important, not polish |

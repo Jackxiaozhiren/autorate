@@ -273,6 +273,12 @@ def main(argv=None) -> int:
 
 ### Task 4: G1 -- three certified tasks, and the Monte-Carlo that checks the claim
 
+**Predecessor (added by Plan D's ruling D-a, 2026-10-03):** `protocol.json` must be committed by Plan
+D Task 1 *before* this task produces its first certificate, and this task is dispatched with the
+protocol digest as an input. A protocol frozen after the run is a transcript of the result, and the
+certificates' `meta["protocol_digest"]` would have nothing to point at. Tasks 1-3 are unaffected;
+Task 1's pins are the protocol's own input.
+
 **Files:**
 - Create: `tests/test_g1_certification.py`
 - Modify: `src/autorate/cli.py` (`certify` gains `--records data/records_massive.jsonl`), `docs/RESULTS.md` via `autorate report`
