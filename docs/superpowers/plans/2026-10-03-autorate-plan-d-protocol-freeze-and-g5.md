@@ -81,6 +81,7 @@ that fails is not a grep that found nothing, so the failing form is recorded too
 | D-10 | `docs/VERIFICATION.md` is a parsed gate, not prose | `tests/test_verification_table.py` parses it; a `verified` row must name a URL and the date it was opened |
 | D-11 | The upstream channel is still empty — re-check it, do not cite this row | `gh search issues --author=<the author's handle> repo=<the upstream repo>` → `[]`, and the same for PRs, both re-run 2026-09-30 as recorded in spec §13. This plan *prepares* that channel; it does not use it (see §7) |
 | D-12 | The `case_id` fix's blast radius is reachable from the committed artefacts alone, and the corpus-less lane sees it | Same export, `records.from_dict` overlaid with the fix: `re-derived 29 /34 values`, exit **4**, first drift line reading "at coverage 0.950 the 32 automated cases include 1 carrying a wrong automated request; the exact case-level upper bound 0.140 exceeds the budget 0.050" — the 0.089 → 0.140 move and the `erroneous_cases` 0 → 1 that the Task 2b ruling predicted, reproduced by the controller independently of the agent that reported them. `data/records_feishu.jsonl` carries `case_id` on all 1919 rows already, so no re-export is involved |
+| D-13 | The suite does **not** pass in a `git archive` export today, and CI cannot see that | Measured at `3f7ea08`: ruff clean; `AUTORATE_FEISHU_ROOT=/nonexistent pytest -q -p no:randomly` in the export → 208 passed, 27 skipped, **1 failed**; `verify` → `34 /34`, exit 0. The failure is `test_no_committed_file_carries_an_absolute_home_path`, whose own anti-vacuity assertion fires because `git ls-files` returns nothing without a `.git`: `E AssertionError: git ls-files returned nothing; the guard would pass vacuously`. CI misses it because `actions/checkout` provides a repository | This is Task 3's Step 0, not a Task 3 discovery: a G5 demonstration whose subject is an export cannot be produced until the suite runs there. Fixed by handing the export a file list from outside rather than by weakening the guard or adding an ignore list |
 
 The correction in D-12 has a second-order consequence for this plan's own argument, and it is stated
 rather than quietly rewritten. An earlier draft of §2 asserted that the corpus-less lane stays green
@@ -325,7 +326,22 @@ of a copy, regenerating what that row implies, and seeing exit **4** name the di
 field-by-field comparison stays green. A `verify` that cannot fail on the machine that runs it
 in CI is not a reproduction gate.
 
+
 ### Task 3 — G5 on a clean export, with the transcript committed
+
+**Step 0 (prerequisite, measured as D-13): make the suite runnable in an export.**
+`test_no_committed_file_carries_an_absolute_home_path` builds its subject from `git ls-files`, so it
+passes in the working tree and fails in every export — and the failure is the guard refusing to pass
+vacuously, which is the behaviour its docstring promises. Do not relax it, and do not replace it with a
+recursive walk: an export contains gitignored material that legitimately carries machine paths (the SDD
+ledger among it), so an ignore list would install exactly the blind spot that lesson was written from.
+Instead let `tools/g5_export.sh` write the list it already has — `git ls-files > $export/.tracked-files`
+— and let the guard take its subject from, in order: `AUTORATE_TRACKED_FILES` if set and readable, else
+`git ls-files`, else **fail loudly** as it does today. Three properties hold at once: the guard still
+cannot pass on an empty subject, it now has a non-vacuous subject inside an export, and no path is ever
+excluded by name. Prove each with a test: an export with the list → green; an export without it → the
+same red as today, with the message naming both sources; and a planted literal in a listed file → red.
+The list file lives only in the scratch export, so it is not itself a tracked artefact.
 
 **Files:** `tools/g5_export.sh` (new); `docs/G5.md` (new, generated); `.github/workflows/ci.yml`.
 
