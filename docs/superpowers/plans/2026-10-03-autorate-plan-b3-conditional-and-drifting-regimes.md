@@ -17,7 +17,7 @@
 | Which slice dimensions exist offline? | `feishu_zh` declares `family` (8 values), `mode`, `repeat`, `backend`; `language` is the constant `zh` and `option_count` the constant 4 | G4's per-language guarantee cannot be *evidenced* offline; B3 can build and property-test the machinery and certify the `family` slices, which are non-degenerate |
 | Are MASSIVE's 51 language files independent samples? | **No.** All 51 share an identical `id` set: 2,974 items × 51 translations, `rows_total = 151,674` | Bonferroni across languages still controls the per-slice error rate, but the report may not describe a worst-of-51 selection as made from 51 samples. This is the same structure R-36 corrected, and it must be stated in the envelope of any per-language certificate |
 | Is the ordinal `score` primitive present offline? | No `score` answers at all in the archive | per-slice ordinal certification rides on B2's synthetic generator or Plan C's real records, never on a claim about upstream data |
-| Does the local HF cache hold a contamination control? | `mteb/amazon_massive_intent` is not in the dataset cache; `typed-decisions` is a separate model repo | §9's stratification needs the `in_training` membership upstream records in `bench_apps.register`; with the test split only, held-out is definitional and the probe degenerates -- see Task 4's refusal requirement |
+| Where does `in_training` actually exist, and at what granularity? | Declared by upstream `research/scripts/bench_apps.py:104,120,149` per **benchmark suite**, and 30 occurrences inside `research/results/app_benchmark_results.json`. That file has **no `cases` array and no probability lists** -- it is aggregate per suite (measured) | §9's probe is therefore a **between-suite contrast** (suites the checkpoint was tuned on vs suites it was not), never a within-benchmark stratification of held-out cases. Any Δ̂ published with this data must say so in the same sentence as its interval, and a within-suite version needs Plan C's per-case records |
 
 ## Global Constraints
 
@@ -228,4 +228,9 @@ AUTORATE_FEISHU_ROOT=/nonexistent uv run --frozen pytest -q -p no:randomly
 
 ## Out of scope
 
-Real per-language evidence and the real-data version of the probe → Plan C. The guardrail-preset reproduction §5.5 owes → Plan C/D per ledger I-11; it is not reintroduced here.
+Real per-language evidence and the within-suite version of the probe → Plan C. The guardrail-preset reproduction §5.5 owes → Plan D per ledger I-11; it is not reintroduced here.
+
+## Unassigned spec item found by audit, with its owner
+
+§8.3 perturbation stability -- "does the *certified decision* survive an option-order permutation", reported as automation rate conditional on agreement plus the fraction of decisions whose eligibility flips -- appeared in **no plan** when the spec surface was grepped on 2026-10-03. It belongs here, after Task 2 and before Task 5, because it consumes group-conditional certificates. Its first step must be measurement, not code: `research/eval/metamorphic.py` accepts `--out` and prints a per-language `report` (`:297`, `:332`, `:337-338`), and whether a usable per-case permutation record exists has **not** been established. If only aggregate data exists, the task's deliverable is the mechanism plus a refusal, and §8.3's numbers must not appear in the report until Plan C supplies per-case permutations.
+
