@@ -418,10 +418,21 @@ disturb the artifacts.
 `README.md`; `docs/VERIFICATION.md`; `docs/ERRATA.md`.
 
 **Steps.**
-1. Apply ruling D-c: §10's `cert.risk_bound` line is amended to the two shipped names, with a one-line
-   note stating that the rename happened in Plan A Task 8 and is now recorded rather than implied —
-   closing the hole the B1 spec-surface audit found (`risk_bound` appears zero times in
-   `certificate.py` while a plan line claimed it was covered).
+1. Apply rulings D-c and D-e to spec §10's code block, in one edit, each with its reason attached.
+   **D-c:** `cert.risk_bound` becomes the two shipped names, since the envelope must label them
+   separately and one word for two numbers is what R-20/R-31 deleted.
+   **D-e:** the block's headline call is amended too. Measured against the installed package with
+   `inspect.signature`: `from autorate import certify, Gate` (spec:178) raises `ImportError` —
+   `hasattr(autorate, "certify")` is `False` — and `certify_choice`'s parameters are
+   `records, alpha, beta, delta, seed, method, grid`, which hold neither `groups=` nor `score_field=`.
+   Both parameters are owned by later plans but by *different* callables: `groups=` arrives on
+   `certify_choice` via Plan B3, `score_field=` arrives on `certify_threshold` via Plan B1 Task 3. So
+   the spec's one illustrative call has to become two calls, or the sketch reads as an API nobody will
+   ship. **No `certify` alias** is added: the word is already the CLI subcommand (`cmd_certify`), the
+   module already exports `certify_choice`, and a third thing named `certify` is how a published
+   entry point ends up with two owners. Nothing in `README.md` or `docs/*.md` currently repeats the
+   broken line — verified by grep — so the amendment is contained to the spec, and Task 5's README
+   pass must not introduce it.
 2. Tick §13's week 11–12 row against what actually shipped, and where something did not ship, say so
    in the row rather than ticking it. A plan that marks its own homework is the failure this repository
    has twice documented in itself.
