@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from _thresholds import p_max_for_entropy
 from autorate.records import (
     QTYPES,
     Record,
@@ -43,27 +44,16 @@ def test_the_two_scales_disagree_on_the_same_record_and_are_not_interchangeable(
     assert entropy_confidence(L05_PROBS) < 0.05 < max_confidence(L05_PROBS)
 
 
-def _pmax_reaching(k: int, target: float) -> float:
-    """Smallest p_max whose entropy-confidence reaches `target`, by bisection.
-
-    Corrects an earlier hand-computed claim in this project's own design notes: at
-    tau=0.85 the requirement is p_max >= 0.9609 at k=4, not the ~0.93 first written
-    down (that figure belongs to k=20), and the requirement is STRICTER at small k,
-    not looser. The number here is produced by the function, so it cannot drift.
-    """
-    lo, hi = 1.0 / k, 1.0
-    for _ in range(80):
-        mid = (lo + hi) / 2
-        p = [mid] + [(1 - mid) / (k - 1)] * (k - 1)
-        if entropy_confidence(p) < target:
-            lo = mid
-        else:
-            hi = mid
-    return hi
-
-
 def test_one_entropy_threshold_means_a_different_p_max_for_every_option_count():
-    eq = {k: _pmax_reaching(k, 0.85) for k in (2, 4, 10, 20, 51)}
+    # The bisection has ONE owner, `tests/_thresholds.py::p_max_for_entropy`, and its parameters are
+    # keyword-only: this file used to carry a second copy whose two parameters were in the opposite
+    # order, and a transposed call there was loud only by accident (the solver multiplies a list by
+    # `k`), silent for any value pair that arithmetic happens to accept. This file owns the FIGURES
+    # the solver produces, and they correct an earlier hand-computed claim in this project's own
+    # design notes -- at tau=0.85 the requirement is p_max >= 0.9609 at k=4, not the ~0.93 first
+    # written down (that figure belongs to k=20), and the requirement is STRICTER at small k, not
+    # looser. Each number below is produced by the solver, so it cannot drift.
+    eq = {k: p_max_for_entropy(target=0.85, k=k) for k in (2, 4, 10, 20, 51)}
     assert eq[2] > eq[4] > eq[10] > eq[20] > eq[51]
     assert abs(eq[4] - 0.9609) < 6e-4
     assert abs(eq[2] - 0.9785) < 6e-4
@@ -71,7 +61,7 @@ def test_one_entropy_threshold_means_a_different_p_max_for_every_option_count():
     # The spread is what makes a single shared threshold a unit error, and it widens
     # as the threshold loosens: 0.058 points apart at 0.85, 0.229 points at 0.50.
     assert eq[2] - eq[51] > 0.05
-    loose = {k: _pmax_reaching(k, 0.50) for k in (2, 51)}
+    loose = {k: p_max_for_entropy(target=0.50, k=k) for k in (2, 51)}
     assert loose[2] - loose[51] > 0.22
 
 
@@ -322,7 +312,7 @@ def test_the_errata_table_matches_the_function_that_produced_it():
 
         tau = float(re.search(r"(\d+\.\d+)", cells[0]).group(1))
         for k, quoted in zip((2, 4, 10, 20, 51), cells[1:]):
-            assert abs(_pmax_reaching(k, tau) - float(quoted)) <= 5e-5, (tau, k, quoted)
+            assert abs(p_max_for_entropy(target=tau, k=k) - float(quoted)) <= 5e-5, (tau, k, quoted)
 
 
 def test_a_record_is_immutable_but_not_a_dict_key():

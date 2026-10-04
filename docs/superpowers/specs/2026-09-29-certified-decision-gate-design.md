@@ -142,7 +142,7 @@ Run the whole pipeline three times per task, once per field, and publish three r
 
 ### 7.4 The unit error, measured
 
-Bisection over `entropy_confidence` (reproduced by `tests/test_records.py::_pmax_reaching`) gives the `p_max` a single entropy threshold actually demands, per option count:
+Bisection over `entropy_confidence` (reproduced by `tests/_thresholds.py::p_max_for_entropy`, the suite's one owner of that search) gives the `p_max` a single entropy threshold actually demands, per option count:
 
 | gate | k=2 | k=4 | k=10 | k=20 | k=51 |
 |---|---|---|---|---|---|

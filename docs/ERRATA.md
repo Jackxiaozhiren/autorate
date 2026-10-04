@@ -44,7 +44,15 @@ Measured by bisection over `autorate.records.entropy_confidence`:
 So the `0.93` value belongs to **k=20**, the requirement is **stricter at small k**, and a
 `0.93` answer over four options scores `0.7616` — it does not clear the documented gate.
 Corrected in the plan's Task 4 test, added as spec §7.4, and now produced by
-`tests/test_records.py::_pmax_reaching` rather than quoted from prose.
+`tests/_thresholds.py::p_max_for_entropy` rather than quoted from prose. The table above is
+byte-checked against that solver by
+`tests/test_records.py::test_the_errata_table_matches_the_function_that_produced_it`,
+which reads each cell here and requires agreement to 5e-5.
+
+2026-10-04 note: until the Task 2 fix round 2 merged the suite's two copies of the bisection,
+this entry named `tests/test_records.py::_pmax_reaching`, the local copy. The solver, the
+figures and the guard test are unchanged; only the producing function's file and name moved,
+and the parameters are keyword-only now so a transposed call cannot pass silently.
 
 ## 2026-10-01 — a controller commit silently reverted Task 2's spec narrowings
 

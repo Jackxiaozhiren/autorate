@@ -18,18 +18,36 @@ from typing import Sequence
 
 from .records import entropy_confidence, max_confidence
 
-# Served probabilities and served confidences are both rounded to 4 decimals, so agreement
-# inside 1e-3 is the same quantity rather than a coincidence. The headroom is measured, not
-# assumed (tests/test_scales.py re-derives both figures from the committed archive and from
-# `entropy_confidence`): the narrowest gap between the two scales over laya's 192 archived
-# choice records is 0.0526 -- 52x this window -- and a k=4 record reading the README's own
-# 0.85 gate on the entropy scale needs p_max = 0.9609, which sits 0.1109 from the answer
-# scale. Measured over those records, no row has both scales inside this window while they
-# differ; that is a statement about laya's archived choice rows, not about every backend. A
-# k=4 row whose p_max is 0.999855 or higher does sit inside it on both scales at once, and the
-# outcome of meeting one is safe only because it falls into the `else` below -- it is reported
-# as `neither`, never renamed to whichever scale the comparison reached first. Both figures
-# here (the crossing point and the absorbed row) are produced in tests/test_scales.py.
+# Served probabilities and served confidences are both rounded to 4 decimals, so agreement inside
+# 1e-3 is the same quantity rather than a coincidence. Every figure here names the test that produces
+# it, so a reader can re-derive it instead of trusting prose. "The gate test" below means
+# `test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_apart`, in
+# tests/test_scales.py: it reads the committed archive and prints every p_max figure quoted here.
+#   HEADROOM, over laya's 192 archived choice records (the gate test): the narrowest gap between
+#     the two scales is 0.0526, 52x this window -- so no archived laya row is anywhere near the
+#     sharpness described below, though whether some other archive holds such a row is not claimed.
+#   UNIT ERROR at the README's own 0.85 gate (the gate test): a k=4 record reading 0.85 on the
+#     entropy scale sits 0.1109 from the answer scale and needs p_max = 0.9609 to get there, a figure
+#     pinned in tests/test_records.py::test_one_entropy_threshold_means_a_different_p_max_for_every_
+#     option_count, because one figure has one owner. Over those same records no row has both scales
+#     inside this window while they differ -- a statement about laya's archived choice rows, not
+#     about every backend.
+# The window does stop separating the scales on a very sharp k=4 row, and that phrasing invites TWO
+# questions with two different answers. What holds by construction, for any window and any remainder
+# shape, is the pair of PREDICATES: SOME published value is inside both radius-TOLERANCE windows
+# exactly when the two scales are no further apart than 2 * TOLERANCE (that is when the windows
+# intersect at all), and a row's OWN p_max is inside both exactly when the gap is no wider than
+# TOLERANCE (such a row sits at distance 0 from max(p), so it carries the whole gap alone).
+# Where those lines fall on the p_max axis is a FIGURE, and it depends on the remainder shape, so the
+# shape is named and the gate test prints both crossings for it -- p_max on the answer, the other
+# k-1 options sharing the rest EQUALLY: gap = p_max - entropy_confidence(p_max) is 0.002998 at
+# p_max 0.9995, reaches 2 * TOLERANCE at p_max 0.999684 (the SOME-value line) and TOLERANCE at
+# p_max 0.999855 (the OWN-p_max line). A lumpy ((1-p)/2, (1-p)/6, (1-p)/6) or sparse (all remaining
+# mass on one option) remainder crosses either line 2e-5 to 8e-5 EARLIER, so it is absorbed sooner:
+# the figures above understate absorption rather than overstate it, and the same test shows which
+# bucket the gate actually files each row in. Meeting an absorbed row is safe only because it falls
+# into the `else` below: it is reported as `neither`, never renamed to whichever scale the comparison
+# reached first.
 TOLERANCE = 1e-3
 
 
@@ -45,12 +63,32 @@ def scale_attribution(records: Sequence) -> dict:
     about data that answers the question cleanly slice by slice. Task 4 publishes one row per
     `(backend, qtype)`, so the refused call is one no consumer needs to make.
 
-    The verdict is a worst-case gate over whatever rows were passed: every measured row must
-    sit inside `TOLERANCE` of one scale and outside it on the other. It is NOT a statement
-    about any individual record. Printing "jev: `neither`" says something false for 97 of
-    jev's 191 archived choice rows, each of which does match a scale; the per-record mixture
-    in the returned dict is the only part of this result that may be read per record, and a
-    published table must carry it beside the aggregate word. The four verdicts:
+    The verdict is a worst-case gate over whatever rows were passed: the batch's LARGEST distance to
+    one scale must sit inside `TOLERANCE` while its largest distance to the other sits outside it,
+    and no part of the gate reads a row on its own. A decisive verdict therefore does not mean every
+    row was decisive -- only the two maxima decide, so a batch named after one scale can still carry
+    rows inside BOTH windows, or rows matching the other scale alone. It is NOT a statement about any
+    individual record: printing "jev: `neither`" says something false for 97 of jev's 191 archived
+    choice rows, each of which does match a scale, 74 of them by matching BOTH at once. Those counts,
+    and the decisive-batch-with-an-absorbed-row shape, are measured in tests/test_scales.py by
+    `test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hides` and
+    `test_a_decisive_verdict_does_not_mean_every_measured_row_was_decisive`. The per-record mixture is
+    the only part of this result that may be read per record, and a published table must carry it
+    beside the aggregate word.
+
+    Raises `ValueError` from exactly two places, and only these two:
+
+    * the batch spans more than one `(backend, qtype)` slice -- the check runs before any distance
+      is measured, and the message names the slice keys it mixed;
+    * a row that carries a `reported_confidence` at all carries one that is not finite (`nan`,
+      `inf` or `-inf`), which is refused for the same reason `records.py` refuses a non-finite
+      probability: `max()` would otherwise let row order decide the verdict and publish nan or inf
+      as a distance.
+
+    Anything else bad is not this function's call to make: a non-numeric `reported_confidence`
+    propagates the `TypeError` its own comparison raises.
+
+    The four verdicts:
 
     * `answer_confidence` / `confidence_entropy` -- the worst-case distance to that scale is
       inside `TOLERANCE` and the worst-case distance to the other scale is outside it.
