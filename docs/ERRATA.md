@@ -171,3 +171,28 @@ Reproduce the corrected sentence with `uv run --frozen autorate report --out doc
 the `### What this does and does not establish` bullet; reproduce the superseded one from commit
 `12c87d7` the same way. (The command is named here because the row above mine omitted it, which its own
 brief required -- an omission in my same-day row, supplemented rather than rewritten.)
+
+## 2026-10-04 — the report's denominator paragraph typed four numbers it did not own
+
+`docs/RESULTS.md` stated, in prose: "MASSIVE's 51 language files are translations of the same 2,974
+utterances, and feishu's 384 archive lines are 64 cases repeated."
+
+Two of those claims were stronger than this repository's evidence at the time it printed them:
+
+- the inventory it sat above records the MASSIVE option's basis as **"3 of 51 files opened; the rest
+  counted from the repo listing"**, so "51 language files are" read as though all 51 had been opened
+  when the artifact said three;
+- `384` is one backend's line count; the archive holds **768** lines across both backends for 64 cases,
+  so the sentence mixed denominators with the number it used to argue them.
+
+Neither figure was wrong in intent — 51 files and 2,974 rows per file are real, and each was counted by
+hand later on 2026-10-03, when all 51 pinned shards were re-hashed against their recorded digests and
+the id sets proved identical (union = intersection = 2,974). But a number typed into prose has no owner,
+which is how it stayed behind the artifact it described. The paragraph now reads its figures from
+`data/inventory.md.json`, quotes each option's own recorded basis instead of restating it, and asserts
+the translation claim only while the per-language and pooled options report the same row count — if they
+ever disagree, the sentence stops claiming rather than repeating. The file-opened upgrade to "51 of 51
+opened and hashed" belongs to the inventory itself, which is where the claim will then have an owner.
+
+Reproduce with `uv run --frozen autorate report --out docs/RESULTS.md`, and read `## Is n big enough to
+certify?`; the superseded wording is in `git show b9f237b:docs/RESULTS.md`.

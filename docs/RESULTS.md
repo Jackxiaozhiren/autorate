@@ -16,9 +16,7 @@ carries no timestamp so a re-run is byte-comparable.
 
 ## Is n big enough to certify?
 
-The bound is computed on independent cases, not on rows: MASSIVE's 51 language
-files are translations of the same 2,974 utterances, and feishu's 384 archive
-lines are 64 cases repeated. Counting either as sample size flatters the bound.
+The bound is computed on independent cases, not on rows: feishu's 768 archived lines are 64 unique cases; MASSIVE's per-language and pooled options both report 2974 independent rows, which is what translations of one utterance set must give; counting rows instead of cases flatters the bound. Each option's own count basis is in the table below, quoted from the inventory rather than restated here.
 
 | corpus | n_independent | n_rows | count basis | bound width at alpha=0.05 | feasible at 0.10 |
 |---|---|---|---|---|---|

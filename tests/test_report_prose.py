@@ -179,3 +179,30 @@ def test_the_two_shapes_do_not_render_identically():
     b = _render({"automated_cases": 32, "automated": 96, "erroneous_cases": 0,
                 "errors_among_automated": 0}, 0.0893)[2]
     assert a != b, "the refusal sentence does not depend on the certificate"
+
+
+def test_the_denominator_note_quotes_the_inventory_rather_than_a_memory_of_it():
+    """#33's last typed figures: prose said "MASSIVE's 51 files" beside an inventory saying 3 of 51.
+
+    Every number must move with `inv`, and the translation claim must go quiet when the two options stop
+    agreeing, because a sentence that asserts the claim regardless of the data is the same defect class
+    as the one this file exists to prevent.
+    """
+    from autorate.report import _denominator_note
+
+    inv = json.loads(Path("data/inventory.md.json").read_text())
+    note = _denominator_note(inv)
+    assert "768 archived lines are 64 unique cases" in note, note
+    assert "2974 independent rows" in note, note
+    assert "51" not in note, note
+    assert "384" not in note, note
+
+    moved = json.loads(Path("data/inventory.md.json").read_text())
+    moved["reader_lines_read"] = 999
+    assert "999 archived lines" in _denominator_note(moved), _denominator_note(moved)
+
+    disagree = json.loads(Path("data/inventory.md.json").read_text())
+    for option in disagree["corpus_options"]:
+        if option["id"] == "massive_intent_per_language":
+            option["n_independent"] = 1234
+    assert "translations" not in _denominator_note(disagree), _denominator_note(disagree)

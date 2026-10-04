@@ -179,6 +179,33 @@ def _laya_point_or_problem(cert, scores) -> str:
             "about nothing." % scores[("laya", "choice")])
 
 
+def _denominator_note(inv: dict) -> str:
+    """Why the sample size is the case count, in the figures the inventory actually holds.
+
+    These four numbers used to be typed into the sentence, and the typing had already cost the project
+    twice: the prose said "MASSIVE's 51 language files" beside an inventory whose own recorded basis says
+    3 of 51 were opened, so prose and artifact had drifted in opposite directions and nothing could see
+    it. Every figure below is read from `inv`, and the translation claim is asserted only when the
+    per-language and pooled options actually report the same row count -- which is what translations of
+    one utterance set must do -- so a future divergence silences the claim instead of repeating it.
+    """
+    def option(kind):
+        return next((o for o in inv["corpus_options"] if o["id"] == kind), None)
+
+    feishu, pooled, per_lang = option("feishu_zh"), option("massive_intent_all_languages"), \
+        option("massive_intent_per_language")
+    parts = ["The bound is computed on independent cases, not on rows:"]
+    if feishu is not None:
+        parts.append("feishu's %d archived lines are %d unique cases;"
+                     % (inv["reader_lines_read"], feishu["n_independent"]))
+    if pooled and per_lang and pooled["n_independent"] == per_lang["n_independent"]:
+        parts.append("MASSIVE's per-language and pooled options both report %d independent rows, which "
+                     "is what translations of one utterance set must give;" % pooled["n_independent"])
+    parts.append("counting rows instead of cases flatters the bound. Each option's own count basis is "
+                 "in the table below, quoted from the inventory rather than restated here.")
+    return " ".join(parts)
+
+
 def build_report(inv: dict, certs: dict, counts: dict) -> str:
     digests = inv["digests"]
     scores = _audit_scores(inv)
@@ -218,9 +245,7 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "",
         "## Is n big enough to certify?",
         "",
-        "The bound is computed on independent cases, not on rows: MASSIVE's 51 language",
-        "files are translations of the same 2,974 utterances, and feishu's 384 archive",
-        "lines are 64 cases repeated. Counting either as sample size flatters the bound.",
+        _denominator_note(inv),
         "",
         "| corpus | n_independent | n_rows | count basis | bound width at alpha=0.05 | feasible at 0.10 |",
         "|---|---|---|---|---|---|",
