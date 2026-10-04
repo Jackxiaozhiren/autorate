@@ -15,6 +15,12 @@ its counters defaulted to zero in prose and hard-indexed in the table, so one sl
 the other narrated label shape for a refusal about sample size; and the record clause paired a record
 count taken at the requested alpha with a bound taken at a different grid point, silent only because jev's
 two points coincide. Every one of them is a sentence contradicting the artifact printed beside it.
+
+A sixth, same class, fixed here: the per-CASE bullet justified the case denominator by calling laya's
+three repeats per case "byte-identical", and the archive refutes it -- 0 of 64 groups have identical
+rows, because `meta`, `repeat` and `slices` carry the repeat counter and its own elapsed time. The
+identity that earns the denominator is over `probs`, `scores` and `gold`, all 64 of 64, so the bullet now
+says that and the measurement is taken from the rows rather than remembered.
 """
 import json
 from dataclasses import replace
@@ -456,3 +462,61 @@ def test_the_denominator_note_quotes_the_inventory_rather_than_a_memory_of_it():
         if option["id"] == "massive_intent_per_language":
             option["n_independent"] = 1234
     assert "translations" not in _denominator_note(disagree), _denominator_note(disagree)
+
+
+def _laya_choice_groups():
+    """The committed archive, grouped by case, restricted to the shape the bound is computed on."""
+    records = load_records(Path("data/records_feishu.jsonl"))
+    groups = {}
+    for r in records["laya"]:
+        if r.qtype == "choice":
+            groups.setdefault(r.case_id, []).append(r)
+    return groups
+
+
+def test_the_archive_measures_what_the_per_case_bullet_is_allowed_to_claim():
+    """The measurement behind the sentence, taken from the rows rather than from prose.
+
+    Three repeats per case, 64 cases: the ROWS are not identical in even one group -- `meta`, `repeat`
+    and `slices` carry the repeat counter and its own elapsed time -- while the three quantities a bound
+    depends on (`probs`, `scores`, `gold`) agree in every group. So the case denominator is earned by the
+    identity of the observation, and the coarse claim about the rows is refuted by the artifact itself.
+    """
+    groups = _laya_choice_groups()
+    assert len(groups) == 64 and {len(g) for g in groups.values()} == {3}, len(groups)
+
+    def agreeing(key):
+        return sum(1 for g in groups.values()
+                   if len({json.dumps(key(r), sort_keys=True) for r in g}) == 1)
+
+    assert agreeing(lambda r: r.to_dict()) == 0, "the rows are claimed to differ; measure says otherwise"
+    for label, count in (("probs", agreeing(lambda r: list(r.probs))),
+                         ("scores", agreeing(lambda r: r.scores)),
+                         ("gold", agreeing(lambda r: r.gold))):
+        assert count == len(groups), (label, count)
+
+
+def test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity():
+    """The published sentence may not be refuted by the artifact printed beside it.
+
+    The per-CASE bullet justified the case denominator with "laya's three per case are byte-identical",
+    which the archive refutes: 0 of 64 groups have identical rows. The narrower thing is both true and
+    the reason the repeats are one observation, so the bullet must say THAT, and the guard below is what
+    stops the coarse wording from being re-typed into the generator -- `verify` byte-compares the
+    artifact, so nothing else would notice.
+    """
+    groups = _laya_choice_groups()
+    assert len(groups) == 64, "the bullet's wording is measured against 64 laya choice cases"
+    assert sum(len(g) for g in groups.values()) == 192, "64 cases x 3 repeats"
+
+    records = load_records(Path("data/records_feishu.jsonl"))
+    inv = json.loads(Path("data/inventory.md.json").read_text())
+    text = build_report(inv, {"laya": read_certificate(Path("data/cert_laya.json")),
+                              "jev": read_certificate(Path("data/cert_jev.json"))},
+                        {b: len(rs) for b, rs in records.items()})
+    bullet = next((l for l in text.splitlines() if l.startswith("- The bounds are per CASE")), text)
+    # the refuted form: `byte-identical` predicated of the repeats/rows/records themselves.
+    assert "are byte-identical" not in bullet, bullet
+    # the earned form, and every noun it identifies must be one the measurement above proved identical.
+    assert "byte-identical probability vectors, scores and gold labels" in bullet, bullet
+    assert "repeats of one case are one observation" in bullet, bullet

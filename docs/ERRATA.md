@@ -128,6 +128,19 @@ same 32 cases.
 denominator is stated next to every published rate.** The record counts stay on the
 certificate because they are what the gate acts on, but they are never the `n`.
 
+2026-10-04 note: this entry's clause "laya's three records per case are byte-identical, so
+the repeats were not three observations" states the reason correctly and the evidence
+coarsely. Measured on `data/records_feishu.jsonl`, grouped by `case_id` over laya's 192
+choice records: **0 of 64 groups** have identical rows — `meta`, `repeat` and `slices` carry
+the repeat counter and its own elapsed time — while `probs`, `scores` and `gold` each agree
+in **64 of 64** groups. The denominator is earned by the identity of the quantities a bound
+reads, not by the identity of the row, so every sentence in this repository now says that
+(`README.md`, `docs/RESULTS.md` via its generator, `certify_choice`'s docstring, and the
+gate test's own comment). What changes is the wording's precision; nothing about the
+denominator, the bounds or the refusals moves, and the measurement is owned by
+`tests/test_report_prose.py::test_the_archive_measures_what_the_per_case_bullet_is_allowed_to_claim`
+rather than remembered by the prose that uses it.
+
 ## 2026-10-03 — `Record.from_dict` dropped `case_id`, so the case denominator was not the one published
 
 The row above is correct about the unit and wrong about two numbers it quotes, because the round trip
@@ -222,7 +235,9 @@ certify?`; the superseded wording is in `git show b9f237b:docs/RESULTS.md`.
 
 ## 2026-10-04 — the same-day fix-round row under-counted its own failures
 
-The row above this one ("the repaired report still published another row's number") claimed that
+The 2026-10-04 entry titled "the repaired report still published another row's number" (two
+entries above this one as written today — located by its title, because an adjacency claim
+here has already gone stale once in this file) claimed that
 `tests/test_report_prose.py` stood at 11 tests of which **7** failed against `12c87d7`, the commit that
 introduced the misattributed counterfactual. Re-measured in the next round: **8 failed, 3 passed**. The
 figure in that row now carries the measured number; **this note supersedes the 7 the row first carried**,
@@ -237,3 +252,31 @@ stating it from memory is the same error class as stating a number that was neve
 
 Nothing in the certificates, the report's figures, or the sentences above changes: this is a count of
 tests in a narrative row, not a bound.
+
+## 2026-10-04 — a controller brief proposed replacing the errata guard's float tolerance with a byte comparison, and the arithmetic refutes it
+
+A brief written to settle the round-3 concern ("the guard's `5e-5` is nearly saturated — the worst cell is
+`4.8875e-5`, 2.2% headroom") instructed the guard to compare strings instead:
+`f"{p_max_for_entropy(target=tau, k=k):.4f}" == quoted`, on the reasoning that the tolerance would then be
+"exactly the published precision, with no slack to saturate".
+
+That reasoning is wrong, and it was written before the equivalence was checked. Every published cell is on
+the 4-decimal grid, so `round(solver, 4) == quoted` holds exactly when the solver lies in `quoted`'s
+rounding basin — which *is* `|solver - quoted| <= 5e-5`. The two checks therefore tolerate the same drift
+and differ only on exact midpoints. Converting buys nothing and loses the arithmetic the current check does,
+so the guard is unchanged and the proposal is withdrawn here rather than implemented.
+
+Two things the episode does establish, now stated in the guard's own docstring:
+
+- the cells agree to between 2.8e-6 and 4.888e-5 because they are 4-decimal roundings, and that spread is
+  the rounding half-step, not solver disagreement; the 2.2% "headroom" is therefore not fragility relative
+  to a stricter form — no stricter form exists at this precision;
+- what the guard can and cannot see follows from that same half-step: a solver change that leaves every
+  published 4th decimal intact passes by construction, and one that moves a value past a midpoint reddens
+  it, so the guard's drift sensitivity is set by where each cell happens to sit relative to a rounding
+  boundary. Tightening that would mean republishing the cells at more digits, which is a decision about the
+  published artifact and not a test change.
+
+Measured before ruling: all ten cells satisfy the string comparison (`0` mismatches), which is the
+consistency check that made the equivalence visible. No certificate, no bound, and no published figure
+changes; `docs/ERRATA.md` and `tests/test_records.py`'s guard docstring are the only files touched for this.

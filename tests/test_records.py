@@ -305,6 +305,15 @@ def test_the_errata_table_matches_the_function_that_produced_it():
     not a byte comparison -- a byte check on a 4-decimal cell would be the weaker claim, since the
     solver's full-precision value has no bytes in this document -- and the second `2026-10-04` note in
     `docs/ERRATA.md`'s 2026-10-01 entry says so in the file that once claimed otherwise.
+
+    The `5e-5` is not slack that can run out: it is the rounding half-step, because every published cell is
+    a 4-decimal rounding of this solver's own value (measured agreement, 2.8e-6 to 4.888e-5). That fixes
+    what the guard can see. A solver change that leaves every published 4th decimal intact passes by
+    construction; a change that moves a value across a rounding boundary reddens it. So its drift
+    sensitivity is set by where each cell sits relative to a midpoint, and comparing the rendered strings
+    instead would be the same test, not a stricter one -- see the 2026-10-04 entry that withdraws that
+    proposal. Making the guard able to see sub-4th-decimal drift means publishing more digits, which is a
+    decision about this document, not about this test.
     """
     from pathlib import Path
 

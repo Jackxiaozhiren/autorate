@@ -28,9 +28,10 @@ Two of those rows carry the whole argument:
   is `P(wrong AND automated)`. They are different quantities, and a paper or a dashboard
   that quotes one while meaning the other is the failure mode this tool exists to stop.
 - Both are over **cases**, not archive rows. Repeats of one case are one observation -- on
-  this corpus each case appears three times per backend, and one backend's repeats are
-  byte-identical -- so the `n` in every bound counts cases and the record counts are
-  published beside it instead of standing in for it.
+  this corpus each case appears three times per backend, and one backend's repeats carry
+  byte-identical probability vectors, scores and gold labels (not identical rows: the
+  repeat counter and its own elapsed time differ) -- so the `n` in every bound counts cases
+  and the record counts are published beside it instead of standing in for it.
 - `envelope` is the machine-readable statement of what the bound assumed -- coverage
   level, group conditioning, drift, and how empty sets were counted. A certificate read
   without its envelope is invalid output, so `certify`, `compare` and `gate` all print it.

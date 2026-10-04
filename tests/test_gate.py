@@ -139,7 +139,8 @@ def test_the_gate_automates_exactly_the_cases_the_certificate_counted():
 def test_a_split_never_puts_two_repeats_of_one_case_on_opposite_sides():
     """The group is the case, not the row.
 
-    40 cases x 3 byte-identical repeats. On the committed corpus a record-level split put
+    40 cases x 3 repeats carrying the same probabilities and the same gold, differing only in
+    the repeat counter. On the committed corpus a record-level split put
     44 of jev's 53 evaluation cases in its calibration half too, which is not a looser
     guarantee but a violated exchangeability unit.
     """

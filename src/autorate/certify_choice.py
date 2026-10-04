@@ -95,7 +95,9 @@ def _outcome(ev, qhat, method):
     request in it is wrong. Those two buckets are exhaustive, so refusal = 1 - autorate
     still holds at the unit the bound is computed on. Record counts stay on the certificate
     because they are what the gate acts on; they are not a binomial denominator, because
-    repeats of one case are one observation (laya's three per case are byte-identical).
+    repeats of one case are one observation (laya's three per case carry byte-identical
+    probability vectors, scores and gold labels, though not identical rows -- measured, and
+    pinned, by tests/test_report_prose.py).
     """
     autom = err = empties = multi = size_sum = 0
     cases = {}

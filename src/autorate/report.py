@@ -404,11 +404,18 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
     # would be the misattribution this document has already been corrected for once.
     jev_cases = certs["jev"].meta.get("n_eval_cases")
     if jev_cases is not None:
-        lines.append("- The bounds are per CASE: repeats of one case are one observation (laya's three "
-                     "per case are byte-identical), so %d records are %d cases and the denominators "
-                     "above say which is which. Per-slice certification, the ordinal `score` family and "
-                     "the `noul` budgets are Plan B, gated on a corpus with enough independent cases to "
-                     "bound them." % (certs["jev"].n_eval, jev_cases))
+        # The coarse form of this clause -- "laya's three per case are byte-identical" -- is refuted by the
+        # archive it cites: 0 of 64 groups have identical rows, because `meta`, `repeat` and `slices` carry
+        # the repeat counter and its own elapsed time. What earns the case denominator is the identity of
+        # the quantities a bound reads, and that is 64 of 64. A claim about this corpus, so it is pinned by
+        # tests/test_report_prose.py, which measures all four shapes from `data/records_feishu.jsonl`
+        # rather than remembering them.
+        lines.append("- The bounds are per CASE: repeats of one case are one observation (laya's three per "
+                     "case carry byte-identical probability vectors, scores and gold labels, though not "
+                     "identical rows -- `meta`, `repeat` and `slices` differ), so %d records are %d cases "
+                     "and the denominators above say which is which. Per-slice certification, the ordinal "
+                     "`score` family and the `noul` budgets are Plan B, gated on a corpus with enough "
+                     "independent cases to bound them." % (certs["jev"].n_eval, jev_cases))
     lines.append("- Exchangeability is assumed within a backend and a question shape, not proven; the "
                  "envelope on each certificate is the machine-readable statement of that limit.")
     lines.append("")
