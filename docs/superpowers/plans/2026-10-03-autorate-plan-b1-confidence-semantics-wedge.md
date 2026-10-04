@@ -283,7 +283,7 @@ The `neither` branch is not a failure of this function: jev's `confidence` is ge
 
 **Interfaces:**
 - Consumes: `split_cal(records, seed)`, `case_key(record)`, `clopper_pearson_upper`, `bound_width`, `Certificate`, `Reason`, `N_CLAIMS`.
-- Produces: `count_outcome(half, decide) -> dict` with keys `automated, errors, refused, n_cases, automated_cases, erroneous_cases, refused_cases, mean_score` — where `decide(record) -> bool`; `sweep_thresholds(records, score_field, grid=None) -> list[dict]`, each row `{"lambda", "automated", "marginal_errors", "automated_cases", "erroneous_cases"}`; and `certify_threshold(records, score_field="confidence", alpha=0.05, beta=0.05, delta=0.05, seed=0, grid=None) -> Certificate`.
+- Produces: `count_outcome(half, kind, measure=None) -> dict` where `kind(record) -> str` returns one of `"auto" | "multi" | "empty" | "refuse"` and `measure(record) -> float` is optional — returning a dict with the keys `_outcome` returns today (`automated, errors, empties, multi_label, n_cases, automated_cases, erroneous_cases`) plus `refused` and `refused_cases`, and `mean_measure` only when `measure` is supplied. A **bool** cannot carry that shape: the buckets `empties` and `multi_label` come from the three-way `classify_set`, so a `decide(record) -> bool` counter would either drop two published keys or invent them. `"refuse"` exists because the threshold gate's non-automated decision is neither an empty set nor a multi-label one — borrowing either name would put a false statement into `empties`/`multi_label` on the certificate. Each certifier publishes the mean under its OWN meta key (`certify_choice` → `mean_set_size`, `certify_threshold` → `mean_score`), so the shared arithmetic never names a published figure and no number acquires a second owner. Also produces `sweep_thresholds(records, score_field, grid=None) -> list[dict]`, each row `{"lambda", "automated", "marginal_errors", "automated_cases", "erroneous_cases"}`; and `certify_threshold(records, score_field="confidence", alpha=0.05, beta=0.05, delta=0.05, seed=0, grid=None) -> Certificate`.
 
 §6.4 requires both gates implemented and **contrasted on the same records**, and R-34 requires the auto/escalate rule to have one owner. So the counting moves out of `certify_choice` first; the new certifier then consumes it. `certify_threshold` selects λ on the **calibration half only** (R-28's rule, restated for this gate: the evaluation half never picks its own threshold).
 
@@ -329,7 +329,7 @@ def _mixed(n=200, seed=7):
 def test_count_outcome_automates_a_case_only_when_every_record_in_it_automates():
     recs = _mixed(6)
     recs += [_rec(0, "b", "extra", (0.9, 0.1, 0.0), 0, 0, 0.95)]
-    d = count_outcome(recs, lambda r: r.scores["confidence"] >= 0.9)
+    d = count_outcome(recs, lambda r: "auto" if r.scores["confidence"] >= 0.9 else "refuse")
     assert d["n_cases"] == len({r.case_id for r in recs})
     assert d["automated"] == sum(1 for r in recs if r.scores["confidence"] >= 0.9)
     # The rule is per-case, not per-record: one failing record in a case refuses it all.
@@ -352,7 +352,7 @@ def test_the_two_certifiers_count_the_same_split_the_same_way():
 ```
 
 - [ ] **Step 2: Verify RED** — expected: `ModuleNotFoundError` for `autorate.case_count`.
-- [ ] **Step 3: Extract.** Move `_outcome`'s bucket logic into `case_count.count_outcome(half, decide)` where `decide(record) -> bool` replaces the `kind == "auto"` test; `conformal_set`/`classify_set` stay in `certify_choice`, which now passes `lambda r: classify_set(conformal_set(r.probs, qhat, r.u, method)) == "auto"`. Add `refused_cases` to the returned dict so exhaustiveness is assertable, and keep every existing key name — `certify_choice`, `verify` and the published `meta` all read them.
+- [ ] **Step 3: Extract.** Move `_outcome`'s bucket logic into `case_count.count_outcome(half, kind, measure=None)` where `kind(record) -> str` replaces the `kind == "auto"` test; `conformal_set`/`classify_set` stay in `certify_choice`, which now passes `lambda r: classify_set(conformal_set(r.probs, qhat, r.u, method))`. Keep every existing key name exactly — `certify_choice`, `verify` and the published `meta` all read them — and ADD `refused` (records not automated) and `refused_cases` (cases with at least one non-automated record, so `automated_cases + refused_cases == n_cases` is assertable). `_outcome`'s `size_sum / len(ev)` becomes `mean_measure` computed from the optional `measure` callable, which `certify_choice` supplies as `len(conformal_set(...))` and publishes into its own meta as `mean_set_size`. The extraction is a move, not a rewrite: if any existing key changes name or value, that is a regression in this step, not an improvement.
 - [ ] **Step 4: Run the *unchanged* set-gate suite** — `uv run --frozen pytest tests/test_certify_choice.py -q -p no:randomly`. Expected: all pass. This is the refactor's real gate: 40-odd assertions about the set certificate, none of which was touched.
 - [ ] **Step 5: Write the failing threshold tests**:
 
@@ -361,10 +361,15 @@ def test_lambda_is_chosen_on_the_calibration_half_and_never_moves_on_the_eval_ha
     # R-28 restated for this gate: a threshold tuned to the evaluation numbers is not a
     # calibrated rule, it is the answer dressed as a method.
     recs = _mixed(300)
-    a = certify_threshold(recs, score_field="confidence", alpha=0.20, beta=0.05, seed=3)
+    a = certify_threshold(recs, score_field="confidence", alpha=0.05, beta=0.20, seed=3)
     b = certify_threshold(recs, score_field="confidence", alpha=0.05, beta=0.05, seed=3)
     assert a.qhat != b.qhat, "the budget must actually move the operating point"
     assert a.autorate > b.autorate, (a.autorate, b.autorate)
+    # R-54: this test moves `beta`, never `alpha`. At the published rubric alpha == beta == 0.05, so
+    # a variant that gated on the wrong symbol would still pass a test that varied alpha.
+    c = certify_threshold(recs, score_field="confidence", alpha=0.20, beta=0.05, seed=3)
+    assert c.qhat == b.qhat and c.autorate == b.autorate, (
+        "alpha must not move the threshold gate's operating point; it gates the set rule only")
 
 
 def test_the_marginal_risk_of_an_automated_error_is_monotone_in_lambda():
@@ -380,13 +385,19 @@ def test_the_marginal_risk_of_an_automated_error_is_monotone_in_lambda():
 
 def test_a_field_that_is_constant_cannot_be_certified_and_says_which_failure_it_is():
     recs = [_rec(i, "b", "c%d" % i, (0.6, 0.3, 0.1), 0, 0, 0.5) for i in range(200)]
+    # Structural, not wording: a constant field collapses the grid to two distinct operating
+    # points, so the failure is a property of the data and no phrasing choice can satisfy it.
+    from autorate.certify_threshold import sweep_thresholds
+    rows = sweep_thresholds(recs, "confidence", grid=(0.0, 0.3, 0.6, 0.9, 0.99))
+    assert len({r["automated"] for r in rows}) == 2, rows
     cert = certify_threshold(recs, score_field="confidence", alpha=0.05, beta=0.05)
     assert cert.feasible is False
     # By symbol, not by literal: Task 5 splits this label in two (PF-B1-2), and an
     # assertion naming the enum member is one the rename can find.
     assert cert.reason == Reason.EMPTY_FEASIBLE_SET.value, cert.reason
-    assert "every record automates" in cert.summary() or "no discriminating" in \
-        str(cert.meta.get("closest_attempt", "")), cert.summary()
+    # The closest-to-meeting point is recorded, not invented: this is the artefact that makes the
+    # refusal auditable, so assert its shape rather than a sentence inside it.
+    assert cert.meta.get("closest_attempt"), cert.meta
 
 
 def test_an_unknown_score_field_is_a_usage_error_not_a_silent_zero():
@@ -394,7 +405,8 @@ def test_an_unknown_score_field_is_a_usage_error_not_a_silent_zero():
         certify_threshold(_mixed(6), score_field="nope")
 ```
 
-- [ ] **Step 6: Implement `certify_threshold`.** Structure mirrors `certify_choice` deliberately, so a reader comparing the two gates compares like with like: validate budgets; `split_cal`; refuse `NO_GOLD_LABELS` / `N_BELOW_MIN`; select λ as the grid point maximising calibration-half automation subject to `clopper_pearson_upper(errors, automated, delta) <= alpha` computed **on the calibration half**; then evaluate on the held-out half through `count_outcome` and publish `conditional_error_bound` / `marginal_error_bound` / `autorate` on **cases**; refuse with `cond_hi > beta` after recording `closest_attempt`. `mean_score` replaces `mean_set_size` in `meta` (the set shape is meaningless here) and the envelope carries one extra line: `"rule: automate iff <field> >= lambda; this is the threshold gate of spec 6.4, not the APS set gate"`.
+- [ ] **Step 6: Implement `certify_threshold`.** Structure mirrors `certify_choice` deliberately, so a reader comparing the two gates compares like with like: validate budgets; `split_cal`; refuse `NO_GOLD_LABELS` / `N_BELOW_MIN`; select λ as the grid point maximising calibration-half automation subject to `clopper_pearson_upper(cal_errors, cal_automated, delta) <= beta` computed **on the calibration half**; then evaluate on the held-out half through `count_outcome` and publish `conditional_error_bound` / `marginal_error_bound` / `autorate` on **cases**; refuse with `cond_hi > beta` after recording `closest_attempt`. `mean_score` replaces `mean_set_size` in `meta` (the set shape is meaningless here) and the envelope carries one extra line: `"rule: automate iff <field> >= lambda; this is the threshold gate of spec 6.4, not the APS set gate"`.
+  **Corrected on pre-flight (R-54): the selection constraint is β, not α.** The plan first said `<= alpha`. That is a semantics bug the tests could never catch, because the published rubric has `alpha == beta == 0.05` — the two are numerically identical at every default in this repository, so an implementation gating on α would pass green while answering a different question. `beta` is the budget on `P(wrong | automated)` (spec §2, §5.5); `alpha` is the coverage level of the SET gate, and the threshold gate has no coverage set at all. Consequently Step 5's operating-point test varies **beta**, not alpha, and `alpha` is carried in the threshold certificate for rubric comparability with `compare` — with an envelope line saying plainly that α does not gate λ here. A parameter that silently means nothing is how two gates stop being comparable.
 - [ ] **Step 7: Run both suites**, `uv run --frozen pytest tests/test_certify_choice.py tests/test_certify_threshold.py -q -p no:randomly`; expected: all pass.
 - [ ] **Step 8: Commit** — `git commit -m "feat(threshold): the 6.4 gate, sharing case arithmetic with the set gate so one rule has one owner"`.
 
