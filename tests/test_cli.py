@@ -556,3 +556,53 @@ def test_unknown_method_raises_before_any_certification():
 
     with pytest.raises(ValueError, match="unknown method"):
         certify_choice([], method="crc")
+
+
+def test_a_tripped_arithmetic_invariant_exits_4_and_names_itself(tmp_path, monkeypatch, capsys):
+    """#27: rc 1 was reachable from the CLI through the guards that protect our own arithmetic.
+
+    Both sites -- `tails.clopper_pearson_upper` refusing a bound beaten by its own data, and the
+    reader refusing to return when line accounting does not conserve -- are ArithmeticError, which
+    neither of the documented clauses used to see, so they escaped as a traceback with exit code 1:
+    outside the published 0/2/3/4 contract. Mapping them to EXIT_DRIFT says what is actually wrong
+    (the tool cannot reproduce its own numbers) and the prefix keeps the message distinguishable
+    from ordinary drift.
+    """
+    import importlib
+
+    # `autorate/__init__` re-exports the FUNCTION named certify_choice, so attribute access on the
+    # package would hand back the function and the patch would land on nothing.
+    cz = importlib.import_module("autorate.certify_choice")
+    from autorate import tails
+    from autorate.cli import EXIT_DRIFT, main
+
+    def boom(*args, **kwargs):
+        raise ArithmeticError("forced: a bound cannot be beaten by its own data")
+
+    monkeypatch.setattr(cz, "clopper_pearson_upper", boom)
+    rc = main(["certify", str(REPO / "data" / "records_feishu.jsonl"), "--backend", "jev",
+               "--out", str(tmp_path / "cert.json")])
+    assert rc == EXIT_DRIFT, rc
+    err = capsys.readouterr().err
+    assert err.startswith("INVARIANT: ArithmeticError: forced:"), err
+    assert "Traceback" not in err, err
+
+    # the guards themselves must stay armed -- a mapping that swallowed them would look like this
+    monkeypatch.undo()
+    monkeypatch.setattr(tails, "binom_cdf", lambda k, n, p: 0.0)
+    with pytest.raises(ArithmeticError, match="cannot be beaten"):
+        tails.clopper_pearson_upper(1, 10, 0.05)
+
+
+def test_the_invariant_clause_is_not_reached_by_an_ordinary_usage_error(capsys):
+    """Ordering control: the new clause must not become the catch-all for bad input.
+
+    A missing records file is `OSError`, which still maps to EXIT_USAGE -- if the invariant clause
+    were placed above it, or widened to take ValueError, a user typo would start reporting that this
+    repository's arithmetic is broken.
+    """
+    from autorate.cli import EXIT_USAGE, main
+
+    assert main(["certify", "/nonexistent/path/records.jsonl"]) == EXIT_USAGE
+    err = capsys.readouterr().err
+    assert not err.startswith("INVARIANT"), err

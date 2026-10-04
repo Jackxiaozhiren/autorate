@@ -372,6 +372,16 @@ def main(argv=None) -> int:
         # out of the quarantine accounting entirely.
         print("%s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return EXIT_USAGE
+    except ArithmeticError as exc:
+        # Both raise sites protected by this clause are invariants about our own arithmetic:
+        # `tails` refuses to publish a Clopper-Pearson bound beaten by its own data, and the reader
+        # refuses to return when the line accounting does not conserve. Neither is the operator's
+        # mistake, so neither belongs in EXIT_USAGE -- and adding ArithmeticError to the tuple below
+        # would tell a user their inputs are wrong precisely when the numbers are what is wrong.
+        # They also are not a refusal about the data (EXIT_NOT_CERTIFIABLE is). A tool that cannot
+        # reproduce its own arithmetic is the failure EXIT_DRIFT already names.
+        print("INVARIANT: %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
+        return EXIT_DRIFT
     except (OSError, ValueError) as exc:
         # OSError: an input path that is not there. ValueError: a stored certificate that
         # violates its own shape rules. Both are "the inputs are wrong", and both used to
