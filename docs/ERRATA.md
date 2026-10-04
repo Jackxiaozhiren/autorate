@@ -140,3 +140,29 @@ that the old hardcoded prose *passed*, which is why it is kept and labelled as i
 produces the number, and the round trip needs a test that carries that field — the existing `to_dict` /
 `from_dict` tests compared `None == None` and could not see it.** A rate whose denominator is rebuilt by
 a lossy read is not the denominator the bound claims.
+
+## 2026-10-04 — the repaired report still published another row's number
+
+The row above is accurate about the certificates and the cause. It is not accurate about one sentence of
+the report it shipped beside them: for laya, `docs/RESULTS.md` read *"a zero-error run over the same
+n=32 would still have bounded at 0.089"*, where laya automates **2** of its 32 evaluation cases, its
+bound was computed over those 2, and the counterfactual at its own denominator is
+`clopper_pearson_upper(0, 2, 0.05)` = **0.776**. The 0.089 is jev's figure, at jev's denominator.
+
+How it survived: the fix that introduced the sentence quoted the counterfactual at `n_eval_cases`, and
+every test written alongside it patched jev and asserted on jev's clause. The misattributed laya clause
+rendered in all eight of them and nothing read it — a test suite that asserts on the half of the output
+it just changed.
+
+Corrected now, and the discipline recorded with it: the counterfactual shares the denominator of the
+bound it qualifies; the record-denominator figure is read from the certificate's own `closest_attempt`
+instead of being recomputed in the report, because the recomputation gave a published number two owners
+and produced the identical 0.0485 that the artifact already carries; the verdict word (`inside`/`above`)
+is derived from the comparison; a missing bound drops the sentence instead of printing `nan`; and the
+lead-in says what the rows did (`Both rows certify` / `N of M rows refuse`) rather than asserting a
+refusal. `tests/test_report_prose.py` now asserts the shipped **laya** clause directly, 7 of its 11
+tests fail against the commit that introduced the error, and one of them builds a real early-refusal
+certificate rather than zeroing the counters that the defect is about their absence.
+
+Nothing in the certificates, the README, or the numbers above changes: this is a sentence in the
+generated narrative, not a bound.

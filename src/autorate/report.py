@@ -80,38 +80,103 @@ def _budget_clause(*certs) -> str:
     return "row-specific budgets (" + ", ".join("alpha=%.2f/beta=%.2f" % p for p in pairs) + ")"
 
 
-def _refusal_clause(cert) -> str:
-    """Say what a refusal certificate actually says, in the shape its own numbers have.
+def _decision_clause(cert) -> str:
+    """Say what one certificate actually says, at the denominator its own bound was computed on.
 
-    The first version printed one fixed sentence per backend -- "not one evaluation case produced a
-    single-label set" for laya, a zero-error Clopper-Pearson bound for jev -- and each became a
-    published contradiction once the case denominator was repaired: an artifact can assert the opposite
-    of the counts printed inside it. Every figure here comes from the certificate, the zero-error figure
-    is labelled as the counterfactual it is, and the bound is read rather than re-derived because
-    `certify_choice` owns it.
+    Three published defects are what this shape avoids. The first version printed a fixed sentence per
+    backend, so a regenerated artifact could assert the opposite of the counts inside it. The repair then
+    quoted the zero-error counterfactual at `n_eval_cases`, which for laya is 32 while its bound was
+    computed over its 2 automated cases -- so the row printed another row's number (0.089 where its own
+    counterfactual is 0.776). And it spoke of "both rows refusing" unconditionally, which a certified row
+    contradicts. Every figure is read from the certificate; the case bound and the record-denominator
+    bound both belong to `certify_choice` and are never re-derived here.
+
+    `automated_cases`/`n_eval_cases`/`erroneous_cases` are absent on the two earliest refusals
+    (`n_below_min`, `no_gold_labels`), which return before the counters are recorded, so they default to
+    zero rather than raising inside a published-artifact generator.
     """
-    automated = cert.meta["automated_cases"]
-    n_cases = cert.meta["n_eval_cases"]
-    wrong = cert.meta["erroneous_cases"]
+    if cert.feasible:
+        return ("it certifies: %d of its %d evaluation cases automate and none of them is wrong, so the "
+                "exact case-level upper bound is %.3f against the %.3f budget, at an automation rate of "
+                "%.3f." % (cert.meta.get("automated_cases", 0), cert.meta.get("n_eval_cases", 0),
+                           cert.conditional_error_bound, cert.beta, cert.autorate))
+    automated = cert.meta.get("automated_cases", 0)
+    n_cases = cert.meta.get("n_eval_cases", 0)
+    wrong = cert.meta.get("erroneous_cases", 0)
     if automated == 0:
         return ("not one evaluation case produced a single-label set (%d empty, %d multi-label of %d "
                 "records), so there is nothing it may run unattended."
                 % (cert.meta.get("empties", 0), cert.meta.get("multi_label", 0), cert.n_eval))
+    carries = "carries" if wrong == 1 else "carry"
     bound = (cert.meta.get("at_requested_alpha") or {}).get("conditional_error_bound")
     if bound is None:
-        return ("it automates %d of its %d evaluation cases and %d of those carries a wrong "
-                "automated request, which the %.3f budget does not license."
-                % (automated, n_cases, wrong, cert.beta))
+        return ("it automates %d of its %d evaluation cases and %d of those %s a wrong automated "
+                "request, which the %.3f budget does not license."
+                % (automated, n_cases, wrong, carries, cert.beta))
     if wrong == 0:
-        return ("it automates %d of its %d evaluation cases with zero errors, yet the exact "
-                "case-level upper bound on that run is %.3f -- above the %.3f budget."
+        return ("it automates %d of its %d evaluation cases with zero errors, yet the exact case-level "
+                "upper bound on that run is %.3f -- above the %.3f budget."
                 % (automated, n_cases, bound, cert.beta))
-    return ("it automates %d of its %d evaluation cases and %d of those carries a wrong automated "
-            "request, so the exact case-level upper bound is %.3f -- above the %.3f budget; even had "
-            "that request been right, a zero-error run over the same n=%d would still have bounded at "
+    # The counterfactual shares the bound's denominator or it is not about this row: the case bound is
+    # computed over the automated cases, so `n_eval_cases` would quote a different experiment.
+    zero_error = clopper_pearson_upper(0, automated, cert.delta)
+    return ("it automates %d of its %d evaluation cases and %d of those %s a wrong automated request, so "
+            "the exact case-level upper bound is %.3f -- above the %.3f budget; even had that request "
+            "been right, a zero-error run over those same %d automated cases would still have bounded at "
             "%.3f, so this corpus cannot support a %.0f%% claim at any error count."
-            % (automated, n_cases, wrong, bound, cert.beta, n_cases,
-               clopper_pearson_upper(0, n_cases, cert.delta), 100 * cert.beta))
+            % (automated, n_cases, wrong, carries, bound, cert.beta, automated, zero_error,
+               100 * cert.beta))
+
+
+def _record_clause(cert) -> str:
+    """The record-denominator contrast, read from the certificate, or nothing at all.
+
+    `certify_choice` already publishes the record-level figure as `closest_attempt`; recomputing it here
+    gave a published number two owners, which is what R-20/R-31/R-44 delete. If the certificate carries
+    none -- an early refusal, or a certified row, neither of which records an attempt -- the sentence is
+    dropped rather than printed with a `nan` in it. The verdict word is derived from the comparison, not
+    asserted.
+    """
+    attempt = cert.meta.get("closest_attempt") or {}
+    record_bound = attempt.get("conditional_error_bound")
+    automated = cert.meta.get("automated", 0)
+    if record_bound is None or not automated:
+        return ""
+    where = "inside" if record_bound <= cert.beta else "above"
+    # The trailing provenance sentence was dropped rather than kept: naming the source in prose would
+    # need a seventh interpolation, and the sentence is a claim about this module, not about the corpus.
+    return ("The record denominator is what flatters this corpus: %s's %d automated records would bound "
+            "at %.3f, %s its %.3f budget, where the %d independent cases the corpus actually supplies put "
+            "it at %.3f -- and the case is the unit a bound may divide by (R-44)."
+            % (cert.backend, automated, record_bound, where, cert.beta,
+               cert.meta.get("n_eval_cases", 0),
+               (cert.meta.get("at_requested_alpha") or {}).get("conditional_error_bound", record_bound)))
+
+
+def _pair_lead(*certs) -> str:
+    """Name the pair's verdict honestly: two refusals, two certificates, or one of each."""
+    refused = [c for c in certs if c is not None and not c.feasible]
+    if len(refused) == len([c for c in certs if c is not None]):
+        return "Both rows refuse at %s." % _budget_clause(*certs)
+    if not refused:
+        return "Both rows certify at %s." % _budget_clause(*certs)
+    return "%d of %d rows refuse at %s." % (len(refused), len(certs), _budget_clause(*certs))
+
+
+def _laya_point_or_problem(cert, scores) -> str:
+    """The rhetorical bullet, printed only if the row actually refuses.
+
+    It used to be unconditional, so a certificate that ever automated something on this corpus would
+    have published "a certificate that refuses is the correct output" about a row that did not refuse.
+    """
+    if cert.feasible:
+        return ("- The laya row certifies on this corpus, where the archived audit scores its choice "
+                "answers %s; the paired comparison in `autorate compare` is what carries the claim."
+                % scores[("laya", "choice")])
+    return ("- The laya row is the project's point, not its problem: on a Chinese workplace "
+            "corpus where the archived audit scores its choice answers %s, a certificate "
+            "that refuses is the correct output. A published number here would be a number "
+            "about nothing." % scores[("laya", "choice")])
 
 
 def build_report(inv: dict, certs: dict, counts: dict) -> str:
@@ -203,21 +268,10 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         "",
         "### What this does and does not establish",
         "",
-        "- Both rows refuse at %s. laya: %s jev: %s The record denominator is what flatters this "
-        "corpus: jev's %d automated records would bound at %.3f, inside its %.3f budget, where the %d "
-        "independent cases the corpus actually supplies put it at %.3f -- and the case is the unit a "
-        "bound may divide by (R-44)." % (
-            _budget_clause(certs["laya"], certs["jev"]), _refusal_clause(certs["laya"]),
-            _refusal_clause(certs["jev"]), certs["jev"].meta["automated"],
-            clopper_pearson_upper(certs["jev"].meta["errors_among_automated"],
-                                  certs["jev"].meta["automated"], certs["jev"].delta),
-            certs["jev"].beta, certs["jev"].meta["n_eval_cases"],
-            (certs["jev"].meta.get("at_requested_alpha") or {}).get("conditional_error_bound",
-                                                                    float("nan"))),
-        "- The laya row is the project's point, not its problem: on a Chinese workplace "
-        "corpus where the archived audit scores its choice answers %s, a certificate "
-        "that refuses is the correct output. A published number here would be a number "
-        "about nothing." % scores[("laya", "choice")],
+        "- %s laya: %s jev: %s %s" % (
+            _pair_lead(certs["laya"], certs["jev"]), _decision_clause(certs["laya"]),
+            _decision_clause(certs["jev"]), _record_clause(certs["jev"])),
+        _laya_point_or_problem(certs["laya"], scores),
         ("- The evaluation halves hold %d and %d RECORDS over %d and %d distinct cases (the "
          "corpus repeats each case %d times) and %d cases are in common, so the pair is a "
          "case-by-case comparison on identical inputs." if shared == len(ids["laya"])
