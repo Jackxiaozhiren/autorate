@@ -166,3 +166,8 @@ certificate rather than zeroing the counters that the defect is about their abse
 
 Nothing in the certificates, the README, or the numbers above changes: this is a sentence in the
 generated narrative, not a bound.
+
+Reproduce the corrected sentence with `uv run --frozen autorate report --out docs/RESULTS.md` and read
+the `### What this does and does not establish` bullet; reproduce the superseded one from commit
+`12c87d7` the same way. (The command is named here because the row above mine omitted it, which its own
+brief required -- an omission in my same-day row, supplemented rather than rewritten.)
