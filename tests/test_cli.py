@@ -20,6 +20,11 @@ UPSTREAM = Path(
 )
 skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not present")
 
+# A username-shaped segment, not the bare directory prefix: `<workspace>` prose and this file's own
+# patterns say "/Users/" without naming a machine. Machine-path-shaped is the defect class; the guard
+# deliberately does NOT claim to catch every absolute path (see the tmp-shape gap recorded in Plan D).
+MACHINE_PATH_RX = re.compile(r"/(Users|home)/[A-Za-z0-9._-]+/")
+
 
 def run(*args, cwd=REPO, root=None):
     """root=None keeps the vendored corpus; a path here simulates a machine without it."""
@@ -418,34 +423,96 @@ def test_verify_catches_an_edited_inventory_markdown(tmp_path):
     assert "data/inventory.md byte-identical" in p.stderr, p.stderr
 
 
+def _tracked_subjects(repo: Path) -> tuple:
+    """The files the path guard scans, and where that list came from.
+
+    A `git archive` export carries no `.git`, so a `git ls-files`-only subject is EMPTY there: the
+    guard either passes vacuously or reddens before the export lane can demonstrate anything (G5). The
+    export script therefore writes its own tracked list and points `AUTORATE_TRACKED_FILES` at it, so
+    the scan covers exactly the published set -- no ignore list, which would be its own blind spot --
+    and an empty subject still fails loudly.
+    """
+    import os
+    import subprocess
+
+    manifest = os.environ.get("AUTORATE_TRACKED_FILES")
+    if manifest:
+        path = Path(manifest)
+        if not path.is_file():
+            raise AssertionError("AUTORATE_TRACKED_FILES=%s names no file" % manifest)
+        names = path.read_text(errors="ignore").split()
+        if not names:
+            raise AssertionError("manifest %s is empty; the guard has no subject" % path)
+        return names, "manifest"
+    names = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
+                           cwd=str(repo)).stdout.split()
+    if names:
+        return names, "git ls-files"
+    raise AssertionError(
+        "nothing to scan: AUTORATE_TRACKED_FILES is unset and `git ls-files` returned no paths. "
+        "In a `git archive` export, write `git ls-files > <export>/.tracked-files` before the suite")
+
+
+def _path_offenders(names, root: Path) -> list:
+    home = str(Path.home())
+    out = []
+    for rel in names:
+        f = root / rel
+        if not f.is_file():
+            continue
+        for i, line in enumerate(f.read_text(errors="ignore").splitlines(), 1):
+            if home in line:
+                out.append((rel, i, "this machine's home directory"))
+            elif MACHINE_PATH_RX.search(line):
+                out.append((rel, i, MACHINE_PATH_RX.search(line).group(0)))
+    return out
+
+
 def test_no_committed_file_carries_an_absolute_home_path():
     """I-7: an absolute literal passes every local gate, and only CI can see it break.
 
     Checked as structure over the tracked tree -- not by reading files I happen to think
     are the risky ones -- because the class of defect is the path itself.
     """
-    import subprocess
-
-    tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True,
-                             cwd=str(REPO)).stdout.split()
-    assert tracked, "git ls-files returned nothing; the guard would pass vacuously"
-    # A username-shaped segment, not the bare directory prefix: `<workspace>` prose and
-    # this file's own patterns say "/Users/" without naming a machine.
-    rx = re.compile(r"/(Users|home)/[A-Za-z0-9._-]+/")
-    home = str(Path.home())
-    offenders = []
-    for rel in tracked:
-        f = REPO / rel
-        if not f.is_file():
-            continue
-        for i, line in enumerate(f.read_text(errors="ignore").splitlines(), 1):
-            if home in line:
-                offenders.append((rel, i, "this machine's home directory"))
-            elif rx.search(line):
-                offenders.append((rel, i, rx.search(line).group(0)))
+    names, source = _tracked_subjects(REPO)
+    assert names, "empty subject from %s; the guard would pass vacuously" % source
+    offenders = _path_offenders(names, REPO)
     assert not offenders, offenders
     # Built from pieces so this file does not become the offender it is looking for.
-    assert home.startswith("/") and rx.search("/" + "Users/bob/x"), "the guard is vacuous"
+    assert str(Path.home()).startswith("/") and MACHINE_PATH_RX.search("/" + "Users/bob/x"), \
+        "the guard is vacuous"
+
+
+def test_the_path_guard_scans_a_manifest_when_there_is_no_repository(tmp_path, monkeypatch):
+    """The export case: no `.git`, so the subject must come from the manifest -- and still bite."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "g.md").write_text("see /%s/%s/x.jsonl\n" % ("Users", "someone"))
+    listing = tmp_path / ".tracked-files"
+    listing.write_text("docs/g.md\n")
+    monkeypatch.setenv("AUTORATE_TRACKED_FILES", str(listing))
+    names, source = _tracked_subjects(tmp_path)
+    assert source == "manifest" and names == ["docs/g.md"], (source, names)
+    found = _path_offenders(names, tmp_path)
+    assert found and found[0][0] == "docs/g.md", found
+    # ...and a clean manifest over the same tree proves the hit came from the content, not the shape
+    # of the fixture: removing the line must empty the report.
+    (tmp_path / "docs" / "g.md").write_text("no path here\n")
+    assert _path_offenders(names, tmp_path) == []
+
+
+def test_the_path_guard_refuses_an_empty_subject_from_either_source(tmp_path, monkeypatch):
+    """Non-vacuity is the guard's whole value, so both empty paths must raise, not pass."""
+    empty = tmp_path / ".tracked-files"
+    empty.write_text("\n")
+    monkeypatch.setenv("AUTORATE_TRACKED_FILES", str(empty))
+    with pytest.raises(AssertionError, match="empty"):
+        _tracked_subjects(tmp_path)
+    monkeypatch.setenv("AUTORATE_TRACKED_FILES", str(tmp_path / "absent"))
+    with pytest.raises(AssertionError, match="no file"):
+        _tracked_subjects(tmp_path)
+    monkeypatch.delenv("AUTORATE_TRACKED_FILES")
+    with pytest.raises(AssertionError, match="git ls-files"):
+        _tracked_subjects(tmp_path)
 
 
 def test_not_certifiable_exits_3_on_a_records_file_with_no_corpus(tmp_path):
