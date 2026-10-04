@@ -299,19 +299,32 @@ def test_noul_asks_of_one_case_group_to_one_case_after_a_round_trip():
 
 
 def test_the_errata_table_matches_the_function_that_produced_it():
-    """A correction can go stale like any number, so the errata file is checked too."""
+    """A correction can go stale like any number, so the errata file is checked too.
+
+    The check re-derives every published cell through the solver and compares FLOATS at 5e-5. It is
+    not a byte comparison -- a byte check on a 4-decimal cell would be the weaker claim, since the
+    solver's full-precision value has no bytes in this document -- and `docs/ERRATA.md`'s own wording
+    says what this does (`2026-10-04` note in the 2026-10-01 row).
+    """
     from pathlib import Path
+
+    import re
 
     doc = Path(__file__).resolve().parents[1] / "docs" / "ERRATA.md"
     assert doc.exists(), "docs/ERRATA.md missing"
+    ks = (2, 4, 10, 20, 51)
     lines = [l for l in doc.read_text().splitlines() if l.startswith("| `confidence >=")]
     assert len(lines) == 2, lines
     for line in lines:
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        import re
-
+        # The shape is part of the published claim: one gate cell plus one cell for every k. This line
+        # is a pin, not a new guard for the shift case -- deleting a MIDDLE column already reds below,
+        # because the remaining cells then get zipped onto the wrong k. What it exists for is the
+        # deletion the float check cannot see: drop the LAST cell and `zip` simply stops early, the
+        # four survivors still agree, and the row silently stops claiming k=51. Measured both ways.
+        assert len(cells) == 1 + len(ks), (cells, len(cells))
         tau = float(re.search(r"(\d+\.\d+)", cells[0]).group(1))
-        for k, quoted in zip((2, 4, 10, 20, 51), cells[1:]):
+        for k, quoted in zip(ks, cells[1:]):
             assert abs(p_max_for_entropy(target=tau, k=k) - float(quoted)) <= 5e-5, (tau, k, quoted)
 
 

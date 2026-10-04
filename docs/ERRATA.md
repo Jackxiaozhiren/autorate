@@ -54,6 +54,23 @@ this entry named `tests/test_records.py::_pmax_reaching`, the local copy. The so
 figures and the guard test are unchanged; only the producing function's file and name moved,
 and the parameters are keyword-only now so a transposed call cannot pass silently.
 
+2026-10-04 note (round 3): the phrase "The table above is byte-checked against that solver",
+in the paragraph above this note, overstates what the guard does, and the accurate description
+is that it **re-derives the table cell by cell and requires the two to agree as floats** to
+`<= 5e-5`. Measured on today's solver, the ten published cells agree to between 2.8e-6 and
+4.9e-5, so the check is doing real arithmetic at a precision a byte comparison of 4-decimal
+text cannot express — comparing renderings instead would have let
+a cell drift by up to half the last published digit and still match, which is a *weaker* gate
+than the numbers here warrant. `verify` is this project's byte gate, and it gates a different
+artifact (`docs/RESULTS.md`). The wording is retired by this note rather than edited above: the
+phrase sits inside a dated entry, and published corrections in this file are append-only — no
+line was removed here, and what is withdrawn is the claim, not the measurement it reports. Both
+halves of that sentence were written by commit `0af1fcc` (fix round 2), not by the 2026-10-01
+correction they describe, so the defect belongs to the round that edited this entry. The same
+guard now also asserts each table row carries the gate plus one cell for every k in
+{2, 4, 10, 20, 51}: before that, deleting the LAST published cell left the four survivors
+zipped onto the right k, every assertion held, and the row silently stopped covering k=51.
+
 ## 2026-10-01 — a controller commit silently reverted Task 2's spec narrowings
 
 Commit `e386c08` (Task 4, written in the controller session) restored

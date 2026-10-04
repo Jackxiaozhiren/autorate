@@ -22,12 +22,15 @@ fixed reference point, which is what a body-level exchange of the two meanings i
 Scales here, not the figures: the k=4 / 0.85 anchor values themselves stay pinned where they
 were first established (`tests/test_records.py`, which owns the cross-k spread argument).
 
-Known stale pointers this round could not reach: `docs/ERRATA.md` and spec section 7.4 both still
-name the deleted `tests/test_records.py::_pmax_reaching` as the producer of the table below those
-sentences. The table is still produced, and still checked against this function, by
-`tests/test_records.py::test_the_errata_table_matches_the_function_that_produced_it`; only the
-owner's NAME in those two prose lines is out of date, and fixing it is a documentation edit outside
-this module's file list.
+Both documents that quote these figures were retargeted to this function in the same commit that deleted
+the second copy: `docs/ERRATA.md` and spec section 7.4 both name
+`tests/_thresholds.py::p_max_for_entropy` as the producer of the table beneath those sentences, and
+`tests/test_records.py::test_the_errata_table_matches_the_function_that_produced_it` re-derives every
+published cell through this function and asserts the row shape it reads. Two other mentions of
+`_pmax_reaching` remain, and both are correct as written: the first of the two dated 2026-10-04 notes in
+the `docs/ERRATA.md` entry records that the entry used to name the deleted local copy -- which is the
+history a reader of that correction needs -- and Plan A's completed task text still shows the old helper
+because that plan records what was executed, not what the suite contains today.
 """
 from autorate.records import entropy_confidence
 

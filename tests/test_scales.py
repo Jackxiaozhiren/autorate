@@ -44,14 +44,22 @@ def _entropy_bisectors(tests_dir):
 
     The class it covers, stated because a guard that is not self-describing gets widened or trusted
     wrongly: any `FunctionDef` in any tests/*.py file, module-level OR nested inside another function,
-    whose name does not begin with `test_` and which calls `entropy_confidence` from inside a `For`.
-    Nested coverage is the point -- a second copy re-added inside a test body is the regression this
-    guards, and a module-level-only walk would have passed it. Read as a syntax-tree question rather
-    than a substring, because a docstring that merely names the scale is not a second solver.
+    whose name does not begin with `test_` and which calls `entropy_confidence` DIRECTLY from inside
+    a repetition -- a loop STATEMENT in any of its three forms (`For`, `AsyncFor`, `While`) or its own
+    body (recursion). Nested coverage is the point -- a second copy re-added inside a test body is the
+    regression this guards, and a module-level-only walk would have passed it. Read as a syntax-tree
+    question rather than a substring, because a docstring that merely names the scale is not a second
+    solver.
+
+    The `While` and recursion arms are not decoration. Measured with only the `For` arm -- the shape
+    the first version of this fingerprint knew -- a second bisection written as `while n < iterations:`
+    keeps the suite GREEN: the detector looked for the shape it had seen, so the property it polices
+    was narrower than its name. Both planted shapes now go red.
 
     What is deliberately NOT covered, and why: `test_*` functions, which assert about the scale
-    instead of deriving from it (several loop over bad inputs calling `entropy_confidence`); and a
-    search that reaches the scale indirectly, like the nested `crossing` below -- that helper bisects
+    instead of deriving from it (several loop over bad inputs calling `entropy_confidence`); a
+    comprehension, which carries no interval state to narrow and so cannot hold this search; and a
+    search that reaches the scale INDIRECTLY, like the nested `crossing` below -- that helper bisects
     WHERE THE TWO SCALES CONVERGE, a different question with one reader, which is why it stays in
     this file rather than joining `tests/_thresholds.py`.
 
@@ -61,6 +69,13 @@ def _entropy_bisectors(tests_dir):
     """
     import ast
 
+    loop_forms = (ast.For, ast.AsyncFor, ast.While)
+
+    def calls_scale(node):
+        return any(isinstance(call, ast.Call)
+                   and getattr(call.func, "id", None) == "entropy_confidence"
+                   for call in ast.walk(node))
+
     found = []
     for path in sorted(tests_dir.glob("*.py")):
         tree = ast.parse(path.read_text())
@@ -68,11 +83,12 @@ def _entropy_bisectors(tests_dir):
             if not isinstance(node, ast.FunctionDef) or node.name.startswith("test_"):
                 continue
             for stmt in ast.walk(node):
-                if not isinstance(stmt, ast.For):
-                    continue
-                if any(isinstance(call, ast.Call)
-                       and getattr(call.func, "id", None) == "entropy_confidence"
-                       for call in ast.walk(stmt)):
+                if isinstance(stmt, loop_forms) and calls_scale(stmt):
+                    found.append("%s::%s" % (path.name, node.name))
+                    break
+                # A recursive bisection repeats through its own body instead of a loop statement.
+                if any(isinstance(call, ast.Call) and getattr(call.func, "id", None) == node.name
+                       for call in ast.walk(node)) and calls_scale(node):
                     found.append("%s::%s" % (path.name, node.name))
                     break
     return sorted(set(found))
@@ -282,8 +298,11 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     The counts are what Task 4 must publish beside the aggregate, so they are measured here
     against the archive rather than asserted about synthetic rows: 74 rows match both scales
     (one-hot rows publishing 1.0), 23 match max(p) alone, none match entropy alone, and 94
-    match neither. The `n` of 191 rows is 64 cases, and the repeats are not byte-identical the
-    way laya's are, so 191 is not a binomial denominator either.
+    match neither. The `n` of 191 rows is 64 cases whose repeat structure is produced below,
+    for both backends, because the module's `n`-versus-cases comment quotes it: jev's cases carry
+    between one and three DISTINCT probability vectors (so 191 rows are not 191 observations),
+    while laya's 192 rows are 64 cases x 3 repeats that publish the same vector and the same
+    number each time -- identical as measurements, not identical as rows.
     """
     rows = _archive_rows()
     jev_cases = {r["case_id"] for r in rows if r["backend"] == "jev" and r["qtype"] == "choice"}
@@ -294,12 +313,112 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     assert jev["both"] + jev["answer_only"] == 97, jev
     # Read as cases, the same batch is 64 observations; `n` is neither of those by itself.
     assert len(jev_cases) == 64 and jev["n"] != len(jev_cases), (sorted(jev_cases), jev["n"])
+    # The two maxima the module's docstring publishes for this slice, pinned at the precision it
+    # prints them at: jev's choice `confidence` sits up to 0.170 from `max(p)` and 0.157315 from the
+    # entropy scale. Both are far outside `tolerance`, so the `neither` above is a statement about
+    # what the published number IS, not about which comparison the implementation ran first.
+    assert jev["max_dev_answer"] == pytest.approx(0.170, abs=5e-7), jev["max_dev_answer"]
+    assert jev["max_dev_entropy"] == pytest.approx(0.157315, abs=5e-7), jev["max_dev_entropy"]
 
     laya_cases = {r["case_id"] for r in rows if r["backend"] == "laya" and r["qtype"] == "choice"}
     laya = scale_attribution(_archive_slice("laya", "choice"))
     assert laya["n"] == 192 and len(laya_cases) == 64, (laya["n"], sorted(laya_cases))
     assert laya["entropy_only"] == 192, laya
     assert (laya["both"], laya["answer_only"], laya["neither"]) == (0, 0, 0), laya
+
+    # The repeat structure `scales.py` quotes about `n`, produced for both backends rather than
+    # asserted in prose. laya: 64 cases x exactly 3 rows, and every case's rows carry ONE `probs`
+    # vector and ONE published `reported_confidence` -- while no case's three rows are identical as
+    # rows, since each carries its own repeat counter and elapsed time. The distinction is the whole
+    # point of the sentence: three rows that measure the same thing are not three observations, and
+    # calling them byte-identical would claim something the file refutes.
+    def _groups(backend):
+        grouped = {}
+        for r in rows:
+            if r["backend"] == backend and r["qtype"] == "choice":
+                grouped.setdefault(r["case_id"], []).append(r)
+        return grouped
+
+    laya_groups = _groups("laya")
+    assert len(laya_groups) == 64 and {len(g) for g in laya_groups.values()} == {3}, len(laya_groups)
+    one_measurement_per_case = all(
+        len({json.dumps(r["probs"], sort_keys=True) for r in g}) == 1
+        and len({json.dumps(r["scores"], sort_keys=True) for r in g}) == 1
+        for g in laya_groups.values())
+    assert one_measurement_per_case, "laya's repeats no longer publish one vector and one number per case"
+    identical_rows = any(len({json.dumps(r, sort_keys=True) for r in g}) == 1
+                         for g in laya_groups.values())
+    assert not identical_rows, "laya's repeats became identical as ROWS; the comment's wording must follow"
+    # jev: 2 or 3 rows per case, and between 1 and 3 DISTINCT probability vectors inside a case.
+    # Pin, not a guard: nothing else in the suite reads this shape, so these two lines exist to keep
+    # the module comment's "1-3 DISTINCT probability vectors" figure owned by an artifact instead of
+    # restated from memory. The counts they depend on (191 rows, 64 cases) are guarded above.
+    jev_groups = _groups("jev")
+    assert len(jev_groups) == 64 and {len(g) for g in jev_groups.values()} == {2, 3}, len(jev_groups)
+    assert {len({json.dumps(r["probs"], sort_keys=True) for r in g})
+            for g in jev_groups.values()} == {1, 2, 3}, jev_groups
+
+
+def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima():
+    """What the follow-up note predicted, measured: its pair is a tie-break, not a consequence.
+
+    `scales.py` carried a note claiming that collapsing jev's 191 archived choice rows to its 64
+    cases "moves the published maxima from 0.170 to 0.160 and from 0.157315 to 0.147315". The blocker
+    it named -- `Record.from_dict` dropping `case_id` -- landed before this could be reasoned about,
+    so it could be RUN, and the result is that both halves of the pair are real numbers whose
+    appearance depends entirely on which row a collapsed case keeps:
+
+    * a collapse that keeps each case's WORST row -- the only one that preserves what the gate is,
+      since the gate takes a maximum over rows -- leaves both maxima exactly where they are, because
+      the row carrying each published maximum is already its own case's worst on that scale;
+    * a collapse that keeps each case's FIRST row in archive order produces 0.160 and 0.147315,
+      precisely by discarding those two cases' worst row -- which in both cases is the third repeat.
+
+    So the predicted pair is reachable, but only through an aggregation this gate must not use. The
+    comment now says that instead of forecasting a number.
+    """
+    from autorate.records import entropy_confidence, max_confidence
+
+    rows = []
+    for r in _archive_slice("jev", "choice"):
+        reported = (r.scores or {}).get("reported_confidence")
+        if reported is None or len(r.probs) < 2:
+            continue
+        rows.append((r.case_id, abs(reported - max_confidence(r.probs)),
+                     abs(reported - entropy_confidence(r.probs))))
+    assert len(rows) == 191, len(rows)
+    published_answer = max(r[1] for r in rows)
+    published_entropy = max(r[2] for r in rows)
+    # The same two figures the archive test above reads out of `scale_attribution`, recomputed from
+    # the rows here: pin, not a second guard -- it exists so the collapse below starts from a number
+    # this file has already shown matches the module's own output.
+    assert published_answer == pytest.approx(0.170, abs=5e-7), published_answer
+    assert published_entropy == pytest.approx(0.157315, abs=5e-7), published_entropy
+
+    by_case = {}
+    for case_id, dev_answer, dev_entropy in rows:
+        by_case.setdefault(case_id, []).append((dev_answer, dev_entropy))
+    assert len(by_case) == 64, len(by_case)
+
+    worst = [(max(p[0] for p in v), max(p[1] for p in v)) for v in by_case.values()]
+    assert max(w[0] for w in worst) == pytest.approx(published_answer, abs=1e-12)
+    assert max(w[1] for w in worst) == pytest.approx(published_entropy, abs=1e-12)
+
+    first = [v[0] for v in by_case.values()]
+    assert max(f[0] for f in first) == pytest.approx(0.160, abs=5e-7), max(f[0] for f in first)
+    assert max(f[1] for f in first) == pytest.approx(0.147315, abs=5e-7), max(f[1] for f in first)
+
+    # And the structural fact that lets both answers coexist: in each of the two cases the maximum is
+    # the LAST repeat and the predicted figure is the FIRST, so the collapse's tie-break decides
+    # whether the published maximum survives the collapse at all.
+    answer_case = max(by_case, key=lambda c: max(p[0] for p in by_case[c]))
+    entropy_case = max(by_case, key=lambda c: max(p[1] for p in by_case[c]))
+    assert by_case[answer_case][-1][0] == pytest.approx(0.170, abs=5e-7)
+    assert by_case[answer_case][0][0] == pytest.approx(0.160, abs=5e-7)
+    assert by_case[entropy_case][-1][1] == pytest.approx(0.157315, abs=5e-7)
+    assert by_case[entropy_case][0][1] == pytest.approx(0.147315, abs=5e-7)
+    assert sorted(round(p[0], 6) for p in by_case[answer_case]) == [0.16, 0.16, 0.17]
+    assert sorted(round(p[1], 6) for p in by_case[entropy_case]) == [0.147315, 0.150882, 0.157315]
 
 
 def test_a_record_whose_two_scales_are_the_same_number_is_attributed_to_neither():
@@ -359,6 +478,38 @@ def test_a_non_numeric_reported_confidence_is_not_absorbed_into_absent():
 
 
 @pytest.mark.skipif(not COMMITTED.exists(), reason="committed records not present")
+def test_the_archive_publishes_every_served_figure_at_four_decimals():
+    """The premise under `TOLERANCE`, produced: the archive's own numbers are 4-decimal quantities.
+
+    `scales.py` justifies a 1e-3 agreement window by saying served probabilities and served
+    confidences are both rounded to 4 decimals, so a match inside the window is the same quantity
+    rather than a coincidence. That is a claim about the committed records, and until now nothing
+    in the suite read it: the window could have been justified by prose about a file nobody checks.
+    Every `probs` value and every `reported_confidence` in the archive is asserted to be exactly
+    its own 4-decimal rounding, so if an upstream export ever starts carrying more precision the
+    premise fails here instead of quietly making the comment a lie.
+    """
+    rows = _archive_rows()
+    assert rows, "the committed archive is empty"
+    probs_values = [float(v) for d in rows for v in d["probs"]]
+    reported = [float(d["scores"]["reported_confidence"]) for d in rows
+                if d["scores"].get("reported_confidence") is not None]
+    off_grid_probs = [(d["backend"], d["qtype"], v) for d in rows for v in d["probs"]
+                      if round(float(v), 4) != float(v)]
+    off_grid_reported = [(d["backend"], d["qtype"], d["scores"]["reported_confidence"])
+                         for d in rows
+                         if d["scores"].get("reported_confidence") is not None
+                         and round(float(d["scores"]["reported_confidence"]), 4)
+                         != float(d["scores"]["reported_confidence"])]
+    assert not off_grid_probs, off_grid_probs[:5]
+    assert not off_grid_reported, off_grid_reported[:5]
+    # The counts travel with the claim so a reader sees what was actually covered: 4 decimals was
+    # checked on every served number in the file, not on a sample of it. Of the archive's 1919 rows,
+    # 768 (jev's noul slice) publish no confidence at all, so the second count is rows carrying one.
+    assert (len(probs_values), len(reported)) == (4604, 1151), (len(probs_values), len(reported))
+
+
+@pytest.mark.skipif(not COMMITTED.exists(), reason="committed records not present")
 def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_apart():
     """The numbers the shipped TOLERANCE is justified by, re-derived rather than quoted.
 
@@ -370,11 +521,23 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
     from autorate.scales import TOLERANCE
 
     laya = _archive_slice("laya", "choice")
+    # The comment's slice size is asserted, not assumed: the headroom claim below is a statement about
+    # THIS slice, so the count it quotes ("laya's 192 archived choice records") is produced here too.
+    # Redundant by design -- the same 192 is pinned in
+    # `test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hides`, so this line
+    # cannot go red while that one is green -- and it exists only so the module comment's pointer
+    # resolves in this test. It is not inert: dropping any laya choice row reddens both lines.
+    assert len(laya) == 192, len(laya)
     gap = min(abs(max_confidence(r.probs) - entropy_confidence(r.probs)) for r in laya)
     assert gap == pytest.approx(0.0526, abs=1e-4), (gap, len(laya))
     # 52x headroom: no archived laya record is close enough to both scales for the verdict to
-    # be decided by which comparison the implementation happened to run first.
-    assert TOLERANCE * 50 <= gap, (TOLERANCE, gap)
+    # be decided by which comparison the implementation happened to run first. The multiplier is
+    # arithmetic on the gap above, so it is printed rather than quoted: 0.0526 is 52.6 windows wide.
+    # The band guards the WINDOW, not the archive -- with `gap` pinned one line above, the ratio can
+    # only leave [52, 53) if `TOLERANCE` moves, which is what makes it worth asserting separately
+    # (measured: TOLERANCE at 1e-4 puts the ratio at 526.45 and reddens exactly this line).
+    headroom = gap / TOLERANCE
+    assert 52 <= headroom < 53, (TOLERANCE, gap, headroom)
 
     # At the README's own 0.85 gate the two units are 0.1109 apart for a k=4 question: the
     # entropy scale reaches 0.85 only once the mass on the answer is that much higher, so a
@@ -519,9 +682,11 @@ def test_the_shared_bisection_has_one_owner_and_no_argument_order_to_transpose()
     with pytest.raises(TypeError):
         p_max_for_entropy(target=4, k=0.85)
 
-    # One owner, checkable rather than promised: a function at ANY nesting depth that bisects over
-    # `entropy_confidence` is the fingerprint of the duplicated search, and exactly one may carry it.
-    # A nested copy re-added inside a test body is caught, which a module-level-only walk missed.
+    # One owner, checkable rather than promised: a function at ANY nesting depth that repeats a search
+    # over `entropy_confidence` -- in a `for`, an `async for`, a `while`, or through its own body -- is
+    # the fingerprint of the duplicated search, and exactly one may carry it. A nested copy re-added
+    # inside a test body is caught, which a module-level-only walk missed, and a `while`-loop copy is
+    # caught too, which the first version of this fingerprint could not see (see `_entropy_bisectors`).
     owners = _entropy_bisectors(Path(__file__).resolve().parent)
     assert owners == ["_thresholds.py::p_max_for_entropy"], owners
     assert "_pmax_reaching" not in (Path(__file__).resolve().parent / "test_records.py").read_text(), \
