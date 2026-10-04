@@ -303,8 +303,8 @@ def test_the_errata_table_matches_the_function_that_produced_it():
 
     The check re-derives every published cell through the solver and compares FLOATS at 5e-5. It is
     not a byte comparison -- a byte check on a 4-decimal cell would be the weaker claim, since the
-    solver's full-precision value has no bytes in this document -- and `docs/ERRATA.md`'s own wording
-    says what this does (`2026-10-04` note in the 2026-10-01 row).
+    solver's full-precision value has no bytes in this document -- and the second `2026-10-04` note in
+    `docs/ERRATA.md`'s 2026-10-01 entry says so in the file that once claimed otherwise.
     """
     from pathlib import Path
 
