@@ -168,7 +168,7 @@ instead of being recomputed in the report, because the recomputation gave a publ
 and produced the identical 0.0485 that the artifact already carries; the verdict word (`inside`/`above`)
 is derived from the comparison; a missing bound drops the sentence instead of printing `nan`; and the
 lead-in says what the rows did (`Both rows certify` / `N of M rows refuse`) rather than asserting a
-refusal. `tests/test_report_prose.py` now asserts the shipped **laya** clause directly, 7 of its 11
+refusal. `tests/test_report_prose.py` now asserts the shipped **laya** clause directly, 8 of its 11
 tests fail against the commit that introduced the error, and one of them builds a real early-refusal
 certificate rather than zeroing the counters that the defect is about their absence.
 
@@ -204,3 +204,21 @@ opened and hashed" belongs to the inventory itself, which is where the claim wil
 
 Reproduce with `uv run --frozen autorate report --out docs/RESULTS.md`, and read `## Is n big enough to
 certify?`; the superseded wording is in `git show b9f237b:docs/RESULTS.md`.
+
+## 2026-10-04 — the same-day fix-round row under-counted its own failures
+
+The row above this one ("the repaired report still published another row's number") claimed that
+`tests/test_report_prose.py` stood at 11 tests of which **7** failed against `12c87d7`, the commit that
+introduced the misattributed counterfactual. Re-measured in the next round: **8 failed, 3 passed**. The
+figure in that row now carries the measured number; **this note supersedes the 7 the row first carried**,
+and no other claim in it changes.
+
+The measurement is reproducible without touching a worktree: take the 11-test file at `d1cc88a` and run it
+against `12c87d7`'s `src/autorate/report.py` in the current tree. That swap is the whole difference,
+because `git diff --stat 12c87d7 0af1fcc -- data/ src/autorate/` touches only `cli.py`, `report.py` and
+`scales.py` — every certificate, record and fixture the tests read is byte-identical across the three
+commits. The count was stated in the row because the row's claim is that the suite *could see* the defect;
+stating it from memory is the same error class as stating a number that was never run.
+
+Nothing in the certificates, the report's figures, or the sentences above changes: this is a count of
+tests in a narrative row, not a bound.
