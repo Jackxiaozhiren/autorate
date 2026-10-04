@@ -37,7 +37,10 @@ Two of those rows carry the whole argument:
 - `alpha` is the coverage floor the certificate is held to, not a label on it. An earlier version
   swept a grid of coverage levels for the largest automation rate and tested the winner on
   the same evaluation half, then printed "at alpha=0.050" while operating at 0.89
-  coverage. Selecting on the test half is snooping, so the set size now comes from the
+  coverage (fixed in `241e395`). The pre-fix quantity is still checkable rather than asserted:
+  `data/cert_*.json` carries `meta.diagnostic_curve`, the sweep of coverage levels the old code
+  maximised over, and `meta.closest_attempt`, the point that came closest to the budget.
+  Selecting on the test half is snooping, so the set size now comes from the
   calibration half at exactly the requested `alpha`; the grid survives only as diagnostic
   evidence attached to a refusal.
 
