@@ -54,14 +54,23 @@ def _entropy_bisectors(tests_dir):
     The `While` and recursion arms are not decoration. Measured with only the `For` arm -- the shape
     the first version of this fingerprint knew -- a second bisection written as `while n < iterations:`
     keeps the suite GREEN: the detector looked for the shape it had seen, so the property it polices
-    was narrower than its name. Both planted shapes now go red.
+    was narrower than its name. Both planted shapes now go red, and so does the third one this round
+    found the same way: a `functools.reduce` copy, which has no loop statement at all because the
+    interval lives in the accumulator. That plant is kept as a written test rather than a paragraph,
+    because "the fold is caught now" is a claim that can only fail silently.
 
     What is deliberately NOT covered, and why: `test_*` functions, which assert about the scale
-    instead of deriving from it (several loop over bad inputs calling `entropy_confidence`); a
-    comprehension, which carries no interval state to narrow and so cannot hold this search; and a
-    search that reaches the scale INDIRECTLY, like the nested `crossing` below -- that helper bisects
-    WHERE THE TWO SCALES CONVERGE, a different question with one reader, which is why it stays in
-    this file rather than joining `tests/_thresholds.py`.
+    instead of deriving from it (several loop over bad inputs calling `entropy_confidence`); a bare
+    comprehension, which really cannot hold this search -- each element is evaluated independently, and
+    narrowing an interval needs a carried state, which is exactly what `reduce`/`accumulate` supply and
+    why they are covered above; and a search that reaches the scale INDIRECTLY, like the nested
+    `crossing` below -- that helper bisects WHERE THE TWO SCALES CONVERGE, a different question with one
+    reader, which is why it stays in this file rather than joining `tests/_thresholds.py`.
+
+    The honest residual: a straight-line copy -- eighty unrolled assignments, no loop, no fold, no
+    self-reference -- carries the search and escapes every arm, because all four are syntax questions.
+    Catching that needs a behavioral check (compare candidate solvers' output against the shared one),
+    which is more machinery than a duplicated test helper is worth.
 
     The concrete name it is watching for is `_pmax_reaching`, the transposed copy this round deleted
     from `tests/test_records.py`; the guard test that calls this helper also checks for that name in
@@ -70,10 +79,17 @@ def _entropy_bisectors(tests_dir):
     import ast
 
     loop_forms = (ast.For, ast.AsyncFor, ast.While)
+    folds = ("reduce", "accumulate")
 
     def calls_scale(node):
         return any(isinstance(call, ast.Call)
                    and getattr(call.func, "id", None) == "entropy_confidence"
+                   for call in ast.walk(node))
+
+    def calls_fold(node):
+        return any(isinstance(call, ast.Call)
+                   and (getattr(call.func, "id", None) in folds
+                        or getattr(call.func, "attr", None) in folds)
                    for call in ast.walk(node))
 
     found = []
@@ -89,6 +105,12 @@ def _entropy_bisectors(tests_dir):
                 # A recursive bisection repeats through its own body instead of a loop statement.
                 if any(isinstance(call, ast.Call) and getattr(call.func, "id", None) == node.name
                        for call in ast.walk(node)) and calls_scale(node):
+                    found.append("%s::%s" % (path.name, node.name))
+                    break
+                # A fold narrows the interval too -- the state lives in the accumulator, so no loop
+                # STATEMENT exists for the two arms above to find. Measured: a `functools.reduce`
+                # copy with the scale call in its inner step escaped this fingerprint entirely.
+                if calls_fold(node) and calls_scale(node):
                     found.append("%s::%s" % (path.name, node.name))
                     break
     return sorted(set(found))
@@ -692,3 +714,68 @@ def test_the_shared_bisection_has_one_owner_and_no_argument_order_to_transpose()
     assert "_pmax_reaching" not in (Path(__file__).resolve().parent / "test_records.py").read_text(), \
         "the transposed copy is back: two owners of one derivation again"
 
+
+
+def test_the_fingerprint_sees_a_bisection_in_every_shape_that_can_carry_one(tmp_path):
+    """The loop-form arms are tested by planting them, not by asserting the real tree is clean.
+
+    `test_the_shared_bisection_has_one_owner_and_no_argument_order_to_transpose` asks the live question
+    (exactly one owner today). This asks whether the detector can fail at all: each of the three shapes
+    that can hold a narrowing search is planted in an empty directory and must be reported, and a plain
+    caller that does not narrow anything must not be. The `while` and recursion arms were each written
+    after a planted copy showed the detector blind to them; the fold arm is this round's addition, and
+    removing it from `_entropy_bisectors` is what makes the third case below red.
+    """
+    import textwrap
+
+    header = "import functools\n\nfrom autorate.records import entropy_confidence\n\n"
+    shapes = {
+        "while_loop": textwrap.dedent("""
+            def pmax(target, k):
+                lo, hi = 1.0 / k, 1.0
+                n = 0
+                while n < 80:
+                    n += 1
+                    mid = (lo + hi) / 2
+                    probs = [mid] + [(1 - mid) / (k - 1)] * (k - 1)
+                    if entropy_confidence(tuple(probs)) < target:
+                        lo = mid
+                    else:
+                        hi = mid
+                return lo
+        """),
+        "recursion": textwrap.dedent("""
+            def pmax(target, k, lo=None, hi=1.0):
+                lo = 1.0 / k if lo is None else lo
+                if hi - lo < 1e-9:
+                    return lo
+                mid = (lo + hi) / 2
+                probs = [mid] + [(1 - mid) / (k - 1)] * (k - 1)
+                if entropy_confidence(tuple(probs)) < target:
+                    return pmax(target, k, mid, hi)
+                return pmax(target, k, lo, mid)
+        """),
+        "fold": textwrap.dedent("""
+            def pmax(target, k):
+                def step(state, _):
+                    lo, hi = state
+                    mid = (lo + hi) / 2
+                    probs = [mid] + [(1 - mid) / (k - 1)] * (k - 1)
+                    return (mid, hi) if entropy_confidence(tuple(probs)) < target else (lo, mid)
+                return functools.reduce(step, range(80), (1.0 / k, 1.0))
+        """),
+        # Not a second owner: reads the scale once, no state carried between reads.
+        "plain_call": textwrap.dedent("""
+            def score(p):
+                return entropy_confidence(p) > 0.5
+        """),
+    }
+    for name, body in shapes.items():
+        lane = tmp_path / name
+        lane.mkdir()
+        (lane / ("plant_%s.py" % name)).write_text(header + body)
+        owners = _entropy_bisectors(lane)
+        if name == "plain_call":
+            assert owners == [], (name, owners)
+        else:
+            assert owners == ["plant_%s.py::pmax" % name], (name, owners)
