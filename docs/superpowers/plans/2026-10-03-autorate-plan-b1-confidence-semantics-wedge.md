@@ -518,7 +518,7 @@ def test_rendered_audit_contains_no_machine_path_and_no_unproduced_number(tmp_pa
 
 **Files:**
 - Modify: `src/autorate/certificate.py`
-- Test: `tests/test_certificate.py`, `tests/test_certify_threshold.py`
+- Test: `tests/test_certificate_shape.py` (modify — **R-74: `tests/test_certificate.py` does not exist; this step first named a file that was never in the suite.** The certificate's shape rules already have an owner: `tests/test_certificate_shape.py`, "Task 8a: the certificate object's shape rules", where `test_a_reason_outside_the_closed_set_is_rejected` and `test_the_refusal_mass_is_derived_from_the_automation_rate_not_supplied` live. A new Reason member belongs in the closed-set test beside the other four, and a new shape tag belongs in the file whose subject is the shape. Creating a second certificate test file would split one subject across two owners, which is the defect class this plan has been closing all round), `tests/test_certify_threshold.py`
 
 **Interfaces:**
 - Produces: `Reason.NO_AUTOMATION_AT_COVERAGE = "no_automation_at_coverage"` and `SHAPE_VERSION = 2`, emitted as `"shape": 2` in `to_dict()` and required by `from_dict`.
