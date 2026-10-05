@@ -525,31 +525,25 @@ def test_rendered_audit_contains_no_machine_path_and_no_unproduced_number(tmp_pa
 
 I-10: `empty_feasible_set` currently covers "nothing automates" (laya, Task 4 of Plan A) and "something automates but its bound misses the budget" (jev). They are different findings — one says the task is not automatable, the other says the data cannot certify it — and §5.5's whole claim is that the reason travels inside the certificate. D14 separately ruled in a version tag, because `from_dict` currently refuses a stale artifact by field-name diff alone.
 
-- [ ] **Step 1: Share the generator, then write the failing tests.** `tests/test_certify_choice.py:16` already owns the only good synthetic labelled-record generator in the repo (`_records(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0, error_rate=0.0)`), and this task needs two of its shapes. No test module in this suite imports another, and `tests/` has no `__init__.py` (PF-B1-4), so the shared helper goes where pytest guarantees it: a new `tests/conftest.py` exposing a `records_factory` fixture that wraps the generator verbatim, with `test_certify_choice.py` re-exporting it as `_records = records_factory` at module scope so its 40-odd existing call sites stay untouched.
+- [ ] **Step 1: Share the generator, then write the failing tests.** `tests/test_certify_choice.py:16` already owns the only good synthetic labelled-record generator in the repo (`_records(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0, error_rate=0.0)`), and this task needs two of its shapes. **Corrected per ledger R-69: the shared helper is a plain module, `tests/_records.py`, imported by name -- not a `conftest.py` fixture.** The first version of this step prescribed a `records_factory` fixture plus a module-scope alias `_records = records_factory`, and both halves are worse than the convention the suite already runs: a fixture-injected factory cannot be called at module scope, where these generators are actually called (inside `@pytest.fixture(scope="module")` bodies that build a pair of certificates once), and an alias that rewrites `test_certify_choice.py` at module level touches a file other rounds gate as byte-unchanged. The precedent is live and load-bearing: `tests/_thresholds.py` is imported by name today (`tests/test_records.py:11`, `tests/test_scales.py:8`) with no `__init__.py` in `tests/` (PF-B1-4), which is exactly the shape below.
 
 ```python
 """Shared synthetic-record source. Tests import this; nothing else crosses modules."""
-import pytest
 
-def _build(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0,
-           error_rate=0.0):
+def _records(n, k=4, sharpness=6.0, seed=1, backend="synthetic", unlabelled=0,
+             error_rate=0.0):
     """Moved verbatim from tests/test_certify_choice.py:16 -- see its docstring for why
     `error_rate` exists: a generator that can never be wrong cannot show a refusal.
     """
     ...   # the body, copied unchanged
-
-
-@pytest.fixture
-def records_factory():
-    return _build
 ```
 
-Copy the body unchanged; the `...` above is this plan pointing at 18 lines that already exist in the repository, at a named line, in the file the task is moving them out of -- not a step to invent.
+Copy the body unchanged; the `...` above is this plan pointing at 18 lines that already exist in the repository, at a named line, in the file the task is moving them out of -- not a step to invent. `tests/test_certify_choice.py` then does `from _records import _records`, so its 40-odd existing call sites stay textually identical, and every other consumer imports the same name from the same module.
 
 ```python
 """Two refusals that used to share one label, and the tag the shape was written in."""
 import pytest
-from _synthetic import _records
+from _records import _records
 
 from autorate.certificate import SHAPE_VERSION, Certificate
 from autorate.certify_choice import certify_choice

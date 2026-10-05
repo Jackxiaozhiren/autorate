@@ -49,7 +49,7 @@ import pytest
 
 from autorate.groups import by_group, group_counts
 
-from _fixtures import choice_record     # existing test helper; see note
+from _records import choice_record     # created by this task; see the note below
 
 
 def test_a_case_with_three_repeats_contributes_one_case_and_three_records():
@@ -104,7 +104,7 @@ from autorate.certificate import N_CLAIMS
 from autorate.certify_choice import certify_choice
 from autorate.correction import bonferroni, worst_group
 
-from _fixtures import choice_record
+from _records import choice_record
 
 
 def test_a_slice_too_small_to_bound_is_refused_by_name_not_averaged_away(recs_8_families):
