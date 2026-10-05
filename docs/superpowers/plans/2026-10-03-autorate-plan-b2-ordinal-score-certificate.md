@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give `autorate` the ordinal `score` primitive -- nested minimum-length interval sets, a one-sided severity certificate `P(Y > â(X)) ≤ α`, and a tolerance band -- and demonstrate **G3**: a guarantee that multiclass set prediction cannot express.
+**Goal:** Give `autorate` the ordinal `score` primitive -- **nested modal-anchored chain sets** (ruling R-68: *not* the "minimum-length interval whose mass ≥ q" family this line originally named, which measures as non-nested; see Task 1), a one-sided severity certificate `P(Y > â(X)) ≤ α`, and a tolerance band -- and demonstrate **G3**: a guarantee that multiclass set prediction cannot express.
 
 **Architecture:** A pure ordinal layer (`ordinal.py`) supplies the set construction and the nonconformity; `certify_score.py` consumes it exactly the way `certify_choice.py` consumes `conformal.py`, sharing the split and the case-level counting that Plan B1 extracted. The severity certificate is a separate one-sided family because its loss is a different monotone function of a different parameter, not a variant of the set gate.
 
@@ -114,7 +114,7 @@ def test_a_single_level_distribution_cannot_be_certified_and_says_so():
 
 - [ ] **Step 2: Verify RED** (`ModuleNotFoundError: autorate.ordinal`), then **Step 3: Implement** with prefix sums: `score_ordinal` is `O(k)` once the modal index is known (chain mass = `prefix[max(a,g)+1] - prefix[min(a,g)]`), and `interval_set` is one pass over those scores. The O(k²) span enumeration this step originally prescribed belonged to the minimum-length-reach-mass definition that ruling R-68 replaced; keep enumeration only inside a test that cross-checks the closed form against brute force. `k ≤ 51` and `predict_shortlist` caps ballots, so neither shape is a performance question — say that in the comment rather than optimizing.
 - [ ] **Step 4: Green**, then **Step 5: prove the guards can fail** -- plant the mass-ordered alternative (§5.4's semantically-invalid set: the smallest top-mass prefix of levels) in place of the chain, and confirm the contiguity assertions AND the nesting subset assertion both go red; restore byte-identically and record the hashes. That plant is the only way these two tests show they are guards rather than descriptions of whatever the code happens to do: under the pre-R-68 definition the nesting assertion was a disjunction that the mass-ordered family can satisfy.
-- [ ] **Step 6: Commit** — `git commit -m "feat(ordinal): minimum-length contiguous interval sets with contiguity and nesting as properties"`.
+- [ ] **Step 6: Commit** — `git commit -m "feat(ordinal): modal-anchored chain sets with contiguity and nesting as properties"`. The subject must name the family the code implements: "minimum-length" describes the pre-R-68 construction, and a commit message that mislabels the primitive is the first place a later reader will be misled.
 
 ---
 
@@ -158,13 +158,19 @@ from autorate.severity import certify_severity
 
 @pytest.fixture
 def ordinal_records():
-    """Factory for synthetic ordinal decisions, registered in tests/conftest.py.
+    """Factory for synthetic ordinal decisions, in the shared helper module `tests/_records.py`.
 
-    Plan B1 Task 5 ruled that shared generators live in `tests/conftest.py` as fixtures
-    (no test module imports another in this suite, and `tests/` has no `__init__.py`), so
-    this task adds `ordinal_records` there rather than inventing an import path.
+    Corrected 2026-10-05 (ruling R-69). This docstring used to say "Plan B1 Task 5 ruled that shared
+    generators live in `tests/conftest.py`" -- a future ruling cited as a present fact: there is no
+    `conftest.py` in this repository, and B1 Task 5 has not run. The convention that actually holds is
+    a non-test helper module imported by name (`tests/_thresholds.py` is the precedent, and the
+    duplicate-owner fingerprints already depend on being able to tell a helper from a test), so a
+    shared record factory goes in `tests/_records.py` and is imported the same way. A fixture-returning
+    factory would be a second way to build records, and the module-scope alias B1's draft used to work
+    around it (`_records = records_factory`) mutates a test file that other rounds gate on being
+    byte-unchanged.
     """
-    return _build_ordinal          # defined in conftest, returns list[Record]
+    return _build_ordinal          # defined in tests/_records.py, returns list[Record]
 
 
 def test_the_under_call_bound_holds_on_the_evaluation_half(ordinal_records):
