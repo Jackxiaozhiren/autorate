@@ -23,6 +23,7 @@ identity that earns the denominator is over `probs`, `scores` and `gold`, all 64
 says that and the measurement is taken from the rows rather than remembered.
 """
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -33,6 +34,19 @@ from test_certify_choice import _records
 
 NO_BOUND = object()
 NO_ATTEMPT = object()
+
+# The coarse predication: `byte-identical` asserted of the rows, records or repeats themselves. Written as
+# a pattern rather than the one literal string it started as, because the claim can be typed in more than
+# one shape -- measured, all five of "laya's three repeats per case are byte-identical", "the 192 records
+# are byte-identical within a case", "Each record is byte-identical to its two siblings", "the three rows
+# are all byte identical" and "repeats of one case are byte-identical rows" match it, while the four
+# earned or unrelated forms ("carry byte-identical probability vectors, scores and gold labels" among
+# them) do not. Where the two could still be confused the pattern errs toward flagging, which is the right
+# direction for a guard on a published sentence. It matches zero lines of the document `build_report`
+# renders today, in either lane, and the next assertion is only meaningful because that was measured.
+_COARSE_ROW_IDENTITY = re.compile(
+    r"\b(?:rows?|records?|repeats?)\b[^.]{0,60}?\b(?:are|is|were)\s+(?:all\s+)?byte[- ]?identical\b",
+    re.IGNORECASE)
 
 
 def _swap(cert, overrides: dict, bound, attempt=None):
@@ -502,8 +516,9 @@ def test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity():
     The per-CASE bullet justified the case denominator with "laya's three per case are byte-identical",
     which the archive refutes: 0 of 64 groups have identical rows. The narrower thing is both true and
     the reason the repeats are one observation, so the bullet must say THAT, and the guard below is what
-    stops the coarse wording from being re-typed into the generator -- `verify` byte-compares the
-    artifact, so nothing else would notice.
+    stops the coarse wording from reappearing in the artifact beside the one it was first typed into --
+    it reads the rendered document, not a single bullet, because `verify` byte-compares that artifact and
+    nothing else would notice.
     """
     groups = _laya_choice_groups()
     assert len(groups) == 64, "the bullet's wording is measured against 64 laya choice cases"
@@ -515,8 +530,15 @@ def test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity():
                               "jev": read_certificate(Path("data/cert_jev.json"))},
                         {b: len(rs) for b, rs in records.items()})
     bullet = next((l for l in text.splitlines() if l.startswith("- The bounds are per CASE")), text)
-    # the refuted form: `byte-identical` predicated of the repeats/rows/records themselves.
-    assert "are byte-identical" not in bullet, bullet
+    # The guard is keyed on the CLAIM, not on the bullet that first carried it. Measured on the previous
+    # form of this line: planting "laya's three repeats per case are byte-identical" into a DIFFERENT
+    # generated line -- the Exchangeability bullet -- rendered it in the artifact and left all 24 tests in
+    # this file green, because the negated assertion read only the per-CASE bullet. So the negation runs
+    # against the whole rendered document now, and the positive ones stay where they belong, on the
+    # bullet whose claim this is.
+    coarse = _COARSE_ROW_IDENTITY.findall(text)
+    assert not coarse, coarse
+    assert bullet.startswith("- The bounds are per CASE"), text[:200]
     # the earned form, and every noun it identifies must be one the measurement above proved identical.
     assert "byte-identical probability vectors, scores and gold labels" in bullet, bullet
     assert "repeats of one case are one observation" in bullet, bullet

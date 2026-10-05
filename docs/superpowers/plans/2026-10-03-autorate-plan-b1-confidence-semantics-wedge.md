@@ -458,8 +458,11 @@ def test_every_field_the_readme_offers_misses_its_own_implied_error_rate(laya):
 
 
 def test_the_denominator_is_cases_and_says_so(laya):
-    # 192 archived choice rows are 64 cases x 3 byte-identical repeats. Counting rows
-    # would print a 3x larger sample than the one that exists (R-36, R-44).
+    # 192 archived laya choice rows are 64 cases x 3 repeats carrying the SAME probability vector and
+    # the SAME published confidence -- not identical ROWS, since `meta`, `repeat` and `slices` differ
+    # (jev's 191 rows are the same 64 cases carrying 1-3 distinct vectors). Counting rows would print a
+    # 3x larger sample than the one that exists (R-36, R-44). Do not write "byte-identical repeats": the
+    # archive refutes it of the rows, and tests/test_report_prose.py reddens the sentence if it is typed.
     rows = audit_fields(laya, gate=0.85)
     assert rows["confidence"]["n_records"] == 192
     assert rows["confidence"]["n_cases"] == 64

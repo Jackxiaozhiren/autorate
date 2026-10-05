@@ -179,12 +179,15 @@ def scale_attribution(records: Sequence) -> dict:
     # pinned by tests/test_records.py::test_case_id_survives_both_round_trips_because_it_is_the_bound_denominator,
     # so one-row-per-case could be measured instead of predicted. It was.
     # The pair the old comment forecast -- 0.170 to 0.160 and 0.157315 to 0.147315 -- is not what
-    # collapsing to cases does; it is what collapsing to each case's FIRST repeat does, and it appears
-    # only because that tie-break discards the row carrying each published maximum (in both cases the
-    # LAST repeat of its case). Keep each case's worst row -- the only collapse that preserves a gate
-    # defined as a maximum over rows -- and both maxima stay exactly where they are. Every figure in
-    # this sentence is produced by the test named below; which collapse Task 4 publishes is still its
-    # own decision, and this module no longer forecasts it.
+    # collapsing to cases does; it is what collapsing to each case's FIRST ROW IN ARCHIVE ORDER does, the
+    # order a reader gets by grouping the file without sorting, and it appears only because that tie-break
+    # discards the row carrying each published maximum -- each case's last ROW, which is NOT its last
+    # REPEAT: 52 of the 64 jev cases are not in ascending `repeat` order in the file, and keeping each
+    # case's lowest repeat instead gives 0.160 and 0.150882, not this pair. Keep each case's worst row --
+    # the only collapse that preserves a gate defined as a maximum over rows -- and both maxima stay
+    # exactly where they are. Every figure in this sentence, the 52 and the 0.150882 included, is produced
+    # by the test named below; which collapse Task 4 publishes is still its own decision, and this module
+    # no longer forecasts it.
     # tests/test_scales.py::test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima
     return {"n": len(measured), "n_rows": len(batch), "max_dev_answer": da,
             "max_dev_entropy": de, "verdict": verdict, "tolerance": TOLERANCE, **counts}

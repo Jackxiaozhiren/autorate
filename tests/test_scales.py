@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from _thresholds import p_max_for_entropy
+from _thresholds import p_max_for_entropy, scale_gap, scale_midpoint
 from autorate.records import Record
 from autorate.scales import scale_attribution
 
@@ -35,85 +35,104 @@ def _archive_slice(backend, qtype):
             if d["backend"] == backend and d["qtype"] == qtype]
 
 
-def _entropy_bisectors(tests_dir):
-    """Helpers under tests/ that evaluate the entropy scale INSIDE a loop, at any nesting depth.
+def _entropy_scale_owners(tests_dir):
+    """Every helper under `tests/` that reads the entropy scale -- the suite's owner inventory.
 
-    This is the single-owner fingerprint for the bisection that turns an entropy target back into a
-    `p_max`: the same search written twice is exactly how a transposed parameter order survived a
-    whole review round, so the COUNT of owners is the fact worth guarding, not any one value.
+    This is the single-owner guard for the derivation that turns an entropy target back into a `p_max`:
+    the same search written twice is exactly how a transposed parameter order survived a whole review
+    round, so the COUNT and LOCATION of owners is the fact worth guarding, not any one value.
 
-    The class it covers, stated because a guard that is not self-describing gets widened or trusted
-    wrongly: any `FunctionDef` in any tests/*.py file, module-level OR nested inside another function,
-    whose name does not begin with `test_` and which calls `entropy_confidence` DIRECTLY from inside
-    a repetition -- a loop STATEMENT in any of its three forms (`For`, `AsyncFor`, `While`) or its own
-    body (recursion). Nested coverage is the point -- a second copy re-added inside a test body is the
-    regression this guards, and a module-level-only walk would have passed it. Read as a syntax-tree
-    question rather than a substring, because a docstring that merely names the scale is not a second
-    solver.
+    The rule is OWNERSHIP, not syntax. A helper is an owner if, and only if, it is a function or lambda
+    -- `FunctionDef`, `AsyncFunctionDef` or `Lambda`, at any nesting depth, at module level, inside a
+    class, or inside another function -- whose name does not begin with `test_`, in any `.py` file under
+    `tests/` (subdirectories included), that references `entropy_confidence` at all: as a call, as a
+    bare name, as an attribute, or by importing it. Looping, folding, comprehending, awaiting, unrolling
+    or holding state in an object says nothing about whether a helper owns the derivation, so none of it
+    is asked.
 
-    The `While` and recursion arms are not decoration. Measured with only the `For` arm -- the shape
-    the first version of this fingerprint knew -- a second bisection written as `while n < iterations:`
-    keeps the suite GREEN: the detector looked for the shape it had seen, so the property it polices
-    was narrower than its name. Both planted shapes now go red, and so does the third one this round
-    found the same way: a `functools.reduce` copy, which has no loop statement at all because the
-    interval lives in the accumulator. That plant is kept as a written test rather than a paragraph,
-    because "the fold is caught now" is a claim that can only fail silently.
+    Why the shape list was dropped. Three consecutive rounds each found a new syntactic form that
+    escaped the previous round's list, and each time the exclusion came with a reason the next plant
+    refuted: `for` only, and a `while` copy escaped; `while` plus recursion added, and a
+    `functools.reduce` copy escaped (the accumulator carries the interval, so there is no loop
+    statement to find); the fold arm added and comprehensions excluded because "each element is
+    evaluated independently", and a walrus-carrying comprehension escaped -- state does cross elements.
+    The independent review then put three more live second owners through the same list -- an `async def`
+    with an ordinary `for`, that comprehension, and a `__call__` driven by `itertools.starmap` -- and the
+    two guard tests stayed green (measured, in `/tmp/r4`: all four plants, each proven to return the
+    shared solver's own `0.960919733`, give exit 0). A list of shapes is a promise about the shapes
+    somebody has thought of; ownership is a promise about everything.
 
-    What is deliberately NOT covered, and why: `test_*` functions, which assert about the scale
-    instead of deriving from it (several loop over bad inputs calling `entropy_confidence`); a bare
-    comprehension, which really cannot hold this search -- each element is evaluated independently, and
-    narrowing an interval needs a carried state, which is exactly what `reduce`/`accumulate` supply and
-    why they are covered above; and a search that reaches the scale INDIRECTLY, like the nested
-    `crossing` below -- that helper bisects WHERE THE TWO SCALES CONVERGE, a different question with one
-    reader, which is why it stays in this file rather than joining `tests/_thresholds.py`.
+    What is NOT a read, and why that is not an exemption: a string constant. The name `entropy_confidence`
+    inside a docstring, or inside a source snippet another test plants, is prose about the scale, not a
+    second solver, and this function is itself the proof -- its own body contains that string three times
+    and reports nothing. Only the syntax tree is consulted.
 
-    The honest residual: a straight-line copy -- eighty unrolled assignments, no loop, no fold, no
-    self-reference -- carries the search and escapes every arm, because all four are syntax questions.
-    Catching that needs a behavioral check (compare candidate solvers' output against the shared one),
-    which is more machinery than a duplicated test helper is worth.
+    Where the rule's two exemptions live, both name-based and both stated in the guard test's own
+    assertions rather than hidden here: `test_*` functions, which legitimately call the scale to assert
+    about it; and `tests/_thresholds.py`, the owner module, whose scale-reading helpers are the point of
+    the inventory -- the guard test pins that every entry it returns lives in that file and names each
+    one, so a new derivation there is a decision a reader sees rather than a silent widening.
 
-    The concrete name it is watching for is `_pmax_reaching`, the transposed copy this round deleted
+    The residuals, each written as a case in
+    `test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read` rather than as prose:
+    (1) a second owner hidden inside a `test_*` function body is not reported, because test bodies are
+    allowed to read the scale -- the loophole is real and is the price of the `test_*` exemption;
+    (2) a narrowing search that reaches the scale only through a shared helper (the `crossing` shape in
+    the gate test) is not reported, because it holds no scale arithmetic of its own -- it owns an
+    interval, not a scale; (3) a helper that RE-DERIVES the entropy scale from first principles under a
+    different name is invisible to a rule keyed on the name, and no ownership rule can see it -- that one
+    is the class's floor, and it is why the module's own figures stay pinned by tests.
+
+    `src/autorate/` is never walked: `scales.py` imports `entropy_confidence` from `autorate.records` at
+    module level, and production code computing with the scale is what this whole module exists to do, not
+    a duplicate test helper. Only `tests/` is scanned.
+
+    The concrete name it is watching for is `_pmax_reaching`, the transposed copy a previous round deleted
     from `tests/test_records.py`; the guard test that calls this helper also checks for that name in
-    that file, so a re-added copy is caught by shape and by name.
+    that file, so a re-added copy is caught both by ownership and by name.
     """
     import ast
 
-    loop_forms = (ast.For, ast.AsyncFor, ast.While)
-    folds = ("reduce", "accumulate")
+    scale = "entropy_confidence"
+    function_forms = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
-    def calls_scale(node):
-        return any(isinstance(call, ast.Call)
-                   and getattr(call.func, "id", None) == "entropy_confidence"
-                   for call in ast.walk(node))
+    def reads_scale(node):
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Constant):
+                continue
+            if isinstance(inner, ast.Name) and inner.id == scale:
+                return True
+            if isinstance(inner, ast.Attribute) and inner.attr == scale:
+                return True
+            if isinstance(inner, (ast.Import, ast.ImportFrom)) and any(
+                    alias.name == scale or alias.asname == scale for alias in inner.names):
+                return True
+        return False
 
-    def calls_fold(node):
-        return any(isinstance(call, ast.Call)
-                   and (getattr(call.func, "id", None) in folds
-                        or getattr(call.func, "attr", None) in folds)
-                   for call in ast.walk(node))
+    def label(node, parents):
+        parts = [getattr(node, "name", None) or "<lambda>"]
+        walk_up = parents.get(node)
+        while isinstance(walk_up, ast.ClassDef):
+            parts.append(walk_up.name)
+            walk_up = parents.get(walk_up)
+        return ".".join(reversed(parts))
 
     found = []
-    for path in sorted(tests_dir.glob("*.py")):
+    for path in sorted(tests_dir.rglob("*.py")):
         tree = ast.parse(path.read_text())
+        parents = {}
         for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef) or node.name.startswith("test_"):
+            for child in ast.iter_child_nodes(node):
+                parents[child] = node
+        for node in ast.walk(tree):
+            if not isinstance(node, function_forms):
                 continue
-            for stmt in ast.walk(node):
-                if isinstance(stmt, loop_forms) and calls_scale(stmt):
-                    found.append("%s::%s" % (path.name, node.name))
-                    break
-                # A recursive bisection repeats through its own body instead of a loop statement.
-                if any(isinstance(call, ast.Call) and getattr(call.func, "id", None) == node.name
-                       for call in ast.walk(node)) and calls_scale(node):
-                    found.append("%s::%s" % (path.name, node.name))
-                    break
-                # A fold narrows the interval too -- the state lives in the accumulator, so no loop
-                # STATEMENT exists for the two arms above to find. Measured: a `functools.reduce`
-                # copy with the scale call in its inner step escaped this fingerprint entirely.
-                if calls_fold(node) and calls_scale(node):
-                    found.append("%s::%s" % (path.name, node.name))
-                    break
+            if getattr(node, "name", "").startswith("test_"):
+                continue
+            if reads_scale(node):
+                found.append("%s::%s" % (path.relative_to(tests_dir), label(node, parents)))
     return sorted(set(found))
+
 
 
 def test_a_reported_entropy_value_is_attributed_to_the_entropy_scale():
@@ -393,21 +412,28 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
     * a collapse that keeps each case's WORST row -- the only one that preserves what the gate is,
       since the gate takes a maximum over rows -- leaves both maxima exactly where they are, because
       the row carrying each published maximum is already its own case's worst on that scale;
-    * a collapse that keeps each case's FIRST row in archive order produces 0.160 and 0.147315,
-      precisely by discarding those two cases' worst row -- which in both cases is the third repeat.
+    * a collapse that keeps each case's FIRST ROW IN ARCHIVE ORDER -- what grouping the file without
+      sorting gives a reader -- produces 0.160 and 0.147315, precisely by discarding those two cases'
+      worst row.
 
-    So the predicted pair is reachable, but only through an aggregation this gate must not use. The
-    comment now says that instead of forecasting a number.
+    The second bullet is not the same operation as "keep the first repeat", and the difference is a
+    number: 52 of the 64 cases are not in ascending `repeat` order in the file, so the ordinal reading
+    gives 0.160 and **0.150882**. The module comment used to name the ordinal while printing the
+    archive-order figure; both readings are asserted below from the same rows, so the two cannot be
+    confused again. The predicted pair is therefore reachable -- but only through an aggregation this
+    gate must not use, and only under a tie-break whose name is not the one the comment gave it.
     """
     from autorate.records import entropy_confidence, max_confidence
 
     rows = []
+    repeats = {}
     for r in _archive_slice("jev", "choice"):
         reported = (r.scores or {}).get("reported_confidence")
         if reported is None or len(r.probs) < 2:
             continue
         rows.append((r.case_id, abs(reported - max_confidence(r.probs)),
                      abs(reported - entropy_confidence(r.probs))))
+        repeats.setdefault(r.case_id, []).append(r.repeat)
     assert len(rows) == 191, len(rows)
     published_answer = max(r[1] for r in rows)
     published_entropy = max(r[2] for r in rows)
@@ -430,15 +456,34 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
     assert max(f[0] for f in first) == pytest.approx(0.160, abs=5e-7), max(f[0] for f in first)
     assert max(f[1] for f in first) == pytest.approx(0.147315, abs=5e-7), max(f[1] for f in first)
 
-    # And the structural fact that lets both answers coexist: in each of the two cases the maximum is
-    # the LAST repeat and the predicted figure is the FIRST, so the collapse's tie-break decides
-    # whether the published maximum survives the collapse at all.
+    # The pair above is what keeping each case's first ROW IN ARCHIVE ORDER produces, which is NOT the
+    # same operation as keeping its first REPEAT. Measured here rather than argued: 52 of the 64 jev
+    # cases are not in ascending `repeat` order in the file, and reading the tie-break by ordinal gives
+    # a different entropy maximum -- 0.150882, the middle repeat of the same case whose first row is
+    # repeat 1. The comment in `scales.py` named the second operation while printing the first one's
+    # figure; this line is the measurement that separated them, and it is why the comment now says
+    # "first row in archive order".
+    not_ascending = [c for c in by_case if repeats[c] != sorted(repeats[c])]
+    assert len(not_ascending) == 52, (len(not_ascending), len(by_case))
+    lowest_repeat = [by_case[c][repeats[c].index(min(repeats[c]))] for c in by_case]
+    assert max(x[0] for x in lowest_repeat) == pytest.approx(0.160, abs=5e-7)
+    assert max(x[1] for x in lowest_repeat) == pytest.approx(0.150882, abs=5e-7)
+
+    # And the structural fact that lets both readings coexist: inside each of the two cases the published
+    # maximum sits in the LAST ROW and the forecast figure in the FIRST ROW -- which are not the last and
+    # first REPEATS, because these rows are not filed in `repeat` order. Pinned case by case so the
+    # ordinal reading cannot quietly come back: the answer case's rows are repeats [0, 2, 1], so its
+    # maximum is the MIDDLE repeat, and the entropy case's first row is repeat 1 while its lowest repeat
+    # carries 0.150882.
     answer_case = max(by_case, key=lambda c: max(p[0] for p in by_case[c]))
     entropy_case = max(by_case, key=lambda c: max(p[1] for p in by_case[c]))
+    assert repeats[answer_case] == [0, 2, 1], repeats[answer_case]
+    assert repeats[entropy_case] == [1, 0, 2], repeats[entropy_case]
     assert by_case[answer_case][-1][0] == pytest.approx(0.170, abs=5e-7)
     assert by_case[answer_case][0][0] == pytest.approx(0.160, abs=5e-7)
     assert by_case[entropy_case][-1][1] == pytest.approx(0.157315, abs=5e-7)
     assert by_case[entropy_case][0][1] == pytest.approx(0.147315, abs=5e-7)
+    assert by_case[entropy_case][repeats[entropy_case].index(0)][1] == pytest.approx(0.150882, abs=5e-7)
     assert sorted(round(p[0], 6) for p in by_case[answer_case]) == [0.16, 0.16, 0.17]
     assert sorted(round(p[1], 6) for p in by_case[entropy_case]) == [0.147315, 0.150882, 0.157315]
 
@@ -586,20 +631,25 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
     def remainder_sparse(p_max):
         return [p_max, 1.0 - p_max, 0.0, 0.0]
 
-    def scale_gap(shape, p_max):
-        probs = shape(p_max)
-        return abs(max_confidence(probs) - entropy_confidence(probs))
+    def scale_gap_at(shape, p_max):
+        # Thin shape adapter: it picks the probability vector, then asks the OWNER module for the gap.
+        # That is why this helper is not a second reader of the entropy scale -- the reference is to
+        # `scale_gap`, not to `entropy_confidence` -- and why the owner guard reports nothing here.
+        return scale_gap(shape(p_max))
 
     def crossing(shape, threshold):
         """Smallest p_max whose scale gap is no wider than `threshold`, by bisection.
 
-        A second bisection belongs here and not in `tests/_thresholds.py`, because it answers a
-        different question (where the two scales converge) and has exactly one reader.
+        A second narrowing search belongs here and not in `tests/_thresholds.py`, because it owns no
+        scale arithmetic of its own: it asks the owner module for the gap and bisects WHERE THE TWO
+        SCALES CONVERGE, a different question with one reader. The ownership rule reports it for exactly
+        that reason, and the report is tested (the `indirect_narrowing` case in
+        `test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read`), not asserted here.
         """
         lo, hi = 0.99, 0.9999999
         for _ in range(200):
             mid = (lo + hi) / 2
-            if scale_gap(shape, mid) > threshold:
+            if scale_gap_at(shape, mid) > threshold:
                 lo = mid
             else:
                 hi = mid
@@ -616,7 +666,7 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
     p_some = crossing(remainder_uniform, 2 * TOLERANCE)
     assert p_own == pytest.approx(0.999855, abs=1e-5), p_own
     assert p_some == pytest.approx(0.999684, abs=1e-5), p_some
-    assert scale_gap(remainder_uniform, 0.9995) == pytest.approx(0.002998, abs=1e-5)
+    assert scale_gap_at(remainder_uniform, 0.9995) == pytest.approx(0.002998, abs=1e-5)
     # The two questions are ~1.7e-4 apart on ONE shape. Each answer then moves again across shapes,
     # which is why the shipped comment could not be checked while it named neither the question nor
     # the shape. The bound below is what the comment states as "2e-5 to 8e-5 earlier", so the claim
@@ -648,8 +698,10 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
         return scale_attribution([_choice("b", probs, published)])
 
     def midpoint(p_max):
-        probs = remainder_uniform(p_max)
-        return (max_confidence(probs) + entropy_confidence(probs)) / 2
+        # The value a published confidence must take to sit exactly between the two scales. The
+        # arithmetic is the owner module's (`scale_midpoint`, which is what reads the scale); this
+        # adapter only supplies the uniform-remainder shape the comment quotes.
+        return scale_midpoint(remainder_uniform(p_max))
 
     # Above P_own the row's own number is inside both windows -- the absorbed case the comment names.
     absorbed = attributed(p_own, p_own)
@@ -704,27 +756,40 @@ def test_the_shared_bisection_has_one_owner_and_no_argument_order_to_transpose()
     with pytest.raises(TypeError):
         p_max_for_entropy(target=4, k=0.85)
 
-    # One owner, checkable rather than promised: a function at ANY nesting depth that repeats a search
-    # over `entropy_confidence` -- in a `for`, an `async for`, a `while`, or through its own body -- is
-    # the fingerprint of the duplicated search, and exactly one may carry it. A nested copy re-added
-    # inside a test body is caught, which a module-level-only walk missed, and a `while`-loop copy is
-    # caught too, which the first version of this fingerprint could not see (see `_entropy_bisectors`).
-    owners = _entropy_bisectors(Path(__file__).resolve().parent)
-    assert owners == ["_thresholds.py::p_max_for_entropy"], owners
+    # One owner, checkable rather than promised. The rule is ownership, not syntax: every helper in
+    # `tests/` that reads the entropy scale must live in the owner module, and this pins both halves --
+    # nothing outside it (the shape list this replaced was found blind three rounds running, see
+    # `_entropy_scale_owners`), and the exact inventory inside it, so a new derivation there is a named
+    # decision rather than a silent widening.
+    owners = _entropy_scale_owners(Path(__file__).resolve().parent)
+    assert [o for o in owners if not o.startswith("_thresholds.py::")] == [], owners
+    assert owners == ["_thresholds.py::p_max_for_entropy", "_thresholds.py::scale_gap",
+                      "_thresholds.py::scale_midpoint"], owners
     assert "_pmax_reaching" not in (Path(__file__).resolve().parent / "test_records.py").read_text(), \
         "the transposed copy is back: two owners of one derivation again"
 
 
 
-def test_the_fingerprint_sees_a_bisection_in_every_shape_that_can_carry_one(tmp_path):
-    """The loop-form arms are tested by planting them, not by asserting the real tree is clean.
+def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tmp_path):
+    """The ownership rule is tested by planting owners, and by planting the exclusions it claims.
 
     `test_the_shared_bisection_has_one_owner_and_no_argument_order_to_transpose` asks the live question
-    (exactly one owner today). This asks whether the detector can fail at all: each of the three shapes
-    that can hold a narrowing search is planted in an empty directory and must be reported, and a plain
-    caller that does not narrow anything must not be. The `while` and recursion arms were each written
-    after a planted copy showed the detector blind to them; the fold arm is this round's addition, and
-    removing it from `_entropy_bisectors` is what makes the third case below red.
+    (who reads the scale, and does every reader live in the owner module). This asks whether the detector
+    can fail at all, in both directions. Every shape that has escaped it is planted here and must be
+    reported: the `while` copy, the recursive copy, the `functools.reduce` copy, the three the independent
+    review found live while both guard tests stayed green -- an `async def` with an ordinary `for`, a
+    walrus-carrying comprehension, and a `__call__` driven by `itertools.starmap` -- and the straight-line
+    unrolled copy the previous docstring conceded as its residual. A bare single read in a helper is
+    reported too: the question was never whether a helper repeats, so the exemption it used to enjoy is
+    gone. (Liveness of the planted copies was measured outside the suite: in `/tmp/r4` each of the four
+    new shapes returns the shared solver's own 0.960919733 for target 0.85 / k 4, delta 0.00e+00, so the
+    plant is a working second solver and not a decorative stub.)
+
+    Each exclusion is planted as well, because a reason for an exclusion that is never tested is the exact
+    mistake this rule replaces: a `test_*` body reading the scale is legitimate -- and so is a second owner
+    hidden inside one, which is the residual this pins as accepted rather than denied -- a helper that
+    bisects by asking the owner module for the gap is not a reader, and a docstring or a source string that
+    only NAMES the scale is prose.
     """
     import textwrap
 
@@ -764,18 +829,145 @@ def test_the_fingerprint_sees_a_bisection_in_every_shape_that_can_carry_one(tmp_
                     return (mid, hi) if entropy_confidence(tuple(probs)) < target else (lo, mid)
                 return functools.reduce(step, range(80), (1.0 / k, 1.0))
         """),
-        # Not a second owner: reads the scale once, no state carried between reads.
-        "plain_call": textwrap.dedent("""
+        # The three shapes the review planted while both guard tests passed, plus the conceded residual.
+        "async_def": textwrap.dedent("""
+            async def pmax(target, k):
+                lo, hi = 1.0 / k, 1.0
+                for _ in range(80):
+                    mid = (lo + hi) / 2
+                    probs = [mid] + [(1 - mid) / (k - 1)] * (k - 1)
+                    if entropy_confidence(tuple(probs)) < target:
+                        lo = mid
+                    else:
+                        hi = mid
+                return hi
+        """),
+        "walrus_comprehension": textwrap.dedent("""
+            def pmax(target, k):
+                lo, hi = 1.0 / k, 1.0
+                [
+                    (mid := (lo + hi) / 2,
+                     (lo := mid) if entropy_confidence([mid] + [(1 - mid) / (k - 1)] * (k - 1)) < target
+                     else (hi := mid))
+                    for _ in range(80)
+                ]
+                return hi
+        """),
+        "starmap_callable": textwrap.dedent("""
+            class Solver:
+                def __init__(self, target, k):
+                    self.target = target
+                    self.k = k
+                    self.lo = 1.0 / k
+                    self.hi = 1.0
+
+                def __call__(self, _):
+                    mid = (self.lo + self.hi) / 2
+                    probs = [mid] + [(1 - mid) / (self.k - 1)] * (self.k - 1)
+                    if entropy_confidence(tuple(probs)) < self.target:
+                        self.lo = mid
+                    else:
+                        self.hi = mid
+                    return self.hi
+
+
+            def pmax(target, k):
+                import itertools
+                return list(itertools.starmap(Solver(target, k), [(None,)] * 80))[-1]
+        """),
+        # The residual the shape rule admitted: no loop, no fold, no self-reference. Under ownership it is
+        # not a residual -- reading the scale in a helper is the whole test, repeated or not.
+        "straight_line": textwrap.dedent("""
+            def pmax(target, k):
+                lo, hi = 1.0 / k, 1.0
+                mid = (lo + hi) / 2
+                lo = mid if entropy_confidence([mid] + [(1 - mid) / 3] * 3) < target else lo
+                mid = (lo + hi) / 2
+                hi = mid if entropy_confidence([mid] + [(1 - mid) / 3] * 3) >= target else hi
+                mid = (lo + hi) / 2
+                lo = mid if entropy_confidence([mid] + [(1 - mid) / 3] * 3) < target else lo
+                return hi
+        """),
+        # Reported now, exempt before: one read in a helper is still a second site owning a read.
+        "plain_read": textwrap.dedent("""
             def score(p):
                 return entropy_confidence(p) > 0.5
         """),
+        # --- the exclusions, each planted so that the claim is measured rather than asserted ---
+        # A test body asserts about the scale. This is also the accepted loophole: a second owner written
+        # inside a test function is invisible to this rule by construction.
+        "test_body_read": textwrap.dedent("""
+            def test_the_scale_reads_zero_on_uniform_mass():
+                assert entropy_confidence([0.25, 0.25, 0.25, 0.25]) == 0.0
+        """),
+        # A helper that owns an interval and asks the owner module for the scale is not a second reader --
+        # the `crossing` shape in the gate test above, written out so the exclusion has a case.
+        "indirect_narrowing": textwrap.dedent("""
+            from _thresholds import scale_gap
+
+
+            def crossing(shape, threshold):
+                lo, hi = 0.99, 0.9999999
+                for _ in range(200):
+                    mid = (lo + hi) / 2
+                    if scale_gap(shape(mid)) > threshold:
+                        lo = mid
+                    else:
+                        hi = mid
+                return hi
+        """),
+        # Prose about the scale, and source code inside a string, are not reads. This very file is the
+        # real-tree instance of both forms, which is why the rule consults the tree and not the text.
+        "prose_mention": textwrap.dedent('''
+            """Documents the entropy scale without evaluating it."""
+
+            SOURCE = "def pmax(target, k): return entropy_confidence([target])"
+
+
+            def describe():
+                """`entropy_confidence` appears in this docstring only."""
+                return SOURCE
+        '''),
+        # A solver in a package under tests/ escapes a one-level walk. The review measured that escape on
+        # the previous fingerprint; the scan is recursive now, so this shape is reported with its path.
+        "nested_package": textwrap.dedent("""
+            from autorate.records import entropy_confidence
+
+
+            def pmax(target, k):
+                lo, hi = 1.0 / k, 1.0
+                for _ in range(80):
+                    mid = (lo + hi) / 2
+                    if entropy_confidence([mid] + [(1 - mid) / (k - 1)] * (k - 1)) < target:
+                        lo = mid
+                    else:
+                        hi = mid
+                return hi
+        """),
+    }
+    expected = {
+        "while_loop": ["plant_while_loop.py::pmax"],
+        "recursion": ["plant_recursion.py::pmax"],
+        # The outer `pmax` is reported as well as its inner `step`: the outer function's body contains
+        # the read, so it owns the read too. Two names, one plant, and the count is the point.
+        "fold": ["plant_fold.py::pmax", "plant_fold.py::step"],
+        "async_def": ["plant_async_def.py::pmax"],
+        "walrus_comprehension": ["plant_walrus_comprehension.py::pmax"],
+        "starmap_callable": ["plant_starmap_callable.py::Solver.__call__"],
+        "straight_line": ["plant_straight_line.py::pmax"],
+        "plain_read": ["plant_plain_read.py::score"],
+        "test_body_read": [],
+        "indirect_narrowing": [],
+        "prose_mention": [],
+        "nested_package": ["pkg/sub.py::pmax"],
     }
     for name, body in shapes.items():
         lane = tmp_path / name
         lane.mkdir()
-        (lane / ("plant_%s.py" % name)).write_text(header + body)
-        owners = _entropy_bisectors(lane)
-        if name == "plain_call":
-            assert owners == [], (name, owners)
+        if name == "nested_package":
+            (lane / "pkg").mkdir()
+            (lane / "pkg" / "sub.py").write_text(body)
         else:
-            assert owners == ["plant_%s.py::pmax" % name], (name, owners)
+            (lane / ("plant_%s.py" % name)).write_text(header + body)
+        owners = _entropy_scale_owners(lane)
+        assert owners == expected[name], (name, owners)

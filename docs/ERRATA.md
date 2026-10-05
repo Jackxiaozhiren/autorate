@@ -281,6 +281,26 @@ Measured before ruling: all ten cells satisfy the string comparison (`0` mismatc
 consistency check that made the equivalence visible. No certificate, no bound, and no published figure
 changes; `docs/ERRATA.md` and `tests/test_records.py`'s guard docstring are the only files touched for this.
 
+2026-10-05 note (round 4): this row's sentence "The two checks therefore tolerate the same drift and
+differ only on exact midpoints" is right about where they differ and silent about which way, and the
+guard's docstring in `tests/test_records.py` went further and called them "the same test, not a stricter
+one". Re-measured on the ten published cells, 60 probes at the two rounding-basin edges of each cell (the
+edge itself plus one representable double each side): **9 disagreements, every one of them
+float-passes-and-string-fails, zero in the other direction**. The examples are the edges themselves --
+`0.97855`, `0.96085`, `0.94265`, `0.93185`, `0.92035`, `0.89005`, `0.81065`, `0.69895`, `0.66115` -- each
+inside `|x - quoted| <= 5e-5` and each rendering to the wrong 4 decimals. So the string form is
+*strictly stricter*, contained in the float form everywhere, and the two are the same test only away from
+a midpoint. The same run confirms the rest of the row: all ten cells pass both forms (`0` mismatches),
+the worst disagreement is `4.887545e-05` (97.75% of the `5e-5` ceiling), and the binding cell is
+`tau=0.50, k=10` with `1.125e-6` of headroom.
+
+One more argument the withdrawal had and this row did not: the string form is sensitive to the published
+*text*, not only to the solver. `tau=0.50, k=2` computes `0.889972135562`; against a cell republished as
+`0.89` -- the same number, two digits shorter, correctly rounded -- the float check passes and the string
+check fails. Converting would therefore let a formatting decision pose as a solver disagreement, which is
+exactly the fragility a published table must not acquire. The ruling is unchanged and the guard still
+compares floats; only the strength of the sentence describing it is corrected here.
+
 ## 2026-10-05 — the MASSIVE rows' count basis moved from three files opened to all fifty-one
 
 The entry above that ends "the file-opened upgrade to '51 of 51 opened and hashed' belongs to the

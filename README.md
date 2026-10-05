@@ -27,10 +27,13 @@ Two of those rows carry the whole argument:
 - `conditional_error_bound` is `P(wrong | automated) <= beta`. `marginal_error_bound`
   is `P(wrong AND automated)`. They are different quantities, and a paper or a dashboard
   that quotes one while meaning the other is the failure mode this tool exists to stop.
-- Both are over **cases**, not archive rows. Repeats of one case are one observation -- on
-  this corpus each case appears three times per backend, and one backend's repeats carry
-  byte-identical probability vectors, scores and gold labels (not identical rows: the
-  repeat counter and its own elapsed time differ) -- so the `n` in every bound counts cases
+- Both are over **cases**, not archive rows. Repeats of one case are one observation, and on this
+  corpus they are not even evenly counted: laya's archived choice slice is 64 cases x 3 rows (192
+  rows), while jev's is 191 rows over the same 64 cases -- one case carries two rows, not three -- and
+  a jev case carries between one and three *distinct* probability vectors. What a repeat shares is the
+  measurement, not the row: laya's three repeats per case carry byte-identical probability vectors,
+  scores and gold labels (not identical rows: the repeat counter and its own elapsed time differ),
+  while jev's repeats need not carry the same vector at all -- so the `n` in every bound counts cases
   and the record counts are published beside it instead of standing in for it.
 - `envelope` is the machine-readable statement of what the bound assumed -- coverage
   level, group conditioning, drift, and how empty sets were counted. A certificate read

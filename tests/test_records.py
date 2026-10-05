@@ -310,10 +310,17 @@ def test_the_errata_table_matches_the_function_that_produced_it():
     a 4-decimal rounding of this solver's own value (measured agreement, 2.8e-6 to 4.888e-5). That fixes
     what the guard can see. A solver change that leaves every published 4th decimal intact passes by
     construction; a change that moves a value across a rounding boundary reddens it. So its drift
-    sensitivity is set by where each cell sits relative to a midpoint, and comparing the rendered strings
-    instead would be the same test, not a stricter one -- see the 2026-10-04 entry that withdraws that
-    proposal. Making the guard able to see sub-4th-decimal drift means publishing more digits, which is a
-    decision about this document, not about this test.
+    sensitivity is set by where each cell sits relative to a midpoint. Comparing the rendered strings
+    instead would be the same test EVERYWHERE EXCEPT at an exact rounding midpoint, and at a midpoint the
+    string form is strictly stricter: measured 60 probes at the two basin edges of the ten cells, 9
+    disagree and all 9 are float-passes/string-fails, none the other way -- `0.97855` is within `5e-5` of
+    `0.9785` and renders `0.9786`. That form also has no stable tie rule (`f"{0.96095:.4f}"` renders
+    `0.9609`), and it reads the published TEXT as well as the solver: a cell republished as `0.89` --
+    correctly rounded, two digits shorter -- fails it while passing this one, so the two guards differ on
+    formatting, which is a fragility a published table must not acquire. See the 2026-10-04 entry that
+    withdraws that proposal and its 2026-10-05 note for these measurements. Making the guard able to see
+    sub-4th-decimal drift means publishing more digits, which is a decision about this document, not about
+    this test.
     """
     from pathlib import Path
 
@@ -326,11 +333,13 @@ def test_the_errata_table_matches_the_function_that_produced_it():
     assert len(lines) == 2, lines
     for line in lines:
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        # The shape is part of the published claim: one gate cell plus one cell for every k. This line
-        # is a pin, not a new guard for the shift case -- deleting a MIDDLE column already reds below,
-        # because the remaining cells then get zipped onto the wrong k. What it exists for is the
-        # deletion the float check cannot see: drop the LAST cell and `zip` simply stops early, the
-        # four survivors still agree, and the row silently stops claiming k=51. Measured both ways.
+        # The shape is part of the published claim: one gate cell plus one cell for every k. This line is
+        # the FIRST catcher for both deletions, measured both ways: drop a MIDDLE cell (k=20) and the
+        # guard reddens HERE with `5 == 1 + 5`, and only when this line is deleted as well does the same
+        # plant reach the float loop below (it then re-aligns `0.9203` onto k=20 and misses by 1.157e-2).
+        # What it exists for above all is the deletion the float check can never see: drop the LAST cell
+        # and `zip` simply stops early, the four survivors still agree, and the row silently stops
+        # claiming k=51. So this is a guard, not a pin -- it is the sole catcher of the last column.
         assert len(cells) == 1 + len(ks), (cells, len(cells))
         tau = float(re.search(r"(\d+\.\d+)", cells[0]).group(1))
         for k, quoted in zip(ks, cells[1:]):
