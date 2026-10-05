@@ -17,12 +17,18 @@ and the grid survives only as a diagnostic that refuses are allowed to quote.
 
 Empty certified sets are refusals, not errors, and not automations (R-17): they are
 reported in `refusal_rate` so the automation rate's denominator is visible.
+
+The CASE arithmetic is not owned here: `case_count.count_outcome` counts records and cases
+for whichever rule is being certified, and this module supplies the set rule as its
+`kind`/`measure` callables (R-34). Two certifiers with two copies of the counting is how a
+published automation rate stops describing the rule the deployment applies.
 """
 from __future__ import annotations
 
 import random
 from typing import Optional, Sequence
 
+from .case_count import case_key, count_outcome
 from .certificate import N_CLAIMS, Certificate, Reason
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
 from .tails import bound_width, clopper_pearson_upper
@@ -47,10 +53,6 @@ def _eligible(records: Sequence):
         else:
             kept.append(r)
     return kept, dropped
-
-
-def case_key(record) -> str:
-    return record.case_id or record.id
 
 
 def split_cal(records: Sequence, seed: int = 0):
@@ -87,43 +89,37 @@ def _scores(records, method: str) -> list:
     return [fn(r.probs, r.gold_index, r.u) for r in records]
 
 
-def _outcome(ev, qhat, method):
-    """Apply one threshold to the evaluation half, counting CASES as well as records.
+# `classify_set` spells its multi-label outcome "escalate"; the shared counter's name for
+# that published bucket is "multi" (it is what `multi_label` counts). The translation is
+# the set rule's own business: `case_count` must not learn set vocabulary, or the threshold
+# gate would depend on the set gate's internals.
+_SET_KINDS = {"auto": "auto", "empty": "empty", "escalate": "multi"}
 
-    A case is automated only when every one of its archived requests automates -- running a
-    case unattended means running all of it -- and it is erroneous when any automated
-    request in it is wrong. Those two buckets are exhaustive, so refusal = 1 - autorate
-    still holds at the unit the bound is computed on. Record counts stay on the certificate
-    because they are what the gate acts on; they are not a binomial denominator, because
-    repeats of one case are one observation (laya's three per case carry byte-identical
-    probability vectors, scores and gold labels, though not identical rows -- measured, and
-    pinned, by tests/test_report_prose.py).
+
+def _set_rule(qhat, method):
+    """The APS/LAC rule as the shared counter's `kind` and `measure` callables."""
+    def kind(r):
+        return _SET_KINDS[classify_set(conformal_set(r.probs, qhat, r.u, method))]
+
+    def measure(r):
+        return len(conformal_set(r.probs, qhat, r.u, method))
+
+    return kind, measure
+
+
+def _outcome(ev, qhat, method):
+    """One application of the set rule, counted by the shared case arithmetic (R-34).
+
+    The counting lives in `case_count`; what stays here is the set rule itself and the rename
+    the shared module deliberately does not do: it publishes its average as `mean_measure`,
+    because shared arithmetic that names a published figure would give that figure two owners,
+    and `mean_set_size` is THIS gate's name for it -- the name on `Certificate` and in the
+    fields `verify` compares.
     """
-    autom = err = empties = multi = size_sum = 0
-    cases = {}
-    for r in ev:
-        C = conformal_set(r.probs, qhat, r.u, method)
-        size_sum += len(C)
-        kind = classify_set(C)
-        if kind == "empty":
-            empties += 1
-        elif kind == "auto":
-            autom += 1
-            if C[0] != r.gold_index:
-                err += 1
-        else:
-            multi += 1
-        g = cases.setdefault(case_key(r), {"decisions": 0, "automated": 0, "wrong": 0})
-        g["decisions"] += 1
-        if kind == "auto":
-            g["automated"] += 1
-            if C[0] != r.gold_index:
-                g["wrong"] += 1
-    auto_cases = [g for g in cases.values() if g["automated"] == g["decisions"]]
-    return {"automated": autom, "errors": err, "empties": empties, "multi_label": multi,
-            "n_cases": len(cases), "automated_cases": len(auto_cases),
-            "erroneous_cases": sum(1 for g in auto_cases if g["wrong"]),
-            "mean_set_size": size_sum / len(ev) if ev else 0.0}
+    kind, measure = _set_rule(qhat, method)
+    observed = count_outcome(ev, kind, measure)
+    observed["mean_set_size"] = observed.pop("mean_measure")
+    return observed
 
 
 def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
