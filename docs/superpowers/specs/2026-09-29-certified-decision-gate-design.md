@@ -55,7 +55,22 @@ L3  Act         Certificate             ->  auto | escalate | abstain       (ada
 ```
 
 **L1 input sources, all of which already exist:**
-1. `laya-0.3.20/research/eval/laya_eval.py` per-case JSON — already carries `state`, `options`, `gold_index`, `pred_index`, `probability`, `p_gold`, `confidence`, `correct`, `temperature`. That *is* a conformal calibration stream, already emitted.
+1. `laya-0.3.20/research/eval/laya_eval.py` per-case JSON — carries `state`, `options`, `gold_index`,
+   `pred_index`, `probability`, `p_gold`, `confidence`, `correct`, `temperature`. **Corrected 2026-10-05: this
+   bullet used to call that "a conformal calibration stream, already emitted", and the second half of the
+   sentence is the part that is false for §5.2.** Measured in the code: the per-case dict is built at
+   `laya_eval.py:244-266` and reaches the output as `payload["cases"]` only when `--out` is passed
+   (`:348`, `:368-372`), so nothing is emitted by default and **no such file exists anywhere in the vendored
+   tree** (`grep -rl "p_gold" --include=*.json --include=*.jsonl .` over `laya-0.3.20` returns nothing; the
+   committed `research/results/*.json` are aggregates — `app_benchmark_results.json`'s suites hold
+   `n/accuracy/macro_f1/ece/brier/nll/mean_confidence` and no per-case vectors). More decisively, the record
+   carries three scalars derived from the distribution — `probability`, `p_gold`, `confidence` — and never the
+   distribution itself, so the APS nonconformity of §5.2 cannot be reconstructed from it: a set's mass depends
+   on every other option's probability. What the field *can* feed is a score-threshold rule (§6.4's gate) and
+   the marginal-error bookkeeping, both of which need one number per case, not a vector. So this source is
+   usable **after a run** and only for those two things; Plan C's own measured-facts table reaches the same
+   conclusion from the other side ("is `laya_eval.py`'s output usable as an L1 source? **No.**"), and the two
+   documents now say the same thing.
 2. `laya-0.3.20/research/benchmarks/feishu_zh/results/v1/{laya,jev}/raw.jsonl` — 768 archived, paired, **real** responses, including `jev-1.13.0` actual API output. This is what lets v1 certify both the leading open model and the hosted market leader with **zero API spend and zero cross-border data transfer** — the two costs that otherwise sink a neutral evaluator.
 3. `research/eval/metamorphic.py` option-permutation variants → certificate stability under input perturbation (§8.3).
 4. Any `/v1/systemone`-compatible live response body (the protocol `laya/serve.py` implements for Jev wire compatibility).
