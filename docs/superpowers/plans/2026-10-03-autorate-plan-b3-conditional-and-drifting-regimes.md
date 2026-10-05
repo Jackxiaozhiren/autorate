@@ -38,7 +38,7 @@
 - Test: `tests/test_groups.py`
 
 **Interfaces:**
-- Consumes: `Record.slices`, `case_key`.
+- Consumes: `Record.slices`, and `case_key` — which since Plan B1 Task 3 lives in `autorate.case_count` (import `from .case_count import case_key`, not from `certify_choice`, and re-verify the symbol exists before writing code against this line: it moved once already).
 - Produces: `group_key(record, groups: Sequence[str]) -> tuple` over declared keys only; `by_group(records, groups) -> dict[key -> list[Record]]`; `group_counts(...) -> dict[key -> {"cases": int, "records": int}]`.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -76,7 +76,7 @@ def test_a_case_whose_repeats_disagree_about_a_slice_key_does_not_split_in_two()
         by_group(recs, ("family",))
 ```
 
-`_fixtures.choice_record`: if the suite has no such helper by the time this task runs, add it to `tests/conftest.py` as a fixture-returning factory -- B1 Task 5's ruling put shared generators there and no test module imports another.
+`_fixtures.choice_record`: **corrected 2026-10-05 — neither `tests/_fixtures.py` nor any `conftest.py` exists in this suite** (checked: no `conftest.py` anywhere outside `.venv`, and `tests/fixtures/` holds one data file, `feishu_sample.jsonl`). Each test module defines its own local factory — `test_certify_choice.py:16 _records`, `test_certify_threshold.py:19 _rec`, `test_gate.py:10 _rec`, `test_records.py:28 _rec`, `test_scales.py:15 _choice` — and the convention that actually holds is that a helper shared by more than one module lives in a non-test module named `_name.py` (`tests/_thresholds.py` is the existing example), which is also why the fingerprint guards can tell a shared helper from a test. So: create `tests/_record_factory.py` with the one function this task needs, import it the way `test_certify_threshold.py` imports `_thresholds`, and do not add a `conftest.py` — a fixture-returning factory would be a second way to build records, and the next reader would have to guess which one the certificate-producing tests use.
 
 - [ ] **Step 2: Verify RED**, **Step 3: Implement** (the disagreement check is not optional: it is the only thing that turns a producer bug into a loud failure instead of a shifted denominator), **Step 4: Green**, **Step 5: commit** `feat(groups): declared-slice grouping with case-level denominators and a leakage refusal`.
 
