@@ -341,3 +341,37 @@ Reproduce with `uv run --frozen autorate snapshot --out data/inventory.md`, then
 `uv run --frozen autorate report --out docs/RESULTS.md`, and read `## Is n big enough to certify?`; the
 superseded wording is in `git show af6d09a:docs/RESULTS.md`. `uv run --frozen autorate verify` re-derives
 the new basis in both arms (65/65 with the corpus, 34/34 without).
+
+## 2026-10-05 — two spec sentences that the code and a measurement contradict (rows owed since the fixes landed)
+
+The corrections were committed on 2026-10-05 in `92daefc` and `3a38659`; this file is where a published
+document's defects are recorded, and no row was written when they were made. Both rows are recorded here
+rather than restated in full -- the binding text is in the spec, which keeps the superseded sentence in
+place under a dated correction marker so the change stays auditable.
+
+- **§5.4 specified a family that cannot have both properties it required** (ledger R-68). Its construction
+  -- the minimum-length contiguous span whose mass is at least `q`, ties broken leftmost then by the
+  recorded `u` -- is contiguous but **not nested**: measured over 2,000 random ballots of 2-8 levels,
+  3,333 of 17,788 adjacent `q` pairs violate nesting (smallest counterexample `p = [0.159, 0.381, 0.460]`,
+  where `C` at `q = 0.159` is `[1]` and at `q = 0.381` is `[2]`). Reading the family through the score
+  instead restores nesting but abandons contiguity: 3,057 of 14,540 sets are non-contiguous. So the
+  sentence "nesting gives split-conformal validity unchanged" asserted a property of a family that does
+  not have it. The nested *and* contiguous construction is the modal-anchored chain -- `s(x, y)` is the
+  mass of the minimum-mass contiguous span containing both `y` and `argmax p(x)`, `C_alpha` its sublevel
+  set -- measured on the same protocol at 0 non-contiguous sets in 32,304 and 0 nesting violations in
+  141,120. Plan B2's Task 1 now builds that family. **These probe numbers come from a throwaway script,
+  not from a committed test:** Plan B2 has not been executed, and its Task 1 is written to make contiguity
+  and nesting properties the suite asserts. Until then the figures in this row are the controller's
+  measurement, not the repository's.
+- **§3's L1-source list called `laya_eval`'s per-case output "a conformal calibration stream, already
+  emitted"** (ledger: the spec/Plan C contradiction about the same artefact). Three measurements refute it:
+  the per-case dict reaches the output only when `--out` is passed, so nothing is emitted by default and no
+  such file exists anywhere in the vendored tree; the committed `research/results/*.json` are aggregates;
+  and the record carries three scalars derived from the distribution (`probability`, `p_gold`, `confidence`)
+  but never the distribution, so §5.2's APS nonconformity cannot be reconstructed from it. The bullet now
+  says what the field *can* feed -- a score-threshold rule (§6.4) and marginal-error bookkeeping -- and
+  agrees with Plan C's own measured answer ("usable as an L1 source? **No.**").
+
+Reproduce the second row from the source: `sed -n '244,266p;348p;368,372p'` on the vendored
+`research/eval/laya_eval.py`, and `grep -rl "p_gold"` over the vendored tree returns nothing. The vendored
+corpus is read-only; nothing here was written to it.
