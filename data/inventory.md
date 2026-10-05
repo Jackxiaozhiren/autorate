@@ -38,15 +38,15 @@ repeats or translations of the same case do not add sample size.
 | corpus | n_independent | n_rows | count basis | bound width @0.05 | feasible @0.10 |
 |---|---|---|---|---|---|
 | feishu_zh | 64 | - | scanned from results/v1/{laya,jev}/raw.jsonl | 0.3395 | no |
-| massive_intent_per_language | 2974 | 2974 | test/de, en, sw.json.gz opened and counted | 0.0498 | yes |
-| massive_intent_all_languages | 2974 | 151674 | 3 of 51 files opened; the rest counted from the repo listing, and the rows are translations of the same utterances | 0.0498 | yes |
+| massive_intent_per_language | 2974 | 2974 | each of the data/massive_provenance.json pinned test shards opened and counted, 2974 rows per shard | 0.0498 | yes |
+| massive_intent_all_languages | 2974 | 151674 | 51 of 51 pinned shards opened, hashed and row-counted on 2026-10-05 at revision 940fd47a81eaa7f2cc7b129674d945d618ac38c2; the digests live in data/massive_provenance.json and the bytes are not vendored | 0.0498 | yes |
 | typed_decisions | not opened | - | dataset card size category 1K<n<10K only; no file opened | - | - |
 
 | corpus | unit | note |
 |---|---|---|
 | feishu_zh | unique labelled cases, each answered twice per backend over 3 repeats | the only corpus with real archived jev responses |
 | massive_intent_per_language | labelled decision rows (one utterance, one intent) | each language file is a candidate Mondrian slice |
-| massive_intent_all_languages | (language, utterance) pairs -- NOT independent cases | Apache-2.0, ~3.2 MB total; the 51x is coverage, not sample size |
+| massive_intent_all_languages | (language, utterance) pairs -- NOT independent cases | Apache-2.0, 3.2 MB of pinned bytes; the extra shards are translations of the same utterances, so the row multiple is coverage, not sample size |
 | typed_decisions | labelled decisions | candidate contamination probe (public train 300 / test 100) |
 
 ## Known gaps

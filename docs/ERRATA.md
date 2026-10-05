@@ -280,3 +280,44 @@ Two things the episode does establish, now stated in the guard's own docstring:
 Measured before ruling: all ten cells satisfy the string comparison (`0` mismatches), which is the
 consistency check that made the equivalence visible. No certificate, no bound, and no published figure
 changes; `docs/ERRATA.md` and `tests/test_records.py`'s guard docstring are the only files touched for this.
+
+## 2026-10-05 — the MASSIVE rows' count basis moved from three files opened to all fifty-one
+
+The entry above that ends "the file-opened upgrade to '51 of 51 opened and hashed' belongs to the
+inventory itself" is the one this row discharges, and it moved two published table rows in
+`docs/RESULTS.md` plus the snapshot beside them:
+
+- `massive_intent_all_languages` read *"3 of 51 files opened; the rest counted from the repo listing"*;
+  it now reads *"51 of 51 pinned shards opened, hashed and row-counted on 2026-10-05 at revision
+  `940fd47a81eaa7f2cc7b129674d945d618ac38c2`; the digests live in `data/massive_provenance.json` and the
+  bytes are not vendored"*.
+- `massive_intent_per_language` read *"test/de, en, sw.json.gz opened and counted"*; it now reads the
+  per-shard row count derived from the same list, because three named files was a description of one
+  afternoon's work rather than of the corpus.
+
+The claim is measured, not transcribed. Every shard in the pin list was fetched again over HTTPS from
+the pinned revision with certificate verification on, hashed, gunzipped and counted: **51 of 51 digests,
+byte lengths and row counts equal the values first recorded on 2026-10-03** (3,221,662 bytes, 151,674
+rows, 2,974 per shard, one distinct row count). The id sets are the same across all 51 shards -- 2,974
+distinct ids, 148,700 repeats -- which is the identity that makes 2,974, not 151,674, the number a bound
+may sit on. That row-count claim had no owner before today: the figures lived in the inventory module as
+three constants, and a fourth row could contradict them without anything noticing. They now live in
+`data/massive_provenance.json`, whose loader refuses a list that disagrees with its own declared totals
+(`n_files`, `rows_total`, `bytes_total`) with `ArithmeticError`, which is the exit code this repository
+already reserves for a tool that cannot reproduce its own arithmetic.
+
+Two findings that belong to the record rather than to the artefact:
+
+- The network was the blocker, not the data. Through the local HTTP proxy the handshake for
+  `huggingface.co` presents a certificate for `*.facebook.com` and verification fails; with the proxy
+  bypassed the same URL returns a valid `CN=huggingface.co` chain and HTTP 200. Verification was not
+  bypassed to obtain this result -- the proxy was. Plan C's fetcher can therefore run.
+- An independent re-count found the row-count method only by failing first: counting rows as one JSON
+  document per shard raises `Extra data: line 2 column 1` for all 51 files, because the shards are JSONL.
+  The recorded figure was produced by line counting and survives it; the check that seemed obvious was the
+  wrong one.
+
+Reproduce with `uv run --frozen autorate snapshot --out data/inventory.md`, then
+`uv run --frozen autorate report --out docs/RESULTS.md`, and read `## Is n big enough to certify?`; the
+superseded wording is in `git show af6d09a:docs/RESULTS.md`. `uv run --frozen autorate verify` re-derives
+the new basis in both arms (65/65 with the corpus, 34/34 without).

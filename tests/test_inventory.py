@@ -3,13 +3,20 @@
 Two things this suite refuses to do: certify on a corpus too small to bound, and
 silently write into the vendored upstream tree it reads from.
 """
+import inspect
 import json
+import os
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 from autorate.inventory import corpus_options, inventory, n_feasible, write_inventory
+
+REPO = Path(__file__).resolve().parents[1]
 
 UPSTREAM = Path(
     __import__("os").environ.get(
@@ -99,15 +106,27 @@ def test_a_larger_corpus_option_is_recorded_with_its_measured_numbers():
     Review finding C-1 was that the all-language row multiplied three opened files by a
     51-file listing and printed the product as a sample size. The bound must key on
     independent cases, so 51 translations of the same utterances buy coverage, not n.
+    O-6 then found the other direction: the row said "3 of 51 files opened" after all 51 had
+    been opened and hashed. Both are the same defect -- a basis an reader cannot re-derive --
+    so this asserts the row against the pin list rather than against a frozen sentence.
     """
+    from autorate.inventory import (massive_pin, massive_pinned_shards,
+                                    massive_pooled_basis)
+
+    pin = massive_pin()
+    listed, declared = massive_pinned_shards(pin)
+    assert pin["distinct_row_counts"] == [2974], pin["distinct_row_counts"]
+    assert (listed, declared) == (51, 51), (listed, declared)
     opts = {o["id"]: o for o in corpus_options(64)}
     one, all_langs = opts["massive_intent_per_language"], opts["massive_intent_all_languages"]
     assert opts["feishu_zh"]["n_independent"] == 64, opts["feishu_zh"]
     assert one["n_independent"] == one["n_rows"] == 2974
-    assert all_langs["n_rows"] == 2974 * 51
+    assert all_langs["n_rows"] == pin["rows_total"] == 2974 * 51
     assert all_langs["n_independent"] == 2974, "translations must not inflate the sample"
     assert all_langs["bound_width_at_0.05"] == one["bound_width_at_0.05"]
-    assert "3 of 51" in all_langs["basis"], all_langs["basis"]
+    assert all_langs["basis"] == massive_pooled_basis(pin), all_langs["basis"]
+    assert "%d of %d" % (listed, declared) in all_langs["basis"], all_langs["basis"]
+    assert "data/massive_provenance.json" in all_langs["basis"], all_langs["basis"]
     assert "NOT independent" in all_langs["unit"], all_langs["unit"]
     # The feasibility answer comes from the formula, not from a typed word.
     assert opts["feishu_zh"]["bound_width_at_0.05"] > 0.25
@@ -203,8 +222,11 @@ def test_a_closing_corpus_produces_neither_finding_nor_gap_line():
         p = Path(td) / "laya" / "raw.jsonl"
         p.parent.mkdir(parents=True)
         p.write_text(json.dumps(fake) + "\n")
-        by_mode, ids, reps, unclosed = _scan_jsonl(p)
+        by_mode, ids, reps, unclosed, outside, lines_read = _scan_jsonl(p)
     assert by_mode == {"choice": 1} and unclosed == []
+    # Task 1b: one readable line, so the unreadable buckets are empty and the identity
+    # closes over the line the pass read.
+    assert outside == [] and lines_read == 1 and ids == {"k-0"} and reps == [0]
 
 
 @skip
@@ -437,3 +459,471 @@ def test_the_declared_case_count_stays_the_manifest_s_even_where_we_disagree(tmp
     d = inventory(_tiny_corpus(tmp_path, declare_cases=7, n_ids=2))
     assert d["manifest_declared_cases"] == 7, "recounting would hide a manifest/archive gap"
     assert d["unique_ids"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 1b: the inventory scanner shares the reader's malformed-line rule (R-55)
+# ---------------------------------------------------------------------------
+#
+# Every shape below is PLANTED in a `tmp_path` copy, never observed: the shipped archive
+# measures 384 lines in `laya/raw.jsonl` and 384 in `jev/raw.jsonl` with 0 unreadable lines,
+# so a test that only ran the real corpus would prove nothing except that today's data is
+# clean. Against the pre-guard scanner these same shapes raised `JSONDecodeError` / `KeyError`
+# / `TypeError` out of `_scan_jsonl`, and through the shipped CLI two of them exited 1 -- the
+# one exit code this project's contract says no reachable path may emit.
+
+def _planted_row(drop=(), **kw):
+    """One readable `choice` line, with the fields a counting pass indexes blind."""
+    row = {"id": "p1", "mode": "choice", "repeat": 0, "status": "ok", "expected": "a",
+           "family": "f",
+           "response": {"model": "m", "answers": {"category": {
+               "type": "choice", "choice": "a",
+               "probabilities": {"a": 0.5, "b": 0.5}}}}}
+    row.update(kw)
+    for key in drop:
+        row.pop(key)
+    return row
+
+
+# (label, raw line, the exception type the named reason carries). `response` is kept present
+# on the missing-key shapes so the reader and the scanner fail on the SAME key: the two error
+# strings are asserted equal below, and that comparison is only meaningful if both passes are
+# stopped by the same defect in the same line.
+_PLANTED = (
+    ("truncated json", '{"id": "p1", "mo', "JSONDecodeError"),
+    ("json list", "[1, 2, 3]", "TypeError"),
+    ("json null", "null", "TypeError"),
+    ("no mode", json.dumps(_planted_row(drop=("mode",))), "KeyError"),
+    ("no id", json.dumps(_planted_row(drop=("id",))), "KeyError"),
+    ("no repeat", json.dumps(_planted_row(drop=("repeat",))), "KeyError"),
+    ("no choice answers", json.dumps(_planted_row(response={"model": "m", "answers": {}})),
+     "KeyError"),
+    ("probability is not a number", json.dumps(_planted_row(response={"model": "m", "answers": {
+        "category": {"type": "choice", "probabilities": {"a": "high", "b": 0.5}}}})), "ValueError"),
+)
+
+# A `mode` outside MODES is the opposite case: the line IS readable, so the rule must name it
+# without filing it under the unreadable bucket -- the reader already files it by mode string.
+_UNBUCKETABLE_MODE = json.dumps(_planted_row(mode="ranked"))
+
+
+def _plant(tmp_path, raw_lines, n_good=2, backend="laya"):
+    """`_tiny_corpus`, then planted lines appended to ONE backend so per-backend counts are real.
+
+    Returns the root and the `line_no` of the first planted line.
+    """
+    root = _tiny_corpus(tmp_path, n_ids=n_good)
+    target = root / "results" / "v1" / backend / "raw.jsonl"
+    target.write_text(target.read_text() + "".join(
+        line if line.endswith("\n") else line + "\n" for line in raw_lines))
+    return root, n_good + 1
+
+
+def _identity(d):
+    """The quantity the conservation identity is asserted over: bucketed + named lines."""
+    return sum(d["lines_by_mode_backend"].values()) + sum(d["lines_quarantined_only"].values())
+
+
+def _snapshot_cli(root, out):
+    """Run the SHIPPED console entry point, not `inventory()`.
+
+    The exit-code contract (0 CERTIFIED / 2 USAGE / 3 NOT_CERTIFIABLE / 4 DRIFT, and rc 1
+    unreachable) governs the process. A test that calls the function cannot see it: the defect
+    this task closes was a function raising and `main` having no mapping for it.
+    """
+    exe = shutil.which("autorate")
+    assert exe, "the `autorate` console script is not on PATH: the shipped entry point cannot run"
+    env = dict(os.environ)
+    env["AUTORATE_FEISHU_ROOT"] = str(root)
+    return subprocess.run([exe, "snapshot", "--root", str(root), "--out", str(out)],
+                          capture_output=True, text=True, cwd=str(REPO), env=env)
+
+
+@pytest.mark.parametrize("label,raw,error_prefix", _PLANTED)
+def test_a_planted_unreadable_line_is_counted_and_named(tmp_path, label, raw, error_prefix):
+    root, line_no = _plant(tmp_path, [raw])
+    d = inventory(root)          # raised before the guard; must not now
+    assert d["lines_malformed"] == 1, label
+    assert d["lines_malformed_by_backend"] == {"jev": 0, "laya": 1}, label
+    assert d["lines_quarantined_only"] == {"malformed_line": 1}, label
+    entries = d["lines_outside_mode_counts"]
+    assert len(entries) == 1, label
+    entry = entries[0]
+    assert entry["reason"] == "malformed_line", entry
+    assert entry["backend"] == "laya" and entry["line_no"] == line_no, entry
+    assert entry["error"].startswith(error_prefix), entry
+    # The readable lines keep the counts they had before the change: a guard that silently
+    # re-bucketed would show up here, not in the malformed total.
+    assert d["lines_by_mode_backend"] == {"choice/jev": 2, "choice/laya": 2,
+                                          "four_noul/jev": 0, "four_noul/laya": 0}, label
+    # An unreadable line joins neither the case count nor the line denominator it cannot read.
+    assert d["unique_ids"] == 2, label
+    assert _identity(d) == d["reader_lines_read"] == 5, (label, d)
+
+
+@pytest.mark.parametrize("label,raw,error_prefix", _PLANTED)
+def test_the_scanner_and_the_reader_name_the_same_line_identically(tmp_path, label, raw,
+                                                                   error_prefix):
+    """R-55 is the whole point of the task: ONE malformed-line rule, so one owner for the name.
+
+    Both passes read the same bytes, so a line one of them cannot read must be named by the
+    other the same way. Copied `try/except` sets drift invisibly -- the day the scanner grows
+    its own rule, this is the only thing that notices a shape passing one guard and not the other.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    sub = tmp_path / label.replace(" ", "_")
+    sub.mkdir()
+    root, line_no = _plant(sub, [raw])
+    d = inventory(root)
+    stats = {}
+    read_archive(root, stats=stats)
+    scanner = [e for e in d["lines_outside_mode_counts"] if e["reason"] == "malformed_line"]
+    reader = [e for e in stats["quarantined"] if e["reason"] == "malformed_line"]
+    assert len(scanner) == len(reader) == 1, (label, scanner, reader)
+    assert scanner[0]["error"] == reader[0]["error"], (label, scanner[0], reader[0])
+    assert scanner[0]["line_no"] == reader[0]["line_no"] == line_no, (label, scanner, reader)
+    assert d["lines_malformed"] == stats["lines_malformed"] == 1, label
+    assert d["lines_quarantined_only"] == stats["lines_quarantined_only"], label
+
+
+def test_a_mode_this_inventory_cannot_bucket_is_named_but_is_not_unreadable(tmp_path):
+    """A readable line whose `mode` is outside MODES has a bucket of its own, not `malformed_line`.
+
+    The reader files it under the mode string (Task 1's ruling), so the scanner must too: one
+    shape filed two ways is the disagreement about the corpus this task exists to close.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    root, line_no = _plant(tmp_path, [_UNBUCKETABLE_MODE])
+    d = inventory(root)
+    assert d["lines_malformed"] == 0, d
+    assert d["lines_quarantined_only"] == {"ranked": 1}, d
+    entry = d["lines_outside_mode_counts"][0]
+    assert entry["reason"] == "mode 'ranked' is not readable by this reader", entry
+    assert entry["line_no"] == line_no and entry["mode"] == "ranked", entry
+    assert d["lines_by_mode_backend"] == {"choice/jev": 2, "choice/laya": 2,
+                                          "four_noul/jev": 0, "four_noul/laya": 0}, d
+    assert _identity(d) == d["reader_lines_read"] == 5, d
+    stats = {}
+    read_archive(root, stats=stats)
+    assert stats["lines_quarantined_only"] == {"ranked": 1}, stats
+    assert stats["lines_malformed"] == 0, stats
+
+
+def test_the_conservation_identity_closes_over_a_mixed_corpus(tmp_path):
+    """lines read = lines counted per mode + lines named outside those counts, asserted by inventory.
+
+    Three good lines and nine planted defects per backend pair: the identity has to account for
+    every one of them, and the reader's own count of the same files has to agree.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    planted = [raw for _, raw, _ in _PLANTED] + [_UNBUCKETABLE_MODE]
+    root, first_planted = _plant(tmp_path, planted, n_good=3)
+    d = inventory(root)
+    assert first_planted == 4, first_planted
+    assert d["lines_malformed"] == len(_PLANTED), d
+    assert d["lines_malformed_by_backend"] == {"laya": len(_PLANTED), "jev": 0}, d
+    assert d["lines_quarantined_only"] == {"malformed_line": len(_PLANTED), "ranked": 1}, d
+    entries = d["lines_outside_mode_counts"]
+    assert sorted(e["line_no"] for e in entries) == list(range(4, 4 + len(planted))), entries
+    assert d["unique_ids"] == 3, "an unreadable line must not join the case count"
+    assert d["lines_by_mode_backend"]["choice/laya"] == 3, d
+    assert _identity(d) == d["reader_lines_read"] == 3 * 2 + len(planted), d
+    stats = {}
+    read_archive(root, stats=stats)
+    assert d["lines_quarantined_only"] == stats["lines_quarantined_only"], stats
+
+
+def test_a_good_corpus_publishes_exactly_the_numbers_it_did_before_the_guard(tmp_path):
+    """The refactor is a fix, not a rewrite: a clean corpus re-buckets nothing.
+
+    Every figure is pinned to the value the pre-guard scanner produced for the same fixture, and
+    the new disclosure keys are zeros -- which is also why no published number moves.
+    """
+    d = inventory(_tiny_corpus(tmp_path, n_ids=4))
+    assert d["lines_by_mode_backend"] == {"choice/jev": 4, "choice/laya": 4,
+                                          "four_noul/jev": 0, "four_noul/laya": 0}, d
+    assert d["unique_ids"] == 4 and d["repeats"] == [0], d
+    assert d["lines_malformed"] == 0 and d["lines_outside_mode_counts"] == [], d
+    assert d["lines_malformed_by_backend"] == {"jev": 0, "laya": 0}, d
+    assert d["lines_quarantined_only"] == {}, d
+    assert _identity(d) == d["reader_lines_read"] == 8, d
+
+
+def test_the_committed_snapshot_gained_the_new_buckets_and_no_moved_number():
+    """The shipped corpus has nothing to quarantine, so the guard publishes zeros there too.
+
+    Read from the committed artefact rather than from a fresh scan: this is the check that the
+    re-snapshot landed additive keys and left every published number alone.
+    """
+    published = json.loads((REPO / "data" / "inventory.md.json").read_text())
+    assert published["unique_ids"] == 64 and published["repeats"] == [0, 1, 2], published
+    assert published["lines_by_mode_backend"] == {"choice/jev": 192, "choice/laya": 192,
+                                                  "four_noul/jev": 192, "four_noul/laya": 192}
+    assert published["lines_malformed"] == 0, published
+    assert published["lines_malformed_by_backend"] == {"jev": 0, "laya": 0}, published
+    assert published["lines_outside_mode_counts"] == [], published
+    assert published["reader_lines_read"] == 768, published
+    assert sum(published["lines_by_mode_backend"].values()) == published["reader_lines_read"]
+
+
+def test_the_committed_inventory_markdown_names_no_unreadable_line():
+    """The guard is latent on the shipped corpus, so the human artefact must not change either.
+
+    Asserted against the committed file rather than a fresh render, because this task's own
+    gate is "no published number and no published sentence moves": zeros belong in the
+    machine-readable snapshot, not in prose an operator reads as a finding.
+    """
+    body = (REPO / "data" / "inventory.md").read_text()
+    assert "outside the per-mode counts" not in body, body
+    assert len(_tables(body)) == 3, [h for h, _ in _tables(body)]
+
+
+def test_the_unreadable_disclosure_is_bounded_and_says_what_it_left_out(tmp_path):
+    """A defect list is disclosed under the same discipline as the reader's quarantine."""
+    from autorate.inventory import UNREADABLE_DISCLOSURE_LIMIT
+
+    planted = ['{"id": "p%d", "mo' % i for i in range(UNREADABLE_DISCLOSURE_LIMIT + 2)]
+    root, _ = _plant(tmp_path, planted)
+    d = inventory(root)
+    assert d["lines_malformed"] == len(planted), d
+    assert len(d["lines_outside_mode_counts"]) == UNREADABLE_DISCLOSURE_LIMIT, d
+    gaps = [g for g in d["gaps"] if "outside the per-mode counts" in g]
+    assert len(gaps) == 1, d["gaps"]
+    assert "%d archive line(s)" % len(planted) in gaps[0], gaps
+    assert "the first %d are named" % UNREADABLE_DISCLOSURE_LIMIT in gaps[0], gaps
+
+
+def test_write_inventory_names_the_unreadable_lines_and_stays_quiet_on_zeros(tmp_path):
+    """The human-readable artefact carries the same disclosure, and adds no table to the file."""
+    dirty = tmp_path / "dirty"
+    dirty.mkdir()
+    root, _ = _plant(dirty, [json.dumps(_planted_row(drop=("mode",))), _UNBUCKETABLE_MODE])
+    out = dirty / "inventory.md"
+    write_inventory(inventory(root), out)
+    body = out.read_text()
+    assert "outside the per-mode counts" in body, body
+    assert "laya line 3" in body, body        # backend + line_no, so an operator can find it
+    assert len(_tables(body)) == 3, "the disclosure must not add a fourth table"
+
+    clean = tmp_path / "clean"
+    clean.mkdir()
+    clean_out = clean / "inventory.md"
+    write_inventory(inventory(_tiny_corpus(clean, n_ids=2)), clean_out)
+    clean_body = clean_out.read_text()
+    assert "outside the per-mode counts" not in clean_body, clean_body
+    assert len(_tables(clean_body)) == 3, clean_body
+
+
+def test_rc_one_is_unreachable_for_every_planted_shape(tmp_path):
+    """The contract sweep: 0/2/3/4 only, and a corpus defect never becomes a usage error.
+
+    Before the guard these inputs exited 2 (a `JSONDecodeError` is a `ValueError`, which
+    `main` maps to EXIT_USAGE) or 1 (`TypeError`/`KeyError` escaped every catch). Both were
+    wrong: the corpus is neither certified-nothing nor the operator's mistake.
+    """
+    for label, raw, _ in _PLANTED + (("mode outside MODES", _UNBUCKETABLE_MODE, "n/a"),):
+        case = tmp_path / label.replace(" ", "_")
+        case.mkdir()
+        proc = _snapshot_cli(_plant(case, [raw])[0], case / "inventory.md")
+        assert proc.returncode == 0, (label, proc.returncode, proc.stderr[-500:])
+        assert proc.returncode != 1, label
+        assert "Traceback" not in proc.stderr, (label, proc.stderr[-500:])
+        sidecar = json.loads(Path(str(case / "inventory.md") + ".json").read_text())
+        # `lines_quarantined_only` is the total of every line named outside the mode counts, and
+        # `lines_malformed` is one of its buckets -- the same quantity rendered twice, which
+        # `assert_line_conservation` refuses to let drift. Adding the two would count the planted
+        # line twice and call the artefact wrong; the line is named once, per bucket.
+        named = sum(sidecar["lines_quarantined_only"].values())
+        assert named == 1, (label, sidecar["lines_quarantined_only"])
+        assert len(sidecar["lines_outside_mode_counts"]) == 1, (label, sidecar)
+        assert sidecar["lines_malformed"] == sum(
+            sidecar["lines_malformed_by_backend"].values()), (label, sidecar)
+
+
+def test_a_refused_corpus_still_exits_two_while_an_unreadable_line_exits_zero(tmp_path):
+    """The `ReaderContractError` interaction, tested rather than asserted.
+
+    `ReaderContractError` is a `RuntimeError` and NOT a `ValueError` precisely so a per-line
+    guard cannot absorb it. A widened catch would file a policy refusal under `malformed_line`
+    and exit 0 on a corpus this project refused to read -- so the refusal must still reach
+    EXIT_USAGE while a genuinely unreadable line is inventoried with rc 0.
+    """
+    from autorate.readers.feishu_zh import ReaderContractError
+
+    assert not issubclass(ReaderContractError, ValueError), "the per-line guard would absorb it"
+
+    refused = tmp_path / "refused"
+    refused.mkdir()
+    root = _tiny_corpus(refused, n_ids=1)
+    # The fixtures now supervise an ask: R-14 says the reader must refuse rather than invent
+    # per-ask gold, and that refusal is not a line it could not read.
+    (root / "data" / "manifest.json").write_text(json.dumps(
+        {"asks": {"urgent": "is it urgent?"}, "labels": {"a": 1}, "families": ["f"],
+         "provenance": "test-fixture"}))
+    (root / "data" / "cases.jsonl").write_text(
+        json.dumps({"id": "c0", "expected": "a", "urgent": "true"}) + "\n")
+    noul = json.dumps(_planted_row(mode="four_noul", response={"model": "m", "answers": {
+        "urgent": {"type": "noul", "noul": 0.8, "confidence": 0.8}}}))
+    for backend in ("laya", "jev"):
+        (root / "results" / "v1" / backend / "raw.jsonl").write_text(noul + "\n")
+    refused_proc = _snapshot_cli(root, refused / "inventory.md")
+    assert refused_proc.returncode == 2, (refused_proc.returncode, refused_proc.stderr[-500:])
+    assert "ReaderContractError" in refused_proc.stderr, refused_proc.stderr
+    assert "Traceback" not in refused_proc.stderr, refused_proc.stderr
+
+    unreadable = tmp_path / "unreadable"
+    unreadable.mkdir()
+    bad_root, _ = _plant(unreadable, [_PLANTED[0][1]])
+    ok_proc = _snapshot_cli(bad_root, unreadable / "inventory.md")
+    assert ok_proc.returncode == 0, (ok_proc.returncode, ok_proc.stderr[-500:])
+    sidecar = json.loads(Path(str(unreadable / "inventory.md") + ".json").read_text())
+    assert sidecar["lines_malformed"] == 1, sidecar
+    assert sidecar["lines_outside_mode_counts"][0]["reason"] == "malformed_line", sidecar
+
+
+def test_a_line_the_reader_drops_for_its_own_reason_is_not_the_same_as_unreadable(tmp_path):
+    """The measured boundary of the shared rule, recorded so nobody "fixes" it into agreement.
+
+    A line carrying no `status` is readable and its `mode` is in MODES, so the scanner counts it
+    in the per-mode table; the reader never tries to turn it into a record and files it under its
+    own `lines_dropped_not_ok`. Neither pass loses it -- both see 5 lines -- and the labels differ
+    on purpose: dropping a refused response is not the same rule as failing to parse a line. The
+    asymmetry is real and pinned here rather than smoothed over, because the same two counters
+    answering "how many choice lines are in the archive" is how a reader comes to believe 192
+    lines became 192 records.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    no_status = json.dumps(_planted_row(drop=("status",)))
+    root, _ = _plant(tmp_path, [no_status], backend="jev")
+    d = inventory(root)
+    assert d["lines_malformed"] == 0, d
+    assert d["lines_quarantined_only"] == {}, d
+    assert d["lines_outside_mode_counts"] == [], d
+    assert d["lines_by_mode_backend"]["choice/jev"] == 3, d      # 2 good + the refused line
+    stats = {}
+    read_archive(root, stats=stats)
+    assert stats["lines_malformed"] == 0, stats
+    assert stats["lines_dropped_not_ok"] == 1, stats
+    assert _identity(d) == d["reader_lines_read"] == 5, d
+    # The two passes' per-mode counts are different quantities, and the artefact names them
+    # apart: `lines_by_mode_backend` is archive lines, `reader_lines_by_mode` is records kept.
+    assert sum(d["lines_by_mode_backend"].values()) == 5, d
+    assert sum(d["reader_lines_by_mode"].values()) == 4, d
+
+
+def test_the_conservation_check_can_fire():
+    """The identity must be able to refuse a branch that drops a line without a counter.
+
+    Without this control the assertion in `inventory()` is green by construction: a check that
+    cannot fail is the case this project refuses to accept as evidence.
+    """
+    from autorate.inventory import assert_line_conservation
+
+    assert_line_conservation(lines_read=5, lines_by_mode={"choice": 3},
+                             lines_quarantined_only={"malformed_line": 2},
+                             lines_malformed=2, lines_malformed_by_backend={"laya": 2})
+    with pytest.raises(ArithmeticError, match="does not conserve"):
+        assert_line_conservation(lines_read=5, lines_by_mode={"choice": 3},
+                                 lines_quarantined_only={"malformed_line": 1},
+                                 lines_malformed=1, lines_malformed_by_backend={"laya": 1})
+    with pytest.raises(ArithmeticError, match="does not match"):
+        assert_line_conservation(lines_read=4, lines_by_mode={"choice": 2},
+                                 lines_quarantined_only={"malformed_line": 2},
+                                 lines_malformed=1, lines_malformed_by_backend={"laya": 1})
+
+
+def test_the_pin_list_refuses_to_disagree_with_itself(tmp_path):
+    """`massive_pin`'s shape guards can fire, or the totals they police are decoration.
+
+    The published row counts come from this file, so a pin whose declared totals are not the sum
+    of its own entries would print a number no reader can re-derive -- the O-6 defect again, one
+    layer down. Each arm plants one disagreement and names the quantity it caught.
+    """
+    from autorate.inventory import massive_pin
+
+    good = massive_pin()
+    path = tmp_path / "massive_provenance.json"
+    path.write_text(json.dumps(good))
+    assert massive_pin(path)["n_files"] == 51, "the control arm must read the real pin"
+
+    for key, mutate in (
+        ("n_files", lambda p: p.update(n_files=50)),
+        ("rows_total", lambda p: p.update(rows_total=1)),
+        ("bytes_total", lambda p: p.update(bytes_total=p["bytes_total"] + 1)),
+    ):
+        broken = json.loads(json.dumps(good))
+        mutate(broken)
+        path.write_text(json.dumps(broken))
+        with pytest.raises(ArithmeticError, match=key):
+            massive_pin(path)
+
+    no_files = tmp_path / "empty.json"
+    no_files.write_text(json.dumps({"dataset": "x"}))
+    with pytest.raises(ArithmeticError, match="no `files` list"):
+        massive_pin(no_files)
+
+
+def test_the_pooled_massive_row_reports_the_whole_pin_list_and_names_its_owner(tmp_path):
+    """O-6: the basis said "3 of 51 files opened" while all 51 pinned shards were opened and hashed.
+
+    The upgrade may not type a number: the count comes from the committed pin list, and the
+    prose names that file as its owner, so a reader can re-derive it. The limit is stated in the
+    same sentence -- the shards are not vendored, so this repository carries the pin list rather
+    than re-hashing bytes -- because an ownerless number is the defect `docs/ERRATA.md` records
+    twice, and printing 51 while the only evidence sat in a gitignored file would recreate it.
+    """
+    from autorate.inventory import massive_pin, massive_pooled_basis
+
+    pin = massive_pin()
+    assert pin, "the pin list is not committed: O-6's owner is missing"
+    files = pin["files"]
+    assert len(files) == pin["n_files"] == 51, len(files)
+    assert len({f["path"] for f in files}) == 51
+    assert {f["rows"] for f in files} == {2974}
+    assert pin["distinct_row_counts"] == [2974]
+    assert all(re.fullmatch(r"[0-9a-f]{64}", f["sha256"]) for f in files)
+    assert pin["rows_total"] == 51 * 2974 == 151674
+    assert pin["dataset"] == "mteb/amazon_massive_intent" and pin["revision"]
+
+    basis = massive_pooled_basis(pin)
+    assert "51 of 51" in basis and "data/massive_provenance.json" in basis, basis
+    option = {o["id"]: o for o in corpus_options(64)}["massive_intent_all_languages"]
+    assert option["basis"] == basis, option
+    assert option["n_rows"] == pin["rows_total"], option
+    # The pool row is not independent cases: 51 translations of one utterance set.
+    assert option["n_independent"] == 2974, option
+
+    absent = massive_pooled_basis({})
+    assert "51 of 51" not in absent, absent
+    assert "cannot" in absent, absent
+
+
+def test_that_the_pinned_shard_count_proves_it_can_fire():
+    """The prose must move with the list, or "51 of 51" is a typed word wearing a derivation."""
+    from autorate.inventory import massive_pin, massive_pooled_basis, massive_pinned_shards
+
+    pin = massive_pin()
+    assert massive_pinned_shards(pin) == (51, 51), massive_pinned_shards(pin)
+    one_short = {**pin, "files": pin["files"][:-1]}
+    assert massive_pinned_shards(one_short) == (50, 51), massive_pinned_shards(one_short)
+    assert "50 of 51" in massive_pooled_basis(one_short), massive_pooled_basis(one_short)
+    unhashed = {**pin, "files": [{**f, "sha256": ""} for f in pin["files"]][:20]}
+    assert massive_pinned_shards(unhashed) == (20, 51), massive_pinned_shards(unhashed)
+
+
+def test_the_per_ask_gold_local_is_named_for_what_it_holds():
+    """O-7: `gold` was the whole per-ask measurement, not a gold value.
+
+    A misleading local is invisible to a behavioural test -- the expression it indexes is
+    unchanged and still correct -- so this reads the shipped source, with the control that the
+    predicate catches the name it replaced.
+    """
+    src = inspect.getsource(inventory)
+    assert 'gold["asks_with_gold"]' not in src, src
+    assert 'ask_gold_measurement["asks_with_gold"]' in src, src
+    mutated = src.replace("ask_gold_measurement[", "gold[")
+    assert 'gold["asks_with_gold"]' in mutated, "the predicate above cannot fail"
