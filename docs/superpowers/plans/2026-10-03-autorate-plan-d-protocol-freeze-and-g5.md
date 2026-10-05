@@ -72,16 +72,16 @@ that fails is not a grep that found nothing, so the failing form is recorded too
 | D-2 | `verify` has one call site, in CI, with no flags | `.github/workflows/ci.yml:19` → `uv run --frozen autorate verify \| tee /tmp/verify.log` |
 | D-3 | The re-derivation rubric comes from the stored certificate; `method`/`grid` are not passed | `src/autorate/cli.py`, body of `cmd_verify` (quoted in §1b) |
 | D-4 | The published rubric today is `alpha=0.05, beta=0.05, delta=0.05, seed=7, method=aps`, and those values live in code, not in a protocol | `src/autorate/report.py:23` `ALPHA = 0.05`, `:24` `BETA = 0.05`, `:25` `SEED = 7`; `certify_choice` defaults `delta=0.05, method="aps"`, `grid=None` → `DIAGNOSTIC_GRID` (`certify_choice.py:32` = `tuple(round(0.01*i,2) for i in range(1,30))`) |
-| D-5 | The case-count floor is a module constant, not a protocol field | `certify_choice.py:30-31` → `MIN_CAL = 60`, `MIN_EVAL = 60` |
+| D-5 | The case-count floor is a module constant, not a protocol field | `certify_choice.py:37-38` → `MIN_CAL = 60`, `MIN_EVAL = 60` (anchors re-measured 2026-10-05 at `476c78e`; the Plan B1 Task 3 extraction shifted them from the `:30-31` this row first quoted — line numbers in a plan are a moving target, so re-`grep` rather than trusting this one) |
 | D-6 | The number of simultaneous claims is fixed in `certificate.py` | `certificate.py:19` → `N_CLAIMS = 3` |
 | D-7 | Every published artefact's path | `report.py:20-22` → `data/records_feishu.jsonl`, `data/cert_laya.json`, `data/cert_jev.json`, `data/inventory.md.json`; `cli.py:32-33` → `docs/RESULTS.md`, `data/inventory.md` |
-| D-8 | The machine-dependent keys that a clean export must not compare | `cli.py:38-40` → `SNAPSHOT_MACHINE_KEYS = ("source", "audit_interpreter", "upstream_audit_stdout_tail", "upstream_audit_stderr_tail")` |
+| D-8 | The machine-dependent keys that a clean export must not compare | `cli.py:39-41` → `SNAPSHOT_MACHINE_KEYS = ("source", "audit_interpreter", "upstream_audit_stdout_tail", "upstream_audit_stderr_tail")` |
 | D-9 | The corpus-less lane is already reachable, already discloses itself, and is already green | Measured in a `git archive` export of `645e975`, run with the export as cwd: `re-derived 34 /34 values`, exit **0**, with the corpus-absent disclosure quoted in `cmd_verify`'s `else` branch. The count is exactly the shipped formula in `tests/test_cli.py:77`, `2 * (len(CERT_COMPARE_FIELDS) + 1) + 2` = 34. An implementer's report quoting `61 /61` for this lane does not reproduce and is not used here |
 
 | D-10 | `docs/VERIFICATION.md` is a parsed gate, not prose | `tests/test_verification_table.py` parses it; a `verified` row must name a URL and the date it was opened |
 | D-11 | The upstream channel is still empty — re-check it, do not cite this row | `gh search issues --author=<the author's handle> repo=<the upstream repo>` → `[]`, and the same for PRs, both re-run 2026-09-30 as recorded in spec §13. This plan *prepares* that channel; it does not use it (see §7) |
 | D-12 | The `case_id` fix's blast radius is reachable from the committed artefacts alone, and the corpus-less lane sees it | Same export, `records.from_dict` overlaid with the fix: `re-derived 29 /34 values`, exit **4**, first drift line reading "at coverage 0.950 the 32 automated cases include 1 carrying a wrong automated request; the exact case-level upper bound 0.140 exceeds the budget 0.050" — the 0.089 → 0.140 move and the `erroneous_cases` 0 → 1 that the Task 2b ruling predicted, reproduced by the controller independently of the agent that reported them. `data/records_feishu.jsonl` carries `case_id` on all 1919 rows already, so no re-export is involved |
-| D-13 | The suite does **not** pass in a `git archive` export today, and CI cannot see that | Measured at `3f7ea08`: ruff clean; `AUTORATE_FEISHU_ROOT=/nonexistent pytest -q -p no:randomly` in the export → 208 passed, 27 skipped, **1 failed**; `verify` → `34 /34`, exit 0. The failure is `test_no_committed_file_carries_an_absolute_home_path`, whose own anti-vacuity assertion fires because `git ls-files` returns nothing without a `.git`: `E AssertionError: git ls-files returned nothing; the guard would pass vacuously`. CI misses it because `actions/checkout` provides a repository | This is Task 3's Step 0, not a Task 3 discovery: a G5 demonstration whose subject is an export cannot be produced until the suite runs there. Fixed by handing the export a file list from outside rather than by weakening the guard or adding an ignore list |
+| D-13 | The suite does **not** pass in a `git archive` export today, and CI cannot see that | Measured at `3f7ea08`: ruff clean; `AUTORATE_FEISHU_ROOT=/nonexistent pytest -q -p no:randomly` in the export → 208 passed, 27 skipped, **1 failed**; `verify` → `34 /34`, exit 0. The failure is `test_no_committed_file_carries_an_absolute_home_path`, whose own anti-vacuity assertion fires because `git ls-files` returns nothing without a `.git`: `E AssertionError: git ls-files returned nothing; the guard would pass vacuously`. CI misses it because `actions/checkout` provides a repository | This is Task 3's Step 0, not a Task 3 discovery: a G5 demonstration whose subject is an export cannot be produced until the suite runs there. Fixed by handing the export a file list from outside rather than by weakening the guard or adding an ignore list **SUPERSEDED 2026-10-05 — done, and re-measured.** Step 0 shipped (ledger Plan D-Step0), and at `476c78e` a clean `git archive HEAD` export run with the export as cwd, `AUTORATE_TRACKED_FILES=<export>/.tracked-files` and `PYTHONPATH=<export>/src`: **270 passed, 27 skipped, exit 0**, and `verify` → `re-derived 34 /34 values`. Keep the fact that produced the fix, drop the premise that the suite still fails there: an implementer who reads the present tense will go looking for a red that no longer exists. Two operational notes the measurement costs nothing: the export needs `AUTORATE_TRACKED_FILES` set (without it the guard fails loudly by design), and the 27 skips are `tests/test_reader_feishu.py`'s vendored-upstream gate, expected in any export |
 
 The correction in D-12 has a second-order consequence for this plan's own argument, and it is stated
 rather than quietly rewritten. An earlier draft of §2 asserted that the corpus-less lane stays green
@@ -312,9 +312,13 @@ the missing-digest test still reds — the check must not be reachable only when
 with its exit code, before and after B1 Task 2b lands.
 
 Why the split, because the corrected measurement sharpens the argument rather than weakening it. The
-corpus-less lane does see B1 Task 2b's fix — 29/34, exit **4** (§2 D-12) — since the records file is
-its input and the certificates no longer reproduce from it. What it cannot see is a *self-consistent*
-regeneration. `verify` re-derives the published certificates from whichever
+corpus-less lane **would have** seen B1 Task 2b's fix — 29/34, exit **4** (§2 D-12) — since the records
+file is its input and the certificates did not reproduce from it. That figure was measured by overlaying
+the fix onto the pre-fix certificate pair, which is how the blast radius was proved *before* Task 2b
+regenerated both certificates in the same commit it changed the reader; **at the current HEAD the lane is
+34/34, exit 0** (re-measured 2026-10-05 in a clean export and in the working tree), so read the 29/34 as
+the experiment that justified the regeneration, not as a state to reproduce. What the lane cannot see is a
+*self-consistent* regeneration. `verify` re-derives the published certificates from whichever
 `data/records_feishu.jsonl` is present, and a fixed point is all it checks: swap the records file for a
 different corpus, regenerate the certificates against it, commit the pair together, and the corpus-less
 lane reports `34 /34`, exit **0**, for evidence that never existed. Only the corpus-present lane could
@@ -329,19 +333,20 @@ in CI is not a reproduction gate.
 
 ### Task 3 — G5 on a clean export, with the transcript committed
 
-**Step 0 (prerequisite, measured as D-13): make the suite runnable in an export.**
-`test_no_committed_file_carries_an_absolute_home_path` builds its subject from `git ls-files`, so it
-passes in the working tree and fails in every export — and the failure is the guard refusing to pass
-vacuously, which is the behaviour its docstring promises. Do not relax it, and do not replace it with a
-recursive walk: an export contains gitignored material that legitimately carries machine paths (the SDD
-ledger among it), so an ignore list would install exactly the blind spot that lesson was written from.
-Instead let `tools/g5_export.sh` write the list it already has — `git ls-files > $export/.tracked-files`
-— and let the guard take its subject from, in order: `AUTORATE_TRACKED_FILES` if set and readable, else
-`git ls-files`, else **fail loudly** as it does today. Three properties hold at once: the guard still
-cannot pass on an empty subject, it now has a non-vacuous subject inside an export, and no path is ever
-excluded by name. Prove each with a test: an export with the list → green; an export without it → the
-same red as today, with the message naming both sources; and a planted literal in a listed file → red.
-The list file lives only in the scratch export, so it is not itself a tracked artefact.
+**Step 0 — DONE (ledger Plan D-Step0); do not re-do it. What follows is its record, and the part still to build.**
+`test_no_committed_file_carries_an_absolute_home_path` once built its subject from `git ls-files`, so it
+passed in the working tree and failed in every export — and the failure was the guard refusing to pass
+vacuously, which is the behaviour its docstring promises. It was fixed exactly as prescribed: the guard
+takes its subject from `AUTORATE_TRACKED_FILES` if set and readable, else `git ls-files`, else **fails
+loudly**; no path is ever excluded by name and the guard still cannot pass on an empty subject. The
+prescribed proofs are in the suite as
+`tests/test_cli.py:486 test_the_path_guard_scans_a_manifest_when_there_is_no_repository` and
+`tests/test_cli.py:503 test_the_path_guard_refuses_an_empty_subject_from_either_source`, and the export
+measured green at `476c78e` (270 passed, 27 skipped, exit 0 — see D-13's superseded row).
+**What is still Task 3's own work:** `tools/g5_export.sh` writing `git ls-files > $export/.tracked-files`,
+the `docs/G5.md` transcript, and the CI job that runs the export lane. Do not "make the suite runnable in
+an export" a second time; if an implementer reports doing so, that is a sign they read this step's
+present tense literally, which is the failure mode the re-measurement above exists to prevent.
 
 **Files:** `tools/g5_export.sh` (new); `docs/G5.md` (new, generated); `.github/workflows/ci.yml`.
 
