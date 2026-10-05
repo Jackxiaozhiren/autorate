@@ -127,6 +127,24 @@ class Certificate:
     def summary(self) -> str:
         if self.feasible:
             lo, hi = self.autorate_ci
+            if self.method == "threshold":
+                # The threshold gate of spec 6.4 runs no coverage quantile and produces no sets, so
+                # the sentence above would print three claims about a rule this certificate's own
+                # envelope denies: "at coverage" (alpha is recorded, not used), "empty or
+                # multi-label set" (its refusal is a score below lambda) and "mean set size" (its
+                # mean is of scores). One renderer per rule, inside this method only -- the shape,
+                # its fields and its version are Task 5's to change.
+                return ("threshold rule: automate iff %s >= %.6f (alpha=%.3f is recorded and not "
+                        "used by this gate), beta=%.3f: autorate %.3f (ci %.3f..%.3f), conditional "
+                        "error <= %.3f, marginal error <= %.3f; refusal (no value for %s, or a "
+                        "value below lambda) %.3f; mean score %.4f; joint level %.2f over %d "
+                        "claims at delta=%.3f; n_cal=%d n_eval=%d"
+                        % (self.meta.get("score_field", "score"), self.qhat, self.alpha, self.beta,
+                           self.autorate, lo, hi,
+                           self.conditional_error_bound, self.marginal_error_bound,
+                           self.meta.get("score_field", "score"), self.refusal_rate,
+                           self.mean_set_size,
+                           self.level, N_CLAIMS, self.delta, self.n_cal, self.n_eval))
             return ("at coverage %.3f (alpha=%.3f), beta=%.3f: autorate %.3f (ci %.3f..%.3f), "
                     "conditional error <= %.3f, marginal error <= %.3f; "
                     "refusal (empty or multi-label set) %.3f; mean set size %.2f; "

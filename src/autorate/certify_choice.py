@@ -19,16 +19,17 @@ Empty certified sets are refusals, not errors, and not automations (R-17): they 
 reported in `refusal_rate` so the automation rate's denominator is visible.
 
 The CASE arithmetic is not owned here: `case_count.count_outcome` counts records and cases
-for whichever rule is being certified, and this module supplies the set rule as its
-`kind`/`measure` callables (R-34). Two certifiers with two copies of the counting is how a
-published automation rate stops describing the rule the deployment applies.
+for whichever rule is being certified, and this module supplies the set rule as that counter's
+ONE `decide` callable -- which also declares the label the rule submits, because the counter
+compares that label to gold and guesses none (R-34, R-66). Two certifiers with two copies of the
+counting is how a published automation rate stops describing the rule the deployment applies.
 """
 from __future__ import annotations
 
 import random
 from typing import Optional, Sequence
 
-from .case_count import case_key, count_outcome
+from .case_count import Verdict, case_key, count_outcome
 from .certificate import N_CLAIMS, Certificate, Reason
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
 from .tails import bound_width, clopper_pearson_upper
@@ -97,14 +98,20 @@ _SET_KINDS = {"auto": "auto", "empty": "empty", "escalate": "multi"}
 
 
 def _set_rule(qhat, method):
-    """The APS/LAC rule as the shared counter's `kind` and `measure` callables."""
-    def kind(r):
-        return _SET_KINDS[classify_set(conformal_set(r.probs, qhat, r.u, method))]
+    """The APS/LAC rule as the shared counter's ONE `decide` callable (R-66).
 
-    def measure(r):
-        return len(conformal_set(r.probs, qhat, r.u, method))
+    The label this rule submits is the one inside its certified singleton, because that is the
+    label `gate.py:66-67` delivers when the set is a singleton -- `options[C[0]]`, not the record's
+    `predicted`. Saying so here is the rule's job: the counter compares a submitted label to gold
+    and guesses none, and the archive's own `predicted == argmax` coincidence is not a reason for
+    two rules to share one assumed answer.
+    """
+    def decide(r):
+        C = conformal_set(r.probs, qhat, r.u, method)
+        outcome = _SET_KINDS[classify_set(C)]
+        return Verdict(outcome, r.options[C[0]] if outcome == "auto" else None, len(C))
 
-    return kind, measure
+    return decide
 
 
 def _outcome(ev, qhat, method):
@@ -114,10 +121,10 @@ def _outcome(ev, qhat, method):
     the shared module deliberately does not do: it publishes its average as `mean_measure`,
     because shared arithmetic that names a published figure would give that figure two owners,
     and `mean_set_size` is THIS gate's name for it -- the name on `Certificate` and in the
-    fields `verify` compares.
+    fields `verify` compares. Every record's verdict carries a set size, so this gate's mean is
+    over all of its evaluated records, exactly as it was before the extraction.
     """
-    kind, measure = _set_rule(qhat, method)
-    observed = count_outcome(ev, kind, measure)
+    observed = count_outcome(ev, _set_rule(qhat, method))
     observed["mean_set_size"] = observed.pop("mean_measure")
     return observed
 
