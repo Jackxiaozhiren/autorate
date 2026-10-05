@@ -42,7 +42,9 @@
 
 **Interfaces:**
 - Consumes: nothing from this repo except `random`-drawn `u` supplied by the caller.
-- Produces: `interval_set(probs: Sequence[float], q: float, u: float = 0.0) -> list[int]` returning the **minimum-length contiguous** index interval whose mass is `>= q`, ties broken leftmost then by `u`; `score_ordinal(probs, gold_index, u) -> float` = `inf{q : gold in C_q}` snapped to the achievable masses; `is_contiguous(indices) -> bool`.
+- Produces: `score_ordinal(probs, gold_index, u=0.0) -> float` = the mass of the **minimum-mass contiguous span containing both `gold_index` and the modal level** (`argmax`, ties leftmost); `interval_set(probs, alpha, u=0.0) -> list[int]` = `{g : score_ordinal(probs, g, u) <= alpha}`, which is contiguous and contains the modal level by construction; `is_contiguous(indices) -> bool`.
+- **Corrected 2026-10-05 (ruling R-68) before execution: the family this task originally specified does not have the property it was going to certify.** It said `C_q = minimum-length interval whose mass >= q`, ties leftmost-then-`u`, with `s = inf{q : y in C_q}`, and asserted "nesting gives split-conformal validity unchanged". Measured over 2,000 random ballots of 2-8 levels: **3,333 of 17,788 adjacent `q` pairs violate nesting** for that definition (`p = [0.159, 0.381, 0.460]`: `C` at `q=0.159` is `[1]`, at `q=0.381` is `[2]`), and the score-derived sets `{y : s(y) <= alpha}` that restore nesting are **non-contiguous in 3,057 of 14,540 cases**. Neither half delivers both halves, and §5.4's validity sentence was asserted of a non-nested family. The modal-anchored chain above is the fix: measured **0 non-contiguous in 32,304 sets** and **0 nesting violations in 141,120 pairs**. Its justification is a proof, not a sample — chain mass grows strictly as a level recedes from the mode on either side, so a sublevel set is one span around the mode, and any sublevel set of a fixed function is nested in its threshold.
+- Because the family changed, **the numbers in Step 1 changed too**: on `[0.05, 0.4, 0.35, 0.1, 0.1]` the chain scores are `[0.45, 0.40, 0.75, 0.85, 0.95]`, so `C(0.4) = [1]`, `C(0.75) = [0,1,2]`, `C(0.85) = [0,1,2,3]`. The original text's third line (`C(0.85) == [0,1,2]`) was wrong under BOTH definitions — its own mass note ("the cheapest way to 0.8") quoted a mass of 0.80 against a requested 0.85.
 
 - [ ] **Step 1: Write the failing tests.** The point of these is that they encode *why* multiclass sets are invalid here, not just that the function returns something.
 
@@ -56,40 +58,45 @@ from autorate.ordinal import interval_set, is_contiguous, score_ordinal
 
 
 def test_the_interval_is_the_shortest_one_reaching_the_requested_mass():
+    # R-68: re-derived for the modal-anchored family. Chain scores of this ballot are
+    # [0.45, 0.40, 0.75, 0.85, 0.95], so the sublevel sets below are what the code must return.
     p = [0.05, 0.4, 0.35, 0.1, 0.1]
     assert interval_set(p, 0.4) == [1]
-    assert interval_set(p, 0.75) == [1, 2]
-    assert interval_set(p, 0.85) == [0, 1, 2], "0.05+0.4+0.35 is the cheapest way to 0.8"
+    assert interval_set(p, 0.75) == [0, 1, 2]
+    assert interval_set(p, 0.85) == [0, 1, 2, 3]
 
 
 def test_mass_ordered_multiclass_sets_are_not_contiguous_and_this_refuses_to_be_one():
     """spec 5.4's actual claim, as an assertion: 'levels 0 or 4' is not an answer.
 
-    A k-of-m top-mass set would pick {1,3,4} for q=0.85 below; the ordinal family
-    must return a contiguous span instead, even at the cost of one extra level.
+    A k-of-m top-mass set would pick {0,1,3} for the ballot below; the ordinal family
+    must return a contiguous chain around the modal level instead, even where that costs
+    an extra level.
     """
     p = [0.30, 0.34, 0.02, 0.30, 0.04]
     top_mass = sorted(range(5), key=lambda i: -p[i])
     greedy = sorted(top_mass[:3])                       # what mass-ordered CP returns
     assert greedy == [0, 1, 3] and not is_contiguous(greedy)
-    ours = interval_set(p, sum(p[i] for i in greedy))
+    ours = interval_set(p, sum(p[i] for i in greedy))   # same budget, chain construction
     assert is_contiguous(ours), ours
+    assert sum(p[i] for i in ours) >= sum(p[i] for i in greedy) - 1e-12, (ours, greedy)
 
 
 def test_the_family_is_nested_so_split_conformal_validity_carries_over():
+    """Nesting is the property §5.4's validity argument rests on, so it is asserted as a
+    subset relation -- not as the disjunction this test originally carried, which passed on
+    ballots where the later set displaced the earlier one entirely."""
     rng = random.Random(11)
     for _ in range(200):
         k = rng.randrange(2, 8)
         w = [rng.random() + 0.05 for _ in range(k)]
         s = sum(w)
         p = [x / s for x in w]
-        u = rng.random()
-        prev = None
+        prev = []
         for q in sorted({round(x, 3) for x in p} | {0.5, 0.9, 0.99}):
-            C = interval_set(p, q, u)
-            if prev is not None and q > 0:
-                assert all(min(prev) <= x <= max(prev) for x in C) or len(C) >= len(prev), (
-                    p, q, C, prev)
+            C = interval_set(p, q)
+            assert is_contiguous(C), (p, q, C)
+            assert set(prev) <= set(C), (p, q, C, prev)
             prev = C
 
 
@@ -105,8 +112,8 @@ def test_a_single_level_distribution_cannot_be_certified_and_says_so():
         interval_set([1.0], 0.5)
 ```
 
-- [ ] **Step 2: Verify RED** (`ModuleNotFoundError: autorate.ordinal`), then **Step 3: Implement** with the O(k²) enumeration the docstring promises and a comment saying why it is acceptable (k ≤ 51 and `predict_shortlist` caps ballots; a heap-based interval would be premature).
-- [ ] **Step 4: Green**, then **Step 5: prove the guards can fail** -- replace the contiguity requirement with top-mass selection and confirm the two structural tests go red; restore byte-identically and record the hashes.
+- [ ] **Step 2: Verify RED** (`ModuleNotFoundError: autorate.ordinal`), then **Step 3: Implement** with prefix sums: `score_ordinal` is `O(k)` once the modal index is known (chain mass = `prefix[max(a,g)+1] - prefix[min(a,g)]`), and `interval_set` is one pass over those scores. The O(k²) span enumeration this step originally prescribed belonged to the minimum-length-reach-mass definition that ruling R-68 replaced; keep enumeration only inside a test that cross-checks the closed form against brute force. `k ≤ 51` and `predict_shortlist` caps ballots, so neither shape is a performance question — say that in the comment rather than optimizing.
+- [ ] **Step 4: Green**, then **Step 5: prove the guards can fail** -- plant the mass-ordered alternative (§5.4's semantically-invalid set: the smallest top-mass prefix of levels) in place of the chain, and confirm the contiguity assertions AND the nesting subset assertion both go red; restore byte-identically and record the hashes. That plant is the only way these two tests show they are guards rather than descriptions of whatever the code happens to do: under the pre-R-68 definition the nesting assertion was a disjunction that the mass-ordered family can satisfy.
 - [ ] **Step 6: Commit** — `git commit -m "feat(ordinal): minimum-length contiguous interval sets with contiguity and nesting as properties"`.
 
 ---
