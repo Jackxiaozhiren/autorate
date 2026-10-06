@@ -61,9 +61,13 @@ def _entropy_scale_owners(tests_dir):
     evaluated independently", and a walrus-carrying comprehension escaped -- state does cross elements.
     The independent review then put three more live second owners through the same list -- an `async def`
     with an ordinary `for`, that comprehension, and a `__call__` driven by `itertools.starmap` -- and the
-    two guard tests stayed green (measured, in `/tmp/r4`: all four plants, each proven to return the
-    shared solver's own `0.960919733`, give exit 0). A list of shapes is a promise about the shapes
-    somebody has thought of; ownership is a promise about everything.
+    two guard tests stayed green. Every one of those shapes is planted in this file, and every plant is
+    EXECUTED as well as parsed: `test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read`
+    runs each one and requires a solver-shaped plant to return the shared solver's own answer for
+    target 0.85 / k 4. That replaces a liveness measurement that used to live in `/tmp/r4`, a directory
+    outside the repository that resolves for no reader, and it is the reason the word "live" above is
+    checkable rather than promised. A list of shapes is a promise about the shapes somebody has thought
+    of; ownership is a promise about everything.
 
     What is NOT a read, and why that is not an exemption: a string constant. The name `entropy_confidence`
     inside a docstring, or inside a source snippet another test plants, is prose about the scale, not a
@@ -446,6 +450,31 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     planted.add(moved + "-renamed")
     assert len(planted) == len(laya_cases) == 64, (len(planted), len(laya_cases))
     assert planted != laya_cases
+
+
+def _exec_plant(lane, filename, entry, args):
+    """Run one planted module inside the suite and call its entry point.
+
+    The plant test's headline claim is that the ownership rule reports every shape that can hold an
+    owner. That is detection, and detection was never the weak half -- the weak half was liveness,
+    which used to be evidenced by a directory outside the repository that resolves for nobody. This
+    function is why the claim does not need it: the bodies are the same strings the AST walker reads,
+    written under pytest's own `tmp_path` and executed here, so a plant that only parses -- one that
+    returns garbage, or raises -- is caught in the same run that reports it.
+
+    Nothing outside the checkout is consulted, and nothing is imported by name from a plant: `exec`
+    runs the source text in a fresh namespace and the entry point is called there.
+    """
+    import asyncio
+    import inspect
+
+    namespace = {}
+    source = (lane / filename).read_text()
+    exec(compile(source, str(filename), "exec"), namespace)
+    call = namespace[entry]
+    if inspect.iscoroutinefunction(call):
+        return asyncio.run(call(*args))
+    return call(*args)
 
 
 def _inline_scale_subtractions(tests_dir):
@@ -1007,15 +1036,25 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
     walrus-carrying comprehension, and a `__call__` driven by `itertools.starmap` -- and the straight-line
     unrolled copy the previous docstring conceded as its residual. A bare single read in a helper is
     reported too: the question was never whether a helper repeats, so the exemption it used to enjoy is
-    gone. (Liveness of the planted copies was measured outside the suite: in `/tmp/r4` each of the four
-    new shapes returns the shared solver's own 0.960919733 for target 0.85 / k 4, delta 0.00e+00, so the
-    plant is a working second solver and not a decorative stub.)
+    gone.
+
+    Detection is only half of "live". Each plant is also EXECUTED, below, through `_exec_plant`: the
+    six solver-shaped plants must return `p_max_for_entropy`'s own answer for target 0.85 / k 4, the
+    `fold` plant must return the interval it converged on, and the exception is measured rather than
+    glossed -- `straight_line` returns exactly 1.0, because three unrolled steps from [1/k, 1.0] do not
+    reach the crossing, so it is a live reader of the scale and not a working solver. The prose here
+    used to claim that each of the four new shapes returned the shared solver's 0.960919733, evidenced
+    by a run in `/tmp/r4`; three of the four did, the fourth never did, and nothing outside this file
+    can reproduce a scratch directory.
 
     Each exclusion is planted as well, because a reason for an exclusion that is never tested is the exact
-    mistake this rule replaces: a `test_*` body reading the scale is legitimate -- and so is a second owner
-    hidden inside one, which is the residual this pins as accepted rather than denied -- a helper that
+    mistake this rule replaces: a `test_*` body reading the scale is legitimate -- and a second owner
+    hidden inside one is now caught by the gap detector rather than excused, because that subtraction has
+    one owner and the shape does not need to be a named helper to be a duplicate -- a helper that
     bisects by asking the owner module for the gap is not a reader, and a docstring or a source string that
-    only NAMES the scale is prose.
+    only NAMES the scale is prose. The exclusions run too: the narrowing plant finds the crossing the gate
+    test pins, the plain read answers in both directions, and the prose plant returns a string without
+    evaluating the scale.
     """
     import textwrap
 
@@ -1225,3 +1264,42 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
         int(gap_hits[0].split(":")[1]) - 1]
     assert "max_confidence" in hit_line and "entropy_confidence" in hit_line, hit_line
     assert _entropy_scale_owners(gap_lane) == [], "ownership now sees the test body too"
+
+    # --- every plant is executed, not only parsed ---
+    # `ref` is the shared solver's own answer for target 0.85 / k 4, `p_max_for_entropy(target=0.85,
+    # k=4)` = 0.960919732504523, the figure this file's prose used to quote as 0.960919733 from a run
+    # nobody can reproduce. Six of the solver-shaped plants return it when executed here (the seventh,
+    # `fold`, returns the interval it converged on), so the plant is a working second solver and not a
+    # decorative stub -- and `straight_line` is the measured exception: three unrolled steps from
+    # [1/k, 1.0] never reach the crossing, and it returns exactly 1.0. A previous docstring in this
+    # file claimed all four of the review's plants returned 0.960919733; that was true of the three
+    # solver shapes and false of the unrolled one, so the number is only stated here where the suite
+    # checks it.
+    ref = p_max_for_entropy(target=0.85, k=4)
+    for name in ("while_loop", "recursion", "async_def", "walrus_comprehension", "starmap_callable",
+                 "nested_package"):
+        path = "pkg/sub.py" if name == "nested_package" else "plant_%s.py" % name
+        value = _exec_plant(tmp_path / name, path, "pmax", (0.85, 4))
+        assert value == pytest.approx(ref, abs=1e-8), (name, value, ref)
+    folded = _exec_plant(tmp_path / "fold", "plant_fold.py", "pmax", (0.85, 4))
+    assert folded == pytest.approx((ref, ref), abs=1e-8), (folded, ref)
+    unrolled = _exec_plant(tmp_path / "straight_line", "plant_straight_line.py", "pmax", (0.85, 4))
+    assert unrolled == 1.0, unrolled
+    # The exclusions are live code as well, which is what makes reporting nothing about them a
+    # decision rather than a blind spot: the narrowing plant finds the same crossing the gate test
+    # pins, the plain read answers in both directions, the prose plant returns a string without
+    # evaluating the scale, and the exempt test body runs and passes.
+    narrowed = _exec_plant(tmp_path / "indirect_narrowing", "plant_indirect_narrowing.py", "crossing",
+                           (lambda p: [p, (1 - p) / 3, (1 - p) / 3, (1 - p) / 3], 1e-3))
+    assert narrowed == pytest.approx(0.999855, abs=1e-5), narrowed
+    assert _exec_plant(tmp_path / "plain_read", "plant_plain_read.py", "score", ([0.7, 0.3],)) is False
+    assert _exec_plant(tmp_path / "plain_read", "plant_plain_read.py", "score", ([0.999, 0.001],)) is True
+    assert _exec_plant(tmp_path / "prose_mention", "plant_prose_mention.py", "describe", ()) == \
+        "def pmax(target, k): return entropy_confidence([target])"
+    assert _exec_plant(tmp_path / "test_body_read", "plant_test_body_read.py",
+                       "test_the_scale_reads_zero_on_uniform_mass", ()) is None
+    # The gap plant's own number is the owner module's for the same vector, so what the gap detector
+    # points at is arithmetic that works, not a shape that happens to parse.
+    planted_gap = _exec_plant(tmp_path / "inline_gap_in_test_body", "plant_inline_gap_in_test_body.py",
+                              "test_the_narrowest_gap_is_the_smallest_of_them", ())
+    assert planted_gap == pytest.approx(scale_gap([0.7, 0.3]), abs=1e-12), planted_gap
