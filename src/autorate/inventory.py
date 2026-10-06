@@ -360,6 +360,49 @@ def _is_digest(value) -> bool:
         c in "0123456789abcdef" for c in value)
 
 
+def _pin_entry_label(index: int, entry) -> str:
+    """Names one `files[]` entry the way an operator can act on it: position and pinned path."""
+    if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+        return "entry %d (`%s`)" % (index, entry["path"])
+    return "entry %d" % index
+
+
+def _require_pin_entry(index: int, entry) -> None:
+    """R-82 (review MA-1): a pin ENTRY that is the wrong shape is a refusal, never a crash.
+
+    `massive_pin` used to assume `json.loads` had returned a dict and that every `files[]` element
+    was a dict carrying `rows` and `bytes`, because the sums below indexed them that way. Measured at
+    `5ec8639`: a pin of `null` raised `AttributeError` and an entry stripped of `rows` raised
+    `KeyError`, and neither class is in `main`'s mapping, so `autorate snapshot` died with a traceback
+    and rc 1 -- outside the published 0/2/3/4 contract, on the tracked file M5 was filed for. This is
+    the fetcher's own discipline (`tools/fetch_massive.require_manifest` checks entries before
+    indexing them) applied to the loader that publishes the numbers.
+
+    `sha256` is policed by `_is_digest` because a digest is the only field of an entry that a reader
+    can check against bytes: a truncated or non-hex one is not a shard that was "not hashed yet", it
+    is a pin that cannot mean anything. The message names the entry -- the committed list holds 51 of
+    them, and an operator has to be able to find the wrong line.
+    """
+    if not isinstance(entry, dict):
+        raise ArithmeticError(
+            "%s %s is a JSON %s, not an object; every entry in its `files` list must carry `path`, "
+            "`rows`, `bytes` and `sha256`" % (MASSIVE_PIN_LABEL, _pin_entry_label(index, entry),
+                                              type(entry).__name__))
+    for key in ("path", "rows", "bytes", "sha256"):
+        value = entry.get(key)
+        if key in ("path",):
+            usable = isinstance(value, str) and bool(value)
+        elif key == "sha256":
+            usable = _is_digest(value)
+        else:
+            usable = isinstance(value, int) and not isinstance(value, bool)
+        if not usable:
+            raise ArithmeticError(
+                "%s %s carries no usable `%s` (found %r); every entry in the pin's `files` list "
+                "must carry a non-empty `path`, integer `rows` and `bytes`, and a 64-hex `sha256`"
+                % (MASSIVE_PIN_LABEL, _pin_entry_label(index, entry), key, value))
+
+
 def massive_pin(path: Optional[Path] = None) -> dict:
     """The committed MASSIVE pin list -- the owner of every figure this project prints about it.
 
@@ -371,7 +414,9 @@ def massive_pin(path: Optional[Path] = None) -> dict:
 
     A pin whose entries disagree with their own declared totals raises for the same reason: the
     same quantity published under two values is drift, and `main` maps `ArithmeticError` to that
-    exit code rather than to a usage error.
+    exit code rather than to a usage error. So does a pin of the wrong SHAPE -- a JSON list, a
+    non-object entry, an entry without `rows` (R-82): those used to escape as `AttributeError` /
+    `KeyError` and exit 1, which is not in the published set at all.
     """
     pin_path = Path(path) if path is not None else MASSIVE_PIN_PATH
     try:
@@ -383,10 +428,16 @@ def massive_pin(path: Optional[Path] = None) -> dict:
     except ValueError as exc:
         raise ArithmeticError("%s is not readable JSON (%s); the MASSIVE figures have no owner"
                               % (MASSIVE_PIN_LABEL, exc)) from exc
+    if not isinstance(pin, dict):
+        raise ArithmeticError(
+            "%s is a JSON %s, not an object; the MASSIVE figures have no owner"
+            % (MASSIVE_PIN_LABEL, type(pin).__name__))
     files = pin.get("files")
     if not isinstance(files, list):
         raise ArithmeticError(
             "%s carries no `files` list; its counts have no owner" % MASSIVE_PIN_LABEL)
+    for index, entry in enumerate(files):
+        _require_pin_entry(index, entry)
     declared = pin.get("n_files")
     if declared != len(files):
         raise ArithmeticError(

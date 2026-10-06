@@ -1110,3 +1110,99 @@ def test_a_missing_or_corrupt_pin_refuses_as_drift_not_as_a_usage_error(monkeypa
     err = capsys.readouterr().err
     assert "Traceback" not in err, err
     assert "not readable JSON" in err, err
+
+
+def test_a_pin_that_is_valid_json_but_not_a_pin_refuses_instead_of_crashing(tmp_path):
+    """R-79 (re-review MA-1): three shapes of `data/massive_provenance.json` exited 1.
+
+    Measured at `5ec8639`: `null`, `[]` and a pin whose entries omit `rows` each raised
+    `AttributeError` / `KeyError` out of `massive_pin` -- and neither class is in `main`'s map, so
+    the process died with a traceback and exit 1, outside the 0/2/3/4 contract, on a file the
+    repository tracks. A malformed pin is exactly the case `EXIT_DRIFT` exists for.
+    """
+    from autorate.inventory import massive_pin
+
+    good = massive_pin()
+    path = tmp_path / "massive_provenance.json"
+    entries = good["files"]
+    no_rows = {k: v for k, v in entries[0].items() if k != "rows"}
+    broken_entry = json.dumps({**good, "files": [no_rows], "n_files": 1, "rows_total": 0,
+                               "bytes_total": entries[0]["bytes"], "distinct_row_counts": [0],
+                               "distinct_ids": 0, "id_sets_identical": False})
+    for label, body in (
+        ("json null", "null"),
+        ("json list", "[]"),
+        ("json string", '"a pin is not a string"'),
+        ("entry without `rows`", broken_entry),
+    ):
+        path.write_text(body)
+        try:
+            massive_pin(path)
+        except ArithmeticError:
+            continue                       # the refusal this contract reserves for a bad pin
+        raise AssertionError("%s was accepted as a pin" % label)
+
+
+def test_each_refused_pin_shape_reaches_the_command_as_drift(monkeypatch, tmp_path, capsys):
+    """R-82's exit-code half: the refusal has to survive the trip through `main`.
+
+    `ArithmeticError` from the loader is only the middle of the claim. The published contract is
+    about the process, so each shape that `massive_pin` now refuses must reach `autorate snapshot`
+    as EXIT_DRIFT with a one-line message -- and must not be the `AttributeError`/`KeyError` that
+    `main` has no clause for, which is what made the same file exit 1 with a traceback.
+    """
+    from autorate import inventory as inv_module
+    from autorate.cli import EXIT_DRIFT, main
+
+    good = inv_module.massive_pin()
+    root = _tiny_corpus(tmp_path / "corpus", n_ids=2)
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(root))
+    bodies = {
+        "json null": "null",
+        "json list": "[1, 2, 3]",
+        "entry not an object": json.dumps({**good, "files": ["test/aa.json.gz"]}),
+        "entry without `rows`": json.dumps(
+            {**good, "files": [{k: v for k, v in f.items() if k != "rows"}
+                               for f in good["files"]]}),
+        "entry without `bytes`": json.dumps(
+            {**good, "files": [{k: v for k, v in f.items() if k != "bytes"}
+                               for f in good["files"]]}),
+        "entry without `path`": json.dumps(
+            {**good, "files": [{k: v for k, v in f.items() if k != "path"}
+                               for f in good["files"]]}),
+        "truncated digest": json.dumps(
+            {**good, "files": [{**f, "sha256": "deadbeef"} for f in good["files"]]}),
+    }
+    for label, body in bodies.items():
+        path = tmp_path / ("pin_%s.json" % label.replace(" ", "_").replace("`", ""))
+        path.write_text(body)
+        monkeypatch.setattr(inv_module, "MASSIVE_PIN_PATH", path)
+        assert main(["snapshot", "--root", str(root),
+                     "--out", str(tmp_path / "out" / "inventory.md")]) == EXIT_DRIFT, label
+        err = capsys.readouterr().err
+        assert "Traceback" not in err, (label, err)
+        assert err.startswith("INVARIANT: ArithmeticError:"), (label, err)
+        assert "data/massive_provenance.json" in err, (label, err)
+
+
+def test_a_corpus_line_named_like_the_internal_bucket_does_not_select_the_exit_code(tmp_path):
+    """R-79 (re-review MA-6): `mode: "malformed_line"` in the archive made ordinary content exit 4.
+
+    The scanner keyed its ledger with the mode string for an unbucketable mode and with
+    `MALFORMED_LINE` for an unreadable one, so a corpus whose `mode` column literally contained
+    that word collided the two buckets, `assert_line_conservation` refused, and the published
+    snapshot command returned DRIFT for a corpus that is merely strange. Bucket keys are namespaced
+    on collision, which leaves the shipped corpus's `{'choice': 1}` untouched.
+    """
+    planted = json.dumps(_planted_row(mode="malformed_line"))
+    root, _ = _plant(tmp_path, [planted])
+    d = inventory(root)                       # must not raise
+    assert d["lines_malformed"] == 0, d
+    assert d["lines_quarantined_only"] == {"mode:malformed_line": 1}, d
+    assert d["lines_outside_mode_counts"][0]["reason"] == \
+        "mode 'malformed_line' is not readable by this reader", d
+    assert _identity(d) == d["reader_lines_read"] == 5, d
+
+    root2, _ = _plant(tmp_path / "two", [planted, _UNBUCKETABLE_MODE])
+    d2 = inventory(root2)
+    assert d2["lines_quarantined_only"] == {"mode:malformed_line": 1, "ranked": 1}, d2
