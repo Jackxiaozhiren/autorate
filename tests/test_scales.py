@@ -53,6 +53,15 @@ def _entropy_scale_owners(tests_dir):
     or holding state in an object says nothing about whether a helper owns the derivation, so none of it
     is asked.
 
+    Import scope is consulted too, because a helper is not the only thing that can own a derivation: any
+    module-level statement that reads the scale is reported as `<file>::<module>`. That arm exists for
+    the shape the rule used to concede as a fourth residual -- "a quick script in the test directory", a
+    bare `for` at import scope or interval state in a module global -- and the concession was wrong to
+    make: it is the same defect, invisible only because the walker looked at definitions. Imports are the
+    one import-scope form that is NOT reported, and deliberately so: `tests/test_records.py` imports the
+    scale at module level to assert about it, every plant below is written behind an import line, and a
+    name in a namespace derives nothing by itself.
+
     Why the shape list was dropped. Three consecutive rounds each found a new syntactic form that
     escaped the previous round's list, and each time the exclusion came with a reason the next plant
     refuted: `for` only, and a `while` copy escaped; `while` plus recursion added, and a
@@ -83,12 +92,18 @@ def _entropy_scale_owners(tests_dir):
     The residuals, each written as a case in
     `test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read` rather than as prose:
     (1) a second owner hidden inside a `test_*` function body is not reported, because test bodies are
-    allowed to read the scale -- the loophole is real and is the price of the `test_*` exemption;
+    allowed to read the scale -- the loophole is real and is the price of the `test_*` exemption. It is
+    not unlimited: the one expression with exactly one owner, `max_confidence(p) - entropy_confidence(p)`,
+    IS caught there by `_inline_scale_subtractions`, which reads every scope;
     (2) a narrowing search that reaches the scale only through a shared helper (the `crossing` shape in
     the gate test) is not reported, because it holds no scale arithmetic of its own -- it owns an
     interval, not a scale; (3) a helper that RE-DERIVES the entropy scale from first principles under a
     different name is invisible to a rule keyed on the name, and no ownership rule can see it -- that one
     is the class's floor, and it is why the module's own figures stay pinned by tests.
+    A fourth case used to be listed here -- import scope, where a module-level `for` holding the interval
+    was reported by neither arm -- and it is no longer a residual: the walk consults module bodies, the
+    plant exercises it, and the exemption that survives is the one the paragraph above argues for, names
+    in imports.
 
     `src/autorate/` is never walked: `scales.py` imports `entropy_confidence` from `autorate.records` at
     module level, and production code computing with the scale is what this whole module exists to do, not
@@ -138,6 +153,19 @@ def _entropy_scale_owners(tests_dir):
                 continue
             if reads_scale(node):
                 found.append("%s::%s" % (path.relative_to(tests_dir), label(node, parents)))
+        for node in tree.body:
+            # Import scope, which is not a helper and so was invisible above: a bare `for` at module
+            # level, an `if` block holding the interval in a global, a comprehension bound to a module
+            # constant. An import is not a derivation -- `tests/test_records.py` imports the scale at
+            # module level to assert about it, and every plant file here is written behind an import
+            # line -- so imports are skipped and everything else that reads the scale at import scope
+            # is reported against the file.
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if isinstance(node, function_forms) or isinstance(node, ast.ClassDef):
+                continue  # covered by the walk above, with its real name
+            if reads_scale(node):
+                found.append("%s::<module>" % path.relative_to(tests_dir))
     return sorted(set(found))
 
 
@@ -452,6 +480,14 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     assert planted != laya_cases
 
 
+def _exec_plant_namespace(lane, filename):
+    """Compile and run one planted module, returning its namespace."""
+    namespace = {}
+    source = (lane / filename).read_text()
+    exec(compile(source, str(filename), "exec"), namespace)
+    return namespace
+
+
 def _exec_plant(lane, filename, entry, args):
     """Run one planted module inside the suite and call its entry point.
 
@@ -468,10 +504,7 @@ def _exec_plant(lane, filename, entry, args):
     import asyncio
     import inspect
 
-    namespace = {}
-    source = (lane / filename).read_text()
-    exec(compile(source, str(filename), "exec"), namespace)
-    call = namespace[entry]
+    call = _exec_plant_namespace(lane, filename)[entry]
     if inspect.iscoroutinefunction(call):
         return asyncio.run(call(*args))
     return call(*args)
@@ -1055,6 +1088,13 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
     only NAMES the scale is prose. The exclusions run too: the narrowing plant finds the crossing the gate
     test pins, the plain read answers in both directions, and the prose plant returns a string without
     evaluating the scale.
+
+    Import scope has both arms here as well. The two module-body plants are reported as `<module>` and
+    are executed to prove they derive rather than sit, and the import exemption is not a claim in a
+    docstring but a property of every plant file in this test: each one opens with
+    `from autorate.records import entropy_confidence` at module level, and not one of them is reported
+    for it. Were imports counted as derivations, thirteen expectations here would carry a `<module>`
+    entry they do not have.
     """
     import textwrap
 
@@ -1169,6 +1209,24 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
             def test_the_narrowest_gap_is_the_smallest_of_them():
                 return abs(max_confidence([0.7, 0.3]) - entropy_confidence([0.7, 0.3]))
         """),
+        # Import scope, the case this rule used to concede as a residual: a bare `for` at module level
+        # carrying the interval in globals, with no function definition anywhere to key on.
+        "module_level_loop": textwrap.dedent("""
+            lo, hi = 0.25, 1.0
+            for _ in range(80):
+                mid = (lo + hi) / 2
+                if entropy_confidence([mid] + [(1 - mid) / 3] * 3) < 0.85:
+                    lo = mid
+                else:
+                    hi = mid
+        """),
+        # Also import scope and also not a helper: the derivation folded into a module constant by a
+        # comprehension. No loop statement is involved, which is the same reason the `fold` arm needed
+        # its own case.
+        "module_level_comprehension": textwrap.dedent("""
+            GAPS = [entropy_confidence([p, (1 - p) / 3, (1 - p) / 3, (1 - p) / 3])
+                    for p in (0.9, 0.95, 0.99)]
+        """),
         # --- the exclusions, each planted so that the claim is measured rather than asserted ---
         # A test body asserts about the scale. This is also the accepted loophole: a second owner written
         # inside a test function is invisible to this rule by construction.
@@ -1237,6 +1295,8 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
         "prose_mention": [],
         "nested_package": ["pkg/sub.py::pmax"],
         "inline_gap_in_test_body": [],
+        "module_level_loop": ["plant_module_level_loop.py::<module>"],
+        "module_level_comprehension": ["plant_module_level_comprehension.py::<module>"],
     }
     # The plant list and the expectation table are policed as a pair: a shape added here and left out
     # there KeyErrors, and an expectation with no shape behind it would silently stop being executed.
@@ -1285,6 +1345,16 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
     assert folded == pytest.approx((ref, ref), abs=1e-8), (folded, ref)
     unrolled = _exec_plant(tmp_path / "straight_line", "plant_straight_line.py", "pmax", (0.85, 4))
     assert unrolled == 1.0, unrolled
+    # Import scope is live in the same sense -- the module body runs the derivation as it loads, and the
+    # globals it leaves behind are the evidence, not a return value. The bare `for` plant brackets the
+    # shared answer to within a double, and the comprehension plant produced three real scale values.
+    loop_ns = _exec_plant_namespace(tmp_path / "module_level_loop", "plant_module_level_loop.py")
+    assert loop_ns["lo"] <= loop_ns["hi"], loop_ns
+    assert loop_ns["hi"] == pytest.approx(ref, abs=1e-8), (loop_ns["lo"], loop_ns["hi"], ref)
+    comp_ns = _exec_plant_namespace(tmp_path / "module_level_comprehension",
+                                    "plant_module_level_comprehension.py")
+    assert len(comp_ns["GAPS"]) == 3 and all(0.0 < g < 1.0 for g in comp_ns["GAPS"]), comp_ns["GAPS"]
+    assert comp_ns["GAPS"] == sorted(comp_ns["GAPS"]), comp_ns["GAPS"]
     # The exclusions are live code as well, which is what makes reporting nothing about them a
     # decision rather than a blind spot: the narrowing plant finds the same crossing the gate test
     # pins, the plain read answers in both directions, the prose plant returns a string without
