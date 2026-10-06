@@ -499,3 +499,29 @@ shared rule names, but not for a `four_noul` line's per-ask refusals ("carries n
 record-building rule -- the drift R-55 exists to prevent. This corpus contains no such line (measured:
 its `four_noul` ledger is empty), and the divergence is pinned as data in
 `tests/test_inventory.py::test_the_scanner_does_not_mirror_the_reader_s_per_ask_quarantine`.
+
+## 2026-10-06 — two sentences in this file quoted a `verify` count the tip does not produce
+
+The row above ("the two ledgers published side by side disagreed about the shipped corpus's own
+line") moved the gate's own totals, and re-reading this file found a second, older case of the same
+defect: a published present-tense sentence about the gate that the artefacts at the same commit
+contradict. Both are named here rather than edited in place, because this file records what was
+published.
+
+- The 2026-10-06 row titled "a review's six findings, and the first live fetch that refuted one
+  tool's own contract" states, two paragraphs from its end: *"No count changed; `verify` re-derives
+  68 figures with the corpus present and 34 without."* Those were the counts on the tree that row
+  described. The next row in this file ("the 2026-10-05 row credited `verify` with a check it did
+  not perform") superseded only the 2026-10-05 row's 65/34 sentence and never named this one, so
+  68/34 survived as the file's most recent-looking statement of the gate while the tip printed 75
+  and 41.
+- That 75/41 is now also stale, twice over. Adding the three bound columns to the pin arm (R-83)
+  took the corpus-less lane from 41 to 47; publishing `lines_refused_not_ok` as a snapshot key and
+  naming the shipped corpus's unclosing line took the corpus-present lane from 75 to 82.
+
+Measured on this commit, both rc 0: `uv run --frozen autorate verify` re-derives **82 /82** values
+with the corpus present, and `AUTORATE_FEISHU_ROOT=/nonexistent uv run --frozen autorate verify`
+re-derives **47 /47** without. The counts are not typed here either:
+`tests/test_cli.py::test_verify_runs_and_agrees_where_the_corpus_does_not_exist` derives the 47 from
+`CERT_COMPARE_FIELDS` and `autorate.cli.PIN_DERIVED_KEYS`, which is the list the gate itself
+iterates, so a column the arm stops comparing has to widen a test before it can narrow the gate.

@@ -619,10 +619,16 @@ def corpus_options(feishu_unique_ids: Optional[int] = None, pin: Optional[dict] 
          "unit": "(language, utterance) pairs -- NOT independent cases",
          "n_rows": pin.get("rows_total"), "n_independent": independent, "n_shards": declared,
          "basis": massive_pooled_basis(pin),
-         "note": "Apache-2.0, %s of pinned bytes; the extra shards are translations of the same "
-                 "utterances, so the row multiple is coverage, not sample size"
-                 % ("%.1f MB" % (pin["bytes_total"] / 1e6) if pin.get("bytes_total")
-                    else "no byte total pinned")},
+         # m-8: the sentence is built as a whole, because the old shape spliced a noun phrase into
+         # "%s of pinned bytes" and the falsy arm read "no byte total pinned of pinned bytes". The
+         # loader has policed `bytes_total` against the entries since `b964af0`, so that arm is now
+         # reachable only for a caller that hands `corpus_options` a hand-built pin -- which is
+         # exactly the caller a broken sentence used to be cheapest for. Pinned bytes for the
+         # committed pin read "3.2 MB of pinned bytes", byte for byte as before this rewrite.
+         "note": "Apache-2.0, %s; the extra shards are translations of the same utterances, so the "
+                 "row multiple is coverage, not sample size"
+                 % ("%.1f MB of pinned bytes" % (pin["bytes_total"] / 1e6)
+                    if pin.get("bytes_total") else "no byte total pinned")},
         {"id": "typed_decisions", "unit": "labelled decisions", "n_rows": None,
          "n_independent": None,
          "basis": "dataset card size category 1K<n<10K only; no file opened",

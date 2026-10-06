@@ -833,6 +833,59 @@ def test_the_scanner_does_not_mirror_the_reader_s_per_ask_quarantine(tmp_path):
     assert _identity(d) == d["reader_lines_read"] == 5, d
 
 
+def test_a_pinned_massive_row_without_an_id_set_says_which_of_the_two_it_is(tmp_path):
+    """m-4: "not opened" was one cell for two findings, and for MASSIVE it contradicted its row.
+
+    Measured on a pin carrying `id_sets_identical: false`: `autorate snapshot` exited 0 and the
+    pooled row read `| massive_intent_all_languages | not opened | 151674 | 51 of 51 pinned shards
+    opened, hashed and row-counted on ...` -- one cell denying what the cell beside it asserts. The
+    shards WERE opened; what is missing is the id-set measurement that lets a translation table be
+    read as a sample. `typed_decisions` keeps "not opened", because there it is the true statement:
+    no file of that corpus was opened at all.
+
+    The shipped artefact does not change: the committed pin records the id sets as identical, so no
+    MASSIVE row reaches this cell, which the control arm below checks rather than assumes.
+    """
+    import tempfile
+
+    from autorate.inventory import corpus_options, massive_pin, write_inventory
+
+    pin = massive_pin()
+    assert pin["id_sets_identical"] is True, pin
+
+    def render(options):
+        d = {
+            "source": "x", "lines_by_mode_backend": {"choice/laya": 2}, "unique_ids": 2,
+            "repeats": [0], "families": ["lifecycle"], "label_counts": {"todo": 16},
+            "provenance": "p", "upstream_audit_rc": 0, "upstream_audit_stdout_tail": "",
+            "upstream_audit_stderr_tail": "", "digests": [], "gaps": [],
+            "audit_interpreter": "python", "corpus_options": options,
+            "reader_lines_by_mode": {"choice": 2}, "reader_lines_quarantined_only": {},
+            "reader_lines_malformed": 0, "reader_lines_dropped_not_ok": 0,
+            "reader_lines_filtered": 0, "lines_refused_not_ok": 0,
+        }
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "inventory.md"
+            write_inventory(d, out)
+            return out.read_text()
+
+    body = render(corpus_options(2, pin={**pin, "id_sets_identical": False}))
+    pooled = [line for line in body.splitlines() if line.startswith("| massive_intent_all_")]
+    assert len(pooled) == 2, body                       # bound table and unit/note table
+    assert "| not measured (id sets not pinned) |" in pooled[0], pooled[0]
+    assert "| not opened |" not in pooled[0], pooled[0]
+    typed = [line for line in body.splitlines() if line.startswith("| typed_decisions |")]
+    assert "| not opened |" in typed[0], typed[0]
+
+    control = render(corpus_options(2, pin=pin))
+    assert "not measured (id sets not pinned)" not in control, control
+    assert "| massive_intent_all_languages | 2974 |" in control, control
+    # And the published artefact still needs neither phrase from the MASSIVE rows.
+    committed = (REPO / "data" / "inventory.md").read_text()
+    assert "not measured (id sets not pinned)" not in committed, committed
+    assert "| massive_intent_all_languages | 2974 |" in committed, committed
+
+
 def test_the_committed_inventory_markdown_names_the_one_line_it_holds(tmp_path):
     """R-80 moved a shipped finding into the human artefact, so the artefact must say it.
 
@@ -1298,10 +1351,22 @@ def test_a_missing_or_corrupt_pin_refuses_as_drift_not_as_a_usage_error(monkeypa
     here, and `main` already maps `ArithmeticError` to it.
     """
     from autorate import inventory as inv_module
-    from autorate.cli import EXIT_DRIFT, main
+    from autorate.cli import EXIT_DRIFT, EXIT_USAGE, main
 
     root = _tiny_corpus(tmp_path / "corpus", n_ids=2)
     out = str(tmp_path / "inventory.md")
+
+    # m-3: `_root()` prefers `AUTORATE_FEISHU_ROOT` over an explicit `--root`, so in a legitimately
+    # set environment -- this project's own briefs recommend setting the variable to a nonexistent
+    # path to exercise the corpus-less lane -- this test measured `assert 2 == 4`: `_require_root`
+    # raised `UsageError` before the pin was ever read. The refusal under test belongs to the PIN,
+    # so the environment must not be allowed to answer first. The arm below is the interference,
+    # run rather than described: with the variable pointing at a corpus that is not there, the same
+    # call exits 2 whatever the pin says.
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus"))
+    assert main(["snapshot", "--root", str(root), "--out", out]) == EXIT_USAGE
+    capsys.readouterr()
+    monkeypatch.delenv("AUTORATE_FEISHU_ROOT", raising=False)
 
     monkeypatch.setattr(inv_module, "MASSIVE_PIN_PATH", tmp_path / "absent.json")
     assert main(["snapshot", "--root", str(root), "--out", out]) == EXIT_DRIFT
