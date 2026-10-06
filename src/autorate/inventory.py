@@ -21,7 +21,8 @@ from .records import SUM_TOL
 # module would be a second owner of the same rule, and two owners drift invisibly until one
 # guard names a line the other one crashes on.
 from .readers.feishu_zh import (MALFORMED_LINE, choice_probabilities, error_label,
-                                parse_archive_line, quarantine_line_entry, unreadable_mode_reason)
+                                mode_bucket_key, parse_archive_line, quarantine_line_entry,
+                                unreadable_mode_reason)
 # The interval arithmetic has one home (tails.py); this module reads it and publishes it,
 # so the inventory's feasibility verdict and the certificate's interval cannot drift apart.
 from .tails import bound_width, n_feasible
@@ -229,16 +230,17 @@ def inventory(root: Path) -> dict:
             ids |= this_ids
             repeats = this_reps
     # Every count of the unreadable lines is DERIVED from that one list, so no quantity gets a
-    # second counter (Task 1's review parked exactly that duplication). The bucket keys mirror
-    # the reader's own accounting -- `malformed_line` for a line neither pass can read, the mode
-    # string for a readable line this contract cannot bucket -- which is what lets a test compare
-    # the two dicts at all instead of comparing prose.
+    # second counter (Task 1's review parked exactly that duplication). The bucket keys come from
+    # the reader's own `mode_bucket_key` -- `malformed_line` for a line neither pass can read, the
+    # mode string for a readable line this contract cannot bucket, and that string namespaced when
+    # it happens to spell the internal label (R-81) -- which is what lets a test compare the two
+    # dicts at all instead of comparing prose.
     quarantined_only: dict = {}
     malformed_by_backend: dict = {}
     lines_malformed = 0
     for entry in outside:
         unreadable = entry["reason"] == MALFORMED_LINE
-        key = MALFORMED_LINE if unreadable else str(entry["mode"])
+        key = MALFORMED_LINE if unreadable else mode_bucket_key(entry["mode"])
         quarantined_only[key] = quarantined_only.get(key, 0) + 1
         if unreadable:
             lines_malformed += 1

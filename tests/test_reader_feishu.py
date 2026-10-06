@@ -455,3 +455,65 @@ def test_a_supervised_per_ask_gold_escapes_the_guard_and_is_never_a_malformed_li
         read_archive(root, backend="laya", stats=stats)
     # Nothing gets published, so nothing was counted as a line that could not be read.
     assert stats == {}, stats
+
+
+def test_a_mode_that_spells_the_internal_bucket_does_not_borrow_its_name(tmp_path):
+    """R-81 (review MA-6): a corpus string may not occupy `malformed_line`, because that bucket
+    is policed, and a refusal is an exit code.
+
+    The reader files a readable-but-unbucketable line under `str(mode)` and an unreadable line
+    under `MALFORMED_LINE`. Nothing stopped an archive line whose `mode` literally read
+    `malformed_line` from landing in the second bucket: the two counts of one quantity then
+    disagreed (`lines_malformed` from the reason, the bucket from the key), which is the refusal
+    the inventory's conservation check exists to raise -- so ordinary corpus content selected
+    EXIT_DRIFT. The key now comes from one function the reader owns, and it namespaces a colliding
+    mode string while leaving every other key as it was.
+    """
+    from autorate.readers.feishu_zh import MALFORMED_LINE, mode_bucket_key, read_archive
+
+    assert mode_bucket_key(MALFORMED_LINE) == "mode:malformed_line"
+    assert mode_bucket_key("ranked") == "ranked", "the shipped keys must not move"
+    assert mode_bucket_key(None) == "None"
+    # The invariant the defect needs: no key produced from corpus content can equal the internal
+    # label, because the namespaced form is prefixed and `MALFORMED_LINE` does not start with it.
+    assert mode_bucket_key(MALFORMED_LINE) != MALFORMED_LINE
+    for spelling in ("malformed_line", "mode:malformed_line", "", "None", "mode"):
+        assert mode_bucket_key(spelling) != MALFORMED_LINE, spelling
+    # Measured boundary, recorded so nobody reads the namespace as injectivity: a mode string that
+    # already carries the prefix is returned unchanged, so it shares a key with the namespaced form
+    # of the bare label. That merges two READABLE lines in one ledger row -- both are counted, so
+    # the conservation identity and the malformed total are untouched and no exit code moves. It is
+    # a loss of attribution, not of arithmetic, and R-81's ruling ("every other key is `str(mode)`
+    # unchanged") accepts it rather than renaming the shipped keys.
+    assert mode_bucket_key("mode:malformed_line") == mode_bucket_key(MALFORMED_LINE)
+
+    lines = [json.dumps(_line(id="collide", mode=MALFORMED_LINE)),
+             json.dumps(_line(id="other", mode="ranked")),
+             "null"]
+    root = _archive(tmp_path, lines, backends=("laya",))
+    stats = {}
+    read_archive(root, backend="laya", stats=stats)
+    assert stats["lines_quarantined_only"] == {"mode:malformed_line": 1, "ranked": 1,
+                                              "malformed_line": 1}, stats
+    assert stats["lines_malformed"] == 1, stats
+    # The identity the collision used to break still closes over all three lines.
+    assert stats["lines_kept"] + sum(stats["lines_quarantined_only"].values()) \
+        == stats["lines_read"] == 3, stats
+    # The entry still names the corpus's own string; only the LEDGER key is namespaced.
+    collide = [e for e in stats["quarantined"] if e["mode"] == MALFORMED_LINE]
+    assert len(collide) == 1, stats["quarantined"]
+    assert collide[0]["reason"] == "mode 'malformed_line' is not readable by this reader", collide
+    assert collide[0]["id"] == "collide" and collide[0]["backend"] == "laya", collide
+
+    # And the boundary, run rather than asserted: the prefixed spelling shares that key, so the
+    # two lines merge into one ledger row -- both counted, `lines_malformed` untouched, identity
+    # closed, and no exit code reachable from corpus content.
+    both = lines + [json.dumps(_line(id="prefixed", mode="mode:malformed_line"))]
+    root2 = _archive(tmp_path / "two", both, backends=("laya",))
+    stats2 = {}
+    read_archive(root2, backend="laya", stats=stats2)
+    assert stats2["lines_quarantined_only"] == {"mode:malformed_line": 2, "ranked": 1,
+                                               "malformed_line": 1}, stats2
+    assert stats2["lines_malformed"] == 1, stats2
+    assert stats2["lines_kept"] + sum(stats2["lines_quarantined_only"].values()) \
+        == stats2["lines_read"] == 4, stats2

@@ -93,6 +93,33 @@ def unreadable_mode_reason(mode) -> str:
     return "mode %r is not readable by this reader" % mode
 
 
+# The namespace a colliding mode string is published under. Chosen so it can never equal
+# `MALFORMED_LINE`: the prefix is added to the whole string, and a mode that already starts with it
+# gets prefixed again (`mode:mode:x`), so no archive value can land on the internal bucket name.
+MODE_BUCKET_PREFIX = "mode:"
+
+
+def mode_bucket_key(mode) -> str:
+    """R-81 (review MA-6): ONE function chooses the ledger key of an unbucketable `mode`.
+
+    Both passes used to publish `str(mode)` for a readable line whose mode this contract cannot
+    bucket, and `malformed_line` for a line neither pass could read. Those are two names for two
+    different rules, and nothing said the first could not spell the second: one archive line with
+    `"mode": "malformed_line"` measured at `5ec8639` merged into the internal bucket, the
+    inventory's own conservation check then refused ("0 malformed published, 1 under
+    `malformed_line`"), and the shipped `autorate snapshot` exited 4 for a corpus that is merely
+    strange rather than broken.
+
+    That is the exit-code contract inverted: corpus CONTENT must never be able to select rc 4, which
+    this project reserves for a tool that cannot reproduce its own arithmetic. So a mode string that
+    equals the internal label is namespaced, and every other key stays the plain mode string -- the
+    shipped corpus's `{'choice': 1}` is published exactly as it read before. One function, here,
+    called by both passes: the key is part of the line rule, and the line rule has one owner (R-55).
+    """
+    text = str(mode)
+    return MODE_BUCKET_PREFIX + text if text == MALFORMED_LINE else text
+
+
 def choice_probabilities(obj: dict) -> tuple:
     """`(options, probs, failure)` for a `choice` line: the vector exactly as it was published.
 
@@ -314,7 +341,7 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
                 lines_kept += 1
                 lines_by_mode[obj["mode"]] = lines_by_mode.get(obj["mode"], 0) + 1
             elif len(quarantine) > q_before:
-                key = str(obj.get("mode"))
+                key = mode_bucket_key(obj.get("mode"))
                 lines_quarantined_only[key] = lines_quarantined_only.get(key, 0) + 1
             else:
                 unaccounted.append({"id": obj.get("id"), "backend": b,
