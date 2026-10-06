@@ -448,6 +448,38 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     assert planted != laya_cases
 
 
+def _inline_scale_subtractions(tests_dir):
+    """Every place a test computes `max_confidence(p) - entropy_confidence(p)` itself, at ANY scope.
+
+    The ownership rule cannot see this shape at all: it reads helper definitions, and a `test_*` body is
+    exempt, so the arithmetic the suite moved into `tests/_thresholds.py::scale_gap` survived a second
+    copy 500 lines away in the same file that documents the rule. This detector is narrower on purpose
+    and blind to no scope -- the subtraction of the two published scales has exactly one owner, and it
+    fires wherever the expression is written, module level or test body alike.
+
+    It is not a general single-owner guard. An indirect narrowing that reaches the scale through a
+    shared helper, and a helper that re-derives the entropy scale under another name, stay invisible
+    here exactly as they stay invisible to `_entropy_scale_owners`, and both are named there as
+    residuals rather than papered over.
+    """
+    import ast
+
+    scales = ("max_confidence", "entropy_confidence")
+    hits = []
+    for path in sorted(tests_dir.rglob("*.py")):
+        if path.name == "_thresholds.py":
+            continue  # the owner: this is the one file where the subtraction is allowed to live
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub)):
+                continue
+            names = {c.func.id for c in (node.left, node.right)
+                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                     and c.func.id in scales}
+            if names == set(scales):
+                hits.append("%s:%d" % (path.relative_to(tests_dir), node.lineno))
+    return hits
+
+
 _NOTE_FIRST_LINE = "The pair the old comment forecast"
 _NOTE_LAST_LINE = "test_collapsing_jev_to_one_row_per_case"
 _CASE_CLAIM = re.compile(r"(answer|entropy)-scale case: repeats \[([\d, ]+)\]")
@@ -675,9 +707,11 @@ def test_a_record_whose_two_scales_are_the_same_number_is_attributed_to_neither(
     # -- and 94 of jev's 191 archived choice records are one-hot, counted below rather than
     # quoted. Naming one scale would be a coin flip dressed as a measurement, so the function
     # says neither and leaves the choosing to a caller with better evidence than it has.
-    from autorate.records import entropy_confidence, max_confidence
+    # The gap is asked of the owner module (`_thresholds.scale_gap`): this file's rule is that
+    # `|max(p) - entropy|` is derived in one place, and a test body writing the expression inline
+    # is the one loophole that rule cannot see by name.
     one_hot = (1.0, 0.0, 0.0, 0.0)
-    assert abs(max_confidence(one_hot) - entropy_confidence(one_hot)) < 1e-12
+    assert scale_gap(one_hot) < 1e-12
     d = scale_attribution([_choice("b", one_hot, 1.0)])
     assert d["verdict"] == "neither", d
     assert d["max_dev_answer"] == 0.0 and d["max_dev_entropy"] == 0.0, d
@@ -766,7 +800,6 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
     data it runs on. Every figure below comes out of the code and the archive, so a widening of
     the window or a changed archive fails here instead of quietly making the comment a lie.
     """
-    from autorate.records import entropy_confidence, max_confidence
     from autorate.scales import TOLERANCE
 
     laya = _archive_slice("laya", "choice")
@@ -777,7 +810,11 @@ def test_the_tolerance_sits_far_inside_the_gap_the_attribution_claims_to_tell_ap
     # cannot go red while that one is green -- and it exists only so the module comment's pointer
     # resolves in this test. It is not inert: dropping any laya choice row reddens both lines.
     assert len(laya) == 192, len(laya)
-    gap = min(abs(max_confidence(r.probs) - entropy_confidence(r.probs)) for r in laya)
+    # `scale_gap` is the owner of this subtraction and this test quotes its result as the module's
+    # headroom figure, so the arithmetic is asked of the owner rather than restated inline: an inline
+    # copy is exactly the second derivation the ownership rule exists to prevent, and it is invisible
+    # to that rule by construction because the rule reads helper definitions, not `test_*` bodies.
+    gap = min(scale_gap(r.probs) for r in laya)
     assert gap == pytest.approx(0.0526, abs=1e-4), (gap, len(laya))
     # 52x headroom: no archived laya record is close enough to both scales for the verdict to
     # be decided by which comparison the implementation happened to run first. The multiplier is
@@ -949,6 +986,13 @@ def test_the_shared_bisection_has_one_owner_and_no_argument_order_to_transpose()
                       "_thresholds.py::scale_midpoint"], owners
     assert "_pmax_reaching" not in (Path(__file__).resolve().parent / "test_records.py").read_text(), \
         "the transposed copy is back: two owners of one derivation again"
+    # The shape ownership cannot see, policed separately: the two scales subtracted from each other
+    # inline. Zero hits across `tests/` today because the two copies this file carried now call
+    # `scale_gap`; the `inline_gap_in_test_body` case in the plant test writes it where the ownership
+    # rule is blind to it and requires this detector to report it, so the count here is a guard with a
+    # demonstrated failure path and not an empty sweep.
+    assert _inline_scale_subtractions(Path(__file__).resolve().parent) == [], \
+        _inline_scale_subtractions(Path(__file__).resolve().parent)
 
 
 
@@ -1075,6 +1119,17 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
             def score(p):
                 return entropy_confidence(p) > 0.5
         """),
+        # The loophole the ownership rule is structurally blind to, written out: the two published scales
+        # subtracted from each other inside a `test_*` body. Ownership reports nothing there -- test
+        # bodies may read the scale -- and the gap detector reports the line, because that subtraction has
+        # exactly one owner. This is the copy that survived the rule for a whole round.
+        "inline_gap_in_test_body": textwrap.dedent("""
+            from autorate.records import max_confidence
+
+
+            def test_the_narrowest_gap_is_the_smallest_of_them():
+                return abs(max_confidence([0.7, 0.3]) - entropy_confidence([0.7, 0.3]))
+        """),
         # --- the exclusions, each planted so that the claim is measured rather than asserted ---
         # A test body asserts about the scale. This is also the accepted loophole: a second owner written
         # inside a test function is invisible to this rule by construction.
@@ -1142,7 +1197,11 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
         "indirect_narrowing": [],
         "prose_mention": [],
         "nested_package": ["pkg/sub.py::pmax"],
+        "inline_gap_in_test_body": [],
     }
+    # The plant list and the expectation table are policed as a pair: a shape added here and left out
+    # there KeyErrors, and an expectation with no shape behind it would silently stop being executed.
+    assert set(shapes) == set(expected), (sorted(set(shapes) ^ set(expected)),)
     for name, body in shapes.items():
         lane = tmp_path / name
         lane.mkdir()
@@ -1153,3 +1212,16 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
             (lane / ("plant_%s.py" % name)).write_text(header + body)
         owners = _entropy_scale_owners(lane)
         assert owners == expected[name], (name, owners)
+        gap_hits = _inline_scale_subtractions(lane)
+        if name != "inline_gap_in_test_body":
+            # No other plant writes the two scales against each other: a narrowing, a fold or a plain
+            # read over `entropy_confidence` is not the gap, and the detector must not shout at those.
+            assert gap_hits == [], (name, gap_hits)
+    gap_lane = tmp_path / "inline_gap_in_test_body"
+    gap_hits = _inline_scale_subtractions(gap_lane)
+    assert [h.split(":")[0] for h in gap_hits] == ["plant_inline_gap_in_test_body.py"], gap_hits
+    assert len(gap_hits) == 1, gap_hits
+    hit_line = (gap_lane / "plant_inline_gap_in_test_body.py").read_text().splitlines()[
+        int(gap_hits[0].split(":")[1]) - 1]
+    assert "max_confidence" in hit_line and "entropy_confidence" in hit_line, hit_line
+    assert _entropy_scale_owners(gap_lane) == [], "ownership now sees the test body too"
