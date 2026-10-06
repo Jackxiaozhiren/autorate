@@ -180,14 +180,28 @@ def scale_attribution(records: Sequence) -> dict:
     # so one-row-per-case could be measured instead of predicted. It was.
     # The pair the old comment forecast -- 0.170 to 0.160 and 0.157315 to 0.147315 -- is not what
     # collapsing to cases does; it is what collapsing to each case's FIRST ROW IN ARCHIVE ORDER does, the
-    # order a reader gets by grouping the file without sorting, and it appears only because that tie-break
-    # discards the row carrying each published maximum -- each case's last ROW, which is NOT its last
-    # REPEAT: 52 of the 64 jev cases are not in ascending `repeat` order in the file, and keeping each
-    # case's lowest repeat instead gives 0.160 and 0.150882, not this pair. Keep each case's worst row --
-    # the only collapse that preserves a gate defined as a maximum over rows -- and both maxima stay
-    # exactly where they are. Every figure in this sentence, the 52 and the 0.150882 included, is produced
-    # by the test named below; which collapse Task 4 publishes is still its own decision, and this module
-    # no longer forecasts it.
+    # order a reader gets by grouping the file without sorting, and it appears because that tie-break
+    # discards the row carrying each published maximum. A ROW POSITION is not a REPEAT ORDINAL, but the
+    # two cases do not part ways the same way, so no universal belongs here: the answer case's first row
+    # IS its lowest repeat, and the entropy case's last row IS its highest. Stated per case instead, and
+    # every claim line below is parsed out of this comment and re-checked against the archive rows by the
+    # test named at the end -- a word here that the rows contradict reddens that test, so the sentence is
+    # derived prose and not a transcription:
+    #   answer-scale case: repeats [0, 2, 1]
+    #     published maximum 0.170 at row index 2, repeat 1, middle of its repeats
+    #     forecast figure 0.160 at row index 0, repeat 0, lowest of its repeats
+    #     lowest-repeat row 0.160 at row index 0, repeat 0, lowest of its repeats
+    #   entropy-scale case: repeats [1, 0, 2]
+    #     published maximum 0.157315 at row index 2, repeat 2, highest of its repeats
+    #     forecast figure 0.147315 at row index 0, repeat 1, middle of its repeats
+    #     lowest-repeat row 0.150882 at row index 1, repeat 0, lowest of its repeats
+    # That is also why the two tie-breaks separate on the entropy scale alone: the answer case's first row
+    # and its lowest-repeat row are the SAME row, so 0.160 survives both readings while 0.147315 and
+    # 0.150882 do not. 52 of the 64 jev cases are not in ascending `repeat` order in the file, which is the
+    # only reason the archive-order pair exists. Keep each case's worst row -- the only collapse that
+    # preserves a gate defined as a maximum over rows -- and both maxima stay exactly where they are,
+    # because each published maximum sits on its own case's worst row on that scale (row index 2 above).
+    # Which collapse Task 4 publishes is still its own decision, and this module no longer forecasts it.
     # tests/test_scales.py::test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima
     return {"n": len(measured), "n_rows": len(batch), "max_dev_answer": da,
             "max_dev_entropy": de, "verdict": verdict, "tolerance": TOLERANCE, **counts}

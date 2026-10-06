@@ -1,6 +1,7 @@
 """Which confidence scale is a published number? Decided by distance, per backend."""
 import json
 import math
+import re
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from autorate.records import Record
 from autorate.scales import scale_attribution
 
 COMMITTED = Path(__file__).resolve().parents[1] / "data" / "records_feishu.jsonl"
+SCALES_SOURCE = Path(__file__).resolve().parents[1] / "src" / "autorate" / "scales.py"
 
 
 def _choice(backend, probs, reported):
@@ -400,6 +402,61 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
             for g in jev_groups.values()} == {1, 2, 3}, jev_groups
 
 
+_NOTE_FIRST_LINE = "The pair the old comment forecast"
+_NOTE_LAST_LINE = "test_collapsing_jev_to_one_row_per_case"
+_CASE_CLAIM = re.compile(r"(answer|entropy)-scale case: repeats \[([\d, ]+)\]")
+_ROW_CLAIM = re.compile(
+    r"(published maximum|forecast figure|lowest-repeat row) (0\.\d+) at row index (\d+), "
+    r"repeat (\d+), (lowest|middle|highest) of its repeats")
+_NOTE_ROLES = ("published maximum", "forecast figure", "lowest-repeat row")
+
+
+def _scale_note_lines():
+    """The collapse note inside `src/autorate/scales.py`, as text.
+
+    That note is prose about the committed archive, and before this helper nothing in the suite opened
+    `scales.py` as text -- so the note had no failure path whatsoever: a sentence in it that the rows
+    contradict would ship green forever, which is the defect class this lane keeps being dispatched for.
+    The note is delimited by its own first line and by the pointer to the test that checks it, so a
+    deleted, moved or truncated note reddens here instead of quietly stopping being read.
+    """
+    lines = SCALES_SOURCE.read_text().splitlines()
+    starts = [i for i, line in enumerate(lines) if _NOTE_FIRST_LINE in line]
+    assert len(starts) == 1, starts
+    body = lines[starts[0]:]
+    ends = [i for i, line in enumerate(body) if _NOTE_LAST_LINE in line]
+    assert len(ends) == 1, ends
+    return body[:ends[0] + 1]
+
+
+def _scale_note_claims():
+    """Parse the note's per-case claim lines into {scale: {"repeats": [...], "claims": [...]}}.
+
+    The grammar is the note's own: one `repeats [...]` line per case, then exactly one line per role
+    (`published maximum`, `forecast figure`, `lowest-repeat row`) carrying the figure, the row index, the
+    repeat on that row, and the ordinal word claimed for it. Shape is asserted here, not assumed, so a
+    claim that goes missing or is reworded out of the grammar is a failure rather than a skipped check.
+    """
+    parsed = {}
+    current = None
+    for line in _scale_note_lines():
+        case = _CASE_CLAIM.search(line)
+        if case:
+            current = case.group(1)
+            parsed[current] = {"repeats": [int(x) for x in case.group(2).split(",")], "claims": []}
+            continue
+        row = _ROW_CLAIM.search(line)
+        if row:
+            assert current is not None, "a claim line outside any case block: %r" % line
+            role, figure, index, repeat, ordinal = row.groups()
+            parsed[current]["claims"].append((role, figure, int(index), int(repeat), ordinal))
+    assert sorted(parsed) == ["answer", "entropy"], parsed
+    for scale, block in parsed.items():
+        assert len(block["claims"]) == 3, (scale, block["claims"])
+        assert {c[0] for c in block["claims"]} == set(_NOTE_ROLES), (scale, block["claims"])
+    return parsed
+
+
 def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima():
     """What the follow-up note predicted, measured: its pair is a tie-break, not a consequence.
 
@@ -410,8 +467,11 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
     appearance depends entirely on which row a collapsed case keeps:
 
     * a collapse that keeps each case's WORST row -- the only one that preserves what the gate is,
-      since the gate takes a maximum over rows -- leaves both maxima exactly where they are, because
-      the row carrying each published maximum is already its own case's worst on that scale;
+      since the gate takes a maximum over rows -- leaves both maxima exactly where they are. That first
+      bullet is a PROOF and not a measurement: a maximum over per-case maxima is the maximum over all
+      rows for any archive whatsoever, so no file could redden it, and what is falsifiable instead is
+      where inside the case the published maximum sits -- it is its own case's worst row on that scale,
+      at a row index the archive-order tie-break throws away;
     * a collapse that keeps each case's FIRST ROW IN ARCHIVE ORDER -- what grouping the file without
       sorting gives a reader -- produces 0.160 and 0.147315, precisely by discarding those two cases'
       worst row.
@@ -422,12 +482,20 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
     archive-order figure; both readings are asserted below from the same rows, so the two cannot be
     confused again. The predicted pair is therefore reachable -- but only through an aggregation this
     gate must not use, and only under a tie-break whose name is not the one the comment gave it.
+
+    The two tie-breaks are distinguishable on the entropy scale ALONE. On the answer scale the case
+    carrying the maximum keeps the same row under both readings -- its first row is also its lowest
+    repeat -- so both give 0.160; only the entropy case's rows separate, 0.147315 from 0.150882. The
+    last block below checks `scales.py`'s own note as text: every figure it prints, every row index,
+    repeat and ordinal word it claims is re-derived from the rows computed here, so the comment is
+    derived prose with a failure path rather than a sentence nobody reads.
     """
     from autorate.records import entropy_confidence, max_confidence
 
+    archived = _archive_slice("jev", "choice")
     rows = []
     repeats = {}
-    for r in _archive_slice("jev", "choice"):
+    for r in archived:
         reported = (r.scores or {}).get("reported_confidence")
         if reported is None or len(r.probs) < 2:
             continue
@@ -435,6 +503,12 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
                      abs(reported - entropy_confidence(r.probs))))
         repeats.setdefault(r.case_id, []).append(r.repeat)
     assert len(rows) == 191, len(rows)
+    # The denominator every figure in this file and in the module comment is quoted over: the filter
+    # above drops NOTHING from the jev choice slice, so "52 of the 64 jev cases" and the collapse
+    # figures describe the same 191 rows / 64 cases the archive test counts. If a future case lost its
+    # `reported_confidence`, the population these numbers belong to would change and this line reddens
+    # first -- a filtered denominator silently narrower than the sentence's is the defect, not this assert.
+    assert len(archived) == len(rows) == 191, (len(archived), len(rows))
     published_answer = max(r[1] for r in rows)
     published_entropy = max(r[2] for r in rows)
     # The same two figures the archive test above reads out of `scale_attribution`, recomputed from
@@ -448,33 +522,49 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
         by_case.setdefault(case_id, []).append((dev_answer, dev_entropy))
     assert len(by_case) == 64, len(by_case)
 
+    # The worst-row collapse, kept only as the tie from the two figures above to the collapse itself. It
+    # cannot go red for any archive: `max` over per-case `max`es IS `max` over rows. Named here so a
+    # reader does not mistake it for the measurement the bullet claims.
     worst = [(max(p[0] for p in v), max(p[1] for p in v)) for v in by_case.values()]
     assert max(w[0] for w in worst) == pytest.approx(published_answer, abs=1e-12)
     assert max(w[1] for w in worst) == pytest.approx(published_entropy, abs=1e-12)
 
     first = [v[0] for v in by_case.values()]
-    assert max(f[0] for f in first) == pytest.approx(0.160, abs=5e-7), max(f[0] for f in first)
-    assert max(f[1] for f in first) == pytest.approx(0.147315, abs=5e-7), max(f[1] for f in first)
+    first_max_answer = max(f[0] for f in first)
+    first_max_entropy = max(f[1] for f in first)
+    assert first_max_answer == pytest.approx(0.160, abs=5e-7), first_max_answer
+    assert first_max_entropy == pytest.approx(0.147315, abs=5e-7), first_max_entropy
 
-    # The pair above is what keeping each case's first ROW IN ARCHIVE ORDER produces, which is NOT the
-    # same operation as keeping its first REPEAT. Measured here rather than argued: 52 of the 64 jev
-    # cases are not in ascending `repeat` order in the file, and reading the tie-break by ordinal gives
-    # a different entropy maximum -- 0.150882, the middle repeat of the same case whose first row is
-    # repeat 1. The comment in `scales.py` named the second operation while printing the first one's
-    # figure; this line is the measurement that separated them, and it is why the comment now says
-    # "first row in archive order".
+    # Reading the tie-break by ordinal rather than by file position, measured rather than argued: 52 of
+    # the 64 jev cases are not in ascending `repeat` order in the file, and the ordinal reading gives a
+    # different entropy maximum -- 0.150882, which sits on the entropy case's middle ROW, the row that
+    # carries its LOWEST repeat (0), while the case's first row carries repeat 1. The comment in
+    # `scales.py` used to call that figure "the middle repeat", which is true of the row's position and
+    # false of its ordinal; this line is the measurement that separated the two, and it is why the
+    # comment now says "first row in archive order".
     not_ascending = [c for c in by_case if repeats[c] != sorted(repeats[c])]
     assert len(not_ascending) == 52, (len(not_ascending), len(by_case))
     lowest_repeat = [by_case[c][repeats[c].index(min(repeats[c]))] for c in by_case]
-    assert max(x[0] for x in lowest_repeat) == pytest.approx(0.160, abs=5e-7)
-    assert max(x[1] for x in lowest_repeat) == pytest.approx(0.150882, abs=5e-7)
+    low_max_answer = max(x[0] for x in lowest_repeat)
+    low_max_entropy = max(x[1] for x in lowest_repeat)
+    assert low_max_answer == pytest.approx(0.160, abs=5e-7)
+    assert low_max_entropy == pytest.approx(0.150882, abs=5e-7)
+    # The two tie-breaks on one line each way: identical on the answer scale (the same row survives),
+    # 3.6e-3 apart on the entropy scale. `abs=1e-12` is 5e7 times tighter than the 5e-7 the published
+    # figures are quoted at, so the equality is a real assertion, not the printed number re-labelled.
+    assert first_max_answer == pytest.approx(low_max_answer, abs=1e-12), (first_max_answer,
+                                                                          low_max_answer)
+    assert abs(first_max_entropy - low_max_entropy) > 1e-3, (first_max_entropy, low_max_entropy)
 
-    # And the structural fact that lets both readings coexist: inside each of the two cases the published
-    # maximum sits in the LAST ROW and the forecast figure in the FIRST ROW -- which are not the last and
-    # first REPEATS, because these rows are not filed in `repeat` order. Pinned case by case so the
-    # ordinal reading cannot quietly come back: the answer case's rows are repeats [0, 2, 1], so its
-    # maximum is the MIDDLE repeat, and the entropy case's first row is repeat 1 while its lowest repeat
-    # carries 0.150882.
+    # And the structural fact that lets both readings coexist, stated per case because no universal
+    # holds. Inside each of the two cases the published maximum sits in the LAST ROW and the forecast
+    # figure in the FIRST ROW, and the archive files these rows out of `repeat` order -- but the two
+    # cases part ways differently: the answer case's last row is its MIDDLE repeat (repeats [0, 2, 1],
+    # so the last row carries repeat 1) while the entropy case's last row IS its HIGHEST repeat
+    # (repeats [1, 0, 2]); symmetrically the answer case's first row IS its lowest repeat, while the
+    # entropy case's first row carries repeat 1 and its lowest repeat sits in the middle row. That is
+    # exactly why the two tie-breaks separate on the entropy scale alone. Pinned case by case so the
+    # universal reading cannot quietly come back:
     answer_case = max(by_case, key=lambda c: max(p[0] for p in by_case[c]))
     entropy_case = max(by_case, key=lambda c: max(p[1] for p in by_case[c]))
     assert repeats[answer_case] == [0, 2, 1], repeats[answer_case]
@@ -486,6 +576,52 @@ def test_collapsing_jev_to_one_row_per_case_does_not_move_the_published_maxima()
     assert by_case[entropy_case][repeats[entropy_case].index(0)][1] == pytest.approx(0.150882, abs=5e-7)
     assert sorted(round(p[0], 6) for p in by_case[answer_case]) == [0.16, 0.16, 0.17]
     assert sorted(round(p[1], 6) for p in by_case[entropy_case]) == [0.147315, 0.150882, 0.157315]
+    # What the falsifiable half of the first bullet is: each published maximum sits on its own case's
+    # worst row on its own scale, at an index the archive-order tie-break discards -- which is a fact
+    # about this archive, not an identity, and the only version of the bullet that can go red.
+    max_row = {
+        "answer": max(range(len(by_case[answer_case])), key=lambda i: by_case[answer_case][i][0]),
+        "entropy": max(range(len(by_case[entropy_case])), key=lambda i: by_case[entropy_case][i][1]),
+    }
+    assert max_row == {"answer": 2, "entropy": 2}, max_row
+    assert all(index != 0 for index in max_row.values()), max_row
+
+    # `scales.py`'s note, read as text and checked against everything computed above.
+    note = _scale_note_claims()
+    note_text = "\n".join(_scale_note_lines())
+    for scale, case_id, published, forecast, kept in (
+            ("answer", answer_case, published_answer, first_max_answer, low_max_answer),
+            ("entropy", entropy_case, published_entropy, first_max_entropy, low_max_entropy)):
+        block = note[scale]
+        assert block["repeats"] == repeats[case_id], (scale, block["repeats"], repeats[case_id])
+        ranks = sorted(set(repeats[case_id]))
+        for role, figure, index, repeat, ordinal in block["claims"]:
+            assert 0 <= index < len(repeats[case_id]), (scale, role, index)
+            assert repeats[case_id][index] == repeat, (scale, role, index, repeat)
+            rank = ranks.index(repeat)
+            expected = ("lowest" if rank == 0 else
+                        "highest" if rank == len(ranks) - 1 else "middle")
+            assert ordinal == expected, (scale, role, repeat, ordinal, expected)
+            if role == "published maximum":
+                assert index == max_row[scale], (scale, index, max_row[scale])
+                assert abs(float(figure) - published) <= 5e-7, (figure, published)
+            elif role == "forecast figure":
+                assert index == 0, (scale, index)
+                assert abs(float(figure) - forecast) <= 5e-7, (figure, forecast)
+            else:
+                assert repeat == min(repeats[case_id]), (scale, repeat)
+                assert abs(float(figure) - kept) <= 5e-7, (figure, kept)
+        # The same-row claim the note makes about the answer scale, and the different-row claim it makes
+        # about the entropy scale -- both read out of the parsed lines rather than trusted.
+        by_role = {c[0]: c for c in block["claims"]}
+        assert (by_role["forecast figure"][2] == by_role["lowest-repeat row"][2]) == (scale == "answer"), \
+            (scale, by_role)
+    quoted = set(re.findall(r"\b0\.\d{3,6}\b", note_text))
+    assert quoted == {"0.170", "0.160", "0.157315", "0.147315", "0.150882"}, sorted(quoted)
+    counts = re.search(r"(\d+) of the (\d+) jev cases", note_text)
+    assert counts is not None, note_text
+    assert (int(counts.group(1)), int(counts.group(2))) == (len(not_ascending), len(by_case)), \
+        counts.groups()
 
 
 def test_a_record_whose_two_scales_are_the_same_number_is_attributed_to_neither():
