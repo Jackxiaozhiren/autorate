@@ -156,29 +156,35 @@ The construction: for a candidate reported level `a`, the loss `1{Y > a}` is mon
 ```python
 """G3: an ordinal one-sided guarantee, and the control that multiclass CP cannot state it."""
 import pytest
+from _records import build_ordinal
 
 from autorate.certify_choice import certify_choice
 from autorate.severity import certify_severity
 
 
-@pytest.fixture
-def ordinal_records():
-    """Factory for synthetic ordinal decisions, in the shared helper module `tests/_records.py`.
+def ordinal_records(**kw):
+    """The synthetic ordinal decision generator, imported by name from `tests/_records.py`.
 
-    Corrected 2026-10-05 (ruling R-69). This docstring used to say "Plan B1 Task 5 ruled that shared
-    generators live in `tests/conftest.py`" -- a future ruling cited as a present fact: there is no
-    `conftest.py` in this repository, and B1 Task 5 has not run. The convention that actually holds is
-    a non-test helper module imported by name (`tests/_thresholds.py` is the precedent, and the
-    duplicate-owner fingerprints already depend on being able to tell a helper from a test), so a
-    shared record factory goes in `tests/_records.py` and is imported the same way. A fixture-returning
-    factory would be a second way to build records, and the module-scope alias B1's draft used to work
-    around it (`_records = records_factory`) mutates a test file that other rounds gate on being
-    byte-unchanged.
+    Corrected 2026-10-05 (ruling R-69) and again 2026-10-06, because the first correction only
+    changed the prose: the block below still read `@pytest.fixture def ordinal_records(): return
+    _build_ordinal`, which (a) is exactly the fixture-returning factory the ruling forbids, and (b)
+    named `_build_ordinal` with no import anywhere in the file -- an executor would have met a
+    NameError and then invented a source for it, which is how a fabricated reference turns into a
+    design decision nobody reviewed. The convention that actually holds is a non-test helper module
+    imported by name, proved loadable today by `tests/_thresholds.py` at `tests/test_records.py:11`
+    and `tests/test_scales.py:8` with no `__init__.py` in `tests/`.
+
+    **This task creates `tests/_records.py`** (or extends it, if Plan B3 ran first -- its Task 1 adds
+    `choice_record` to the same module) and puts `build_ordinal(n=..., seed=..., shift=...,
+    k=..., error_rate=...)` there, returning `list[Record]` whose `probs` are ordinal ballots drawn
+    from the family Task 1 built. Call it through this thin wrapper so the four tests below keep
+    reading `ordinal_records(...)`; do not wrap the factory in a fixture, and do not alias a fixture's
+    return value at module scope.
     """
-    return _build_ordinal          # defined in tests/_records.py, returns list[Record]
+    return build_ordinal(**kw)
 
 
-def test_the_under_call_bound_holds_on_the_evaluation_half(ordinal_records):
+def test_the_under_call_bound_holds_on_the_evaluation_half():
     recs = ordinal_records(n=1200, seed=5, shift=0.9)     # model under-reports severity
     cert = certify_severity(recs, alpha=0.05, delta=0.05, direction="under", seed=3)
     assert cert.feasible is True, cert.summary()
@@ -188,7 +194,7 @@ def test_the_under_call_bound_holds_on_the_evaluation_half(ordinal_records):
         "fixed once in tails.binom_cdf")
 
 
-def test_a_monotone_loss_is_a_precondition_and_is_enforced_not_assumed(ordinal_records):
+def test_a_monotone_loss_is_a_precondition_and_is_enforced_not_assumed():
     recs = ordinal_records(n=800, seed=6)
     risks = [sum(1 for r in recs if r.gold_index > a) / len(recs) for a in range(5)]
     assert risks == sorted(risks, reverse=True), risks
@@ -196,7 +202,7 @@ def test_a_monotone_loss_is_a_precondition_and_is_enforced_not_assumed(ordinal_r
         certify_severity(recs, alpha=0.05, direction="both_sides_sum", seed=3)
 
 
-def test_multiclass_cp_bounds_membership_not_the_side_of_the_miss(ordinal_records):
+def test_multiclass_cp_bounds_membership_not_the_side_of_the_miss():
     """The control. If APS can be made to state `P(Y > a_hat) <= alpha`, G3 has failed."""
     recs = ordinal_records(n=1200, seed=5, shift=0.9)
     aps = certify_choice(recs, alpha=0.05, beta=0.05, method="aps", seed=3)
