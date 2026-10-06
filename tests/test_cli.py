@@ -81,16 +81,20 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md,
     # then every MASSIVE figure that `data/massive_provenance.json` owns. The pin rows are
     # counted from the same producer's output, and the ids it covers are pinned separately so
-    # a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change.
+    # a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change. The key
+    # list is read from the gate itself (R-83), so a column the arm stops comparing has to widen
+    # this expectation before it can shrink the gate.
+    from autorate.cli import PIN_DERIVED_KEYS
     from autorate.inventory import corpus_options, massive_pin
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
                    if o["id"].startswith("massive")]
     assert sorted(o["id"] for o in pin_options) == ["massive_intent_all_languages",
                                                     "massive_intent_per_language"], pin_options
-    pin_rows = sum(1 for o in pin_options
-                   for k in ("n_rows", "n_independent", "n_shards", "basis") if k in o)
-    assert pin_rows == 7, pin_rows       # rows/independent/shards/basis for pooled, 3 for per-shard
+    assert "bound_width_at_0.05" in PIN_DERIVED_KEYS, "the bound column has no producer again"
+    assert "feasible_at_0.10" in PIN_DERIVED_KEYS and "feasible_at_0.25" in PIN_DERIVED_KEYS
+    pin_rows = sum(1 for o in pin_options for k in PIN_DERIVED_KEYS if k in o)
+    assert pin_rows == 13, pin_rows      # 7 for the pooled row, 6 for per-language (no `n_shards`)
     expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 2 + pin_rows
     assert total == expected, (total, expected, p.stdout)
 
@@ -656,3 +660,69 @@ def test_the_invariant_clause_is_not_reached_by_an_ordinary_usage_error(capsys):
     assert main(["certify", "/nonexistent/path/records.jsonl"]) == EXIT_USAGE
     err = capsys.readouterr().err
     assert not err.startswith("INVARIANT"), err
+
+
+def test_verify_reds_when_a_transcribed_bound_column_is_wrong(monkeypatch, tmp_path, capsys):
+    """R-79 (re-review MA-5): the pin arm re-derived counts but not the columns beside them.
+
+    `data/inventory.md` and `docs/RESULTS.md` publish `bound width at alpha=0.05` and
+    `feasible at 0.10` for every corpus option, and those columns are computed by
+    `tails.bound_width` from the row count -- so a copy that carried 0.0100 for n=2,974
+    (the true width is 0.0498) passed `verify` at 41/41, exit 0. That is the goal's own
+    criterion with a hole in it: G5 says every published number re-derives.
+
+    The artefacts are re-rendered from the tampered snapshot through the repository's own
+    writers, so the two byte-comparisons stay satisfied and only a recomputation can catch it.
+    The control at the end is what proves that: the same tree, restored to the published
+    numbers, must go green -- otherwise this is a test that the markdown disagrees with itself.
+    """
+    import shutil
+
+    from autorate.cli import EXIT_CERTIFIED as EXIT_OK, EXIT_DRIFT, main
+    from autorate.inventory import write_inventory
+    from autorate.report import (build_report, certify_all, load_records, write_report)
+
+    work = tmp_path / "checkout"
+    (work / "data").mkdir(parents=True)
+    shutil.copytree(REPO / "docs", work / "docs")
+    for name in ("records_feishu.jsonl", "cert_laya.json", "cert_jev.json",
+                 "massive_provenance.json", "inventory.md.json"):
+        shutil.copy(REPO / "data" / name, work / "data" / name)
+
+    published = json.loads((REPO / "data" / "inventory.md.json").read_text())
+
+    def render(inv):
+        """Publish `inv` the way the repository does, so no byte-comparison can object."""
+        (work / "data" / "inventory.md.json").write_text(json.dumps(inv))
+        write_inventory(inv, work / "data" / "inventory.md")
+        records = load_records(work / "data" / "records_feishu.jsonl")
+        write_report(build_report(inv, certify_all(records),
+                                  {b: len(rs) for b, rs in records.items()}),
+                     work / "docs" / "RESULTS.md")
+
+    def verify():
+        monkeypatch.chdir(work)
+        monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus"))
+        rc = main(["verify"])
+        captured = capsys.readouterr()
+        monkeypatch.undo()
+        return rc, captured.out, captured.err
+
+    tampered = json.loads(json.dumps(published))
+    wrong = 0
+    for option in tampered["corpus_options"]:
+        if option["id"].startswith("massive"):
+            option["bound_width_at_0.05"] = 0.01        # true: 0.0498
+            option["feasible_at_0.10"] = False          # true: yes -- the row's whole point
+            wrong += 1
+    assert wrong == 2, wrong
+    render(tampered)
+    rc, out, err = verify()
+    assert rc == EXIT_DRIFT, (rc, out, err)
+    assert "bound_width_at_0.05" in err, err
+    assert "feasible_at_0.10" in err, err
+    assert "byte-identical" not in err, err             # only a recomputation may object
+
+    render(published)                                   # the control: same machinery, true numbers
+    rc, out, err = verify()
+    assert rc == EXIT_OK, (rc, out, err)

@@ -39,6 +39,18 @@ FROM_SNAPSHOT = "committed %s" % INVENTORY_JSON
 SNAPSHOT_MACHINE_KEYS = ("source", "audit_interpreter", "upstream_audit_stdout_tail",
                          "upstream_audit_stderr_tail")
 
+# Every column of a MASSIVE row that `corpus_options` computes FROM the pin, named once so the
+# gate and the test that counts the gate read the same list. The first four are the pin's own
+# fields; the last three are derived from `n_independent` by `tails.bound_width`/`tails.n_feasible`
+# and are the figures the table exists to publish. They were not compared until R-83: measured at
+# `5ec8639`, a checkout publishing `bound_width_at_0.05 = 0.0100` (true `0.0498`) and
+# `feasible_at_0.10 = False` (true `True`) on both MASSIVE rows passed `verify` with
+# "re-derived 41 /41 values" and rc 0, because the two byte-comparisons re-render the snapshot from
+# the snapshot itself and the pin arm stopped at the inputs. In the corpus-absent lane the bound
+# column therefore had no producer at all -- and that is the lane CI runs.
+PIN_DERIVED_KEYS = ("n_rows", "n_independent", "n_shards", "basis",
+                    "bound_width_at_0.05", "feasible_at_0.10", "feasible_at_0.25")
+
 
 def expect_snapshot_is_current(expect, inv: dict) -> None:
     """Police the committed snapshot from the only environment that can see its truth.
@@ -307,6 +319,9 @@ def cmd_verify(args) -> int:
     # gate is where they can be re-derived in BOTH lanes -- which is the point of the sentence in
     # `docs/ERRATA.md` that claims `verify` re-derives the basis. Read from the pin, never from the
     # snapshot, so a pin edited on disk cannot agree with a snapshot that was written before it.
+    # R-83: and every column `corpus_options` computes from the pin is in `PIN_DERIVED_KEYS`, bound
+    # width included. The recomputation is not reimplemented here -- `corpus_options(None, pin=pin)`
+    # is the one owner of the interval arithmetic, so the gate compares its output with the table.
     from .inventory import corpus_options as _corpus_options
     from .inventory import massive_pin as _massive_pin
 
@@ -316,7 +331,7 @@ def cmd_verify(args) -> int:
     for opt_id in sorted(recomputed):
         if not opt_id.startswith("massive"):
             continue          # feishu's counts are corpus-derived; the absent arm cannot see them
-        for key in ("n_rows", "n_independent", "n_shards", "basis"):
+        for key in PIN_DERIVED_KEYS:
             if key not in recomputed[opt_id]:
                 continue
             expect("pin option %s.%s" % (opt_id, key), recomputed[opt_id].get(key),
