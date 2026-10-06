@@ -895,6 +895,23 @@ def test_absent_telemetry_is_a_gap_in_the_log_and_not_a_refusal(tmp_path):
     assert rec["meta"]["probability_precision"] == 6
 
 
+def test_the_run_summary_reports_the_device_the_stages_actually_ran_on(tmp_path):
+    """`device` is the only field in the run summary that says *where* these numbers came from.
+
+    `stage_device` takes a payload and digs out `payload["timing"]["device"]`, and the summary line
+    handed it the timing dict instead of the payload -- so it returned None on every run, including
+    the real pilot where both stages reported mps. A build log that cannot say whether the certified
+    figures came off mps, cpu or cuda is not an audit trail, and the mistake is invisible unless the
+    field is asserted: a None is a perfectly valid JSON value.
+    """
+    p = _ok_driver(tmp_path, extra=["--summary", str(tmp_path / "summary.json")])
+    assert p.returncode == 0, (p.returncode, p.stderr[-400:])
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["device"] == "cpu", summary["device"]
+    assert summary["probe"]["device"] == "cpu", summary["probe"]
+    assert {v["device"] for v in summary["languages"].values()} == {"cpu"}, summary["languages"]
+
+
 def test_a_payload_missing_a_key_the_build_indexes_is_refused_not_a_keyerror(tmp_path):
     """rc 1 must stay unreachable, and an absent telemetry key is a reachable payload shape.
 

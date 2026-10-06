@@ -1063,6 +1063,7 @@ def build(args) -> int:
             summary["probe"] = {"report": probe_report,
                                 "upstream_report": probe_payload["upstream_report"],
                                 "timing": probe_payload["timing"],
+                                "device": stage_device(probe_payload),
                                 "u_seed": probe_u_seed,
                                 "wall_s": probe_payload["_stage_wall_s"]}
 
@@ -1092,6 +1093,7 @@ def build(args) -> int:
                     written[lang] = {"report": report,
                                      "upstream_report": payload["upstream_report"],
                                      "timing": payload["timing"], "u_seed": u_seed,
+                                     "device": stage_device(payload),
                                      "records": len(records),
                                      "wall_s": payload["_stage_wall_s"],
                                      "stderr_tail": payload.get("_stage_stderr_tail", "")}
@@ -1108,7 +1110,10 @@ def build(args) -> int:
     summary["languages"] = written
     summary["records_written"] = sum(v["records"] for v in written.values())
     summary["wall_s"] = round(time.time() - started, 3)
-    summary["device"] = stage_device(written[languages[0]]["timing"]) if written else None
+    # `stage_device` digs the device out of a *payload*; handed the timing sub-dict it returned None
+    # for every run, so the summary of a real build said nothing about which device produced its
+    # numbers -- measured on the pilot, where every stage reported mps and the field read None.
+    summary["device"] = written[languages[0]]["device"] if written else None
     print("wrote %d records for %d languages to %s in %.1f s"
           % (summary["records_written"], len(written), out, summary["wall_s"]))
     if args.summary:
