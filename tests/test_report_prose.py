@@ -560,12 +560,13 @@ def test_the_translation_claim_needs_two_figures_that_can_disagree():
     on both, which is what makes the arms discriminate the conjuncts this round added.
 
     MA-4 is answered as (b), not (a): inside the product path those two arms are the loader's invariant
-    restated -- `massive_pin` refuses (rc 4) a pin where `n_files x distinct_ids != rows_total`, and the
-    per-language option's `n_rows` and `n_independent` are the same single value -- so they can only
-    fire on a dict that skipped the loader, and the sentence's real divergence valve is the two
-    "no count was recorded" arms, as `_denominator_note`'s docstring now states. The reviewer's (a)
-    candidate, comparing `per_lang["n_rows"]` to `pooled["n_independent"]` instead, is the same pair of
-    figures this conjunct already compares, so it buys no reachability.
+    restated -- `massive_pin` refuses (rc 4) a pin whose `n_files` is not the length of its own list and
+    whose `n_files x distinct_ids` is not its `rows_total` -- so they can only fire on a dict that
+    skipped the loader, and the sentence's real divergence valve is the two "no count was recorded" arms,
+    as `_denominator_note`'s docstring now states. The reviewer's (a) candidate, comparing
+    `per_lang["n_rows"]` to `pooled["n_independent"]` instead, compares the same pair of figures the
+    existing conjunct already compares -- `corpus_options` assigns both per-language fields from one
+    value -- so it buys no reachability.
     """
     from autorate.report import _denominator_note
 
