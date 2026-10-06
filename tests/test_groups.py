@@ -145,11 +145,13 @@ def test_an_empty_batch_names_no_groups_instead_of_one_empty_group():
 
 
 def test_a_slice_whose_declared_value_is_none_is_a_group_of_its_own_not_a_missing_field():
-    """"Absent" and "null" are two facts, and reading them as one hides a missing field.
+    """A slice value of None is a group; a record that states no value is not a group member.
 
-    Collapsing the two -- `slices.get(key)` and treating None as the gap -- makes this record raise
-    as unplaceable instead of forming the group it names, and a producer that states `family: null`
-    would then be reported as one that states nothing.
+    Two collapses are possible and each has its own red: dropping the private marker so a gap reads
+    as None makes a case that states nothing land in the group named None (the unplaceable-case
+    tests above), and reading None itself as the gap -- which is what this test catches -- makes
+    THIS record raise instead of forming the group it names, reporting a producer that states
+    `family: null` as one that states nothing.
     """
     recs = [choice_record(id="a-0", case_id="a", slices={"family": None}),
             choice_record(id="b-0", case_id="b", slices={"family": "f0"})]

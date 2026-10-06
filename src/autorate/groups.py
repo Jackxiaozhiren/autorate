@@ -29,7 +29,8 @@ from .records import is_hashable_key
 # "This record states no value for the declared key" must not be read as "the value it states is
 # None": None is a value a producer can genuinely put in a slice dict, and collapsing the two makes
 # a missing field indistinguishable from a null one -- the same mistake as a blank label deciding
-# a quantile.
+# a quantile. A fresh `object()` rather than a sentinel STRING, because a string is a value the
+# producer's own data can contain, and a group named like the marker would then read as a gap.
 _ABSENT = object()
 
 
@@ -96,8 +97,8 @@ def group_key(record, groups: Sequence[str]) -> tuple:
     -- §8.1's groups are named `km`, not `('km',)` -- and the collapse is pinned by
     tests/test_groups.py rather than left to the reader.
 
-    `KeyError` when this record states none of the key: the domain of a Mondrian group is the
-    producer's declared slices and nothing else.
+    `KeyError` when this record states no value for one of the keys: the domain of a Mondrian group
+    is the producer's declared slices and nothing else.
     """
     keys = _declared_keys(groups)
     values = []
