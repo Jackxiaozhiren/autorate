@@ -144,6 +144,21 @@ def test_an_empty_batch_names_no_groups_instead_of_one_empty_group():
         group_counts((), ("family",))
 
 
+def test_a_slice_whose_declared_value_is_none_is_a_group_of_its_own_not_a_missing_field():
+    """"Absent" and "null" are two facts, and reading them as one hides a missing field.
+
+    Collapsing the two -- `slices.get(key)` and treating None as the gap -- makes this record raise
+    as unplaceable instead of forming the group it names, and a producer that states `family: null`
+    would then be reported as one that states nothing.
+    """
+    recs = [choice_record(id="a-0", case_id="a", slices={"family": None}),
+            choice_record(id="b-0", case_id="b", slices={"family": "f0"})]
+    assert list(by_group(recs, ("family",))) == [None, "f0"]
+    assert group_counts(recs, ("family",)) == {None: {"cases": 1, "records": 1},
+                                               "f0": {"cases": 1, "records": 1}}
+    assert group_key(recs[0], ("family",)) == (None,)
+
+
 def test_the_group_declaration_must_be_a_sequence_of_names():
     """`--groups family,option_count` arrives as one string on its way to being a tuple; the
     failure mode is iterating it character by character and then reporting a KeyError for `f`."""
