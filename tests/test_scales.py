@@ -1,4 +1,5 @@
 """Which confidence scale is a published number? Decided by distance, per backend."""
+import collections
 import json
 import math
 import re
@@ -342,10 +343,15 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     against the archive rather than asserted about synthetic rows: 74 rows match both scales
     (one-hot rows publishing 1.0), 23 match max(p) alone, none match entropy alone, and 94
     match neither. The `n` of 191 rows is 64 cases whose repeat structure is produced below,
-    for both backends, because the module's `n`-versus-cases comment quotes it: jev's cases carry
-    between one and three DISTINCT probability vectors (so 191 rows are not 191 observations),
-    while laya's 192 rows are 64 cases x 3 repeats that publish the same vector and the same
-    number each time -- identical as measurements, not identical as rows.
+    for both backends, because the module's `n`-versus-cases comment and README's
+    exchangeability bullet both quote it: jev's cases carry between one and three DISTINCT
+    probability vectors (so 191 rows are not 191 observations), while laya's 192 rows are 64
+    cases x 3 repeats that publish the same vector, the same number and the same gold label
+    each time -- identical as measurements, not identical as rows. The three sentences README
+    writes on top of that ("the same 64 cases", "one case carries two rows, not three", "the
+    repeat counter and its own elapsed time differ") are owned by the distribution, the set
+    equality and the varying-key counts below, because a set of sizes and two matching lengths
+    can all hold while those three are false.
     """
     rows = _archive_rows()
     jev_cases = {r["case_id"] for r in rows if r["backend"] == "jev" and r["qtype"] == "choice"}
@@ -368,13 +374,18 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     assert laya["n"] == 192 and len(laya_cases) == 64, (laya["n"], sorted(laya_cases))
     assert laya["entropy_only"] == 192, laya
     assert (laya["both"], laya["answer_only"], laya["neither"]) == (0, 0, 0), laya
+    # "the SAME 64 cases" -- the README's word, and the claim that makes the case denominator comparable
+    # across the two backends at all. Two lengths equal to 64 do not make two sets equal (five cases
+    # missing on one side and five extra on the other keeps every count in this file true), so the sets
+    # themselves are asserted, not their sizes. Measured: identical, nothing on either side.
+    assert laya_cases == jev_cases, (sorted(laya_cases - jev_cases), sorted(jev_cases - laya_cases))
 
     # The repeat structure `scales.py` quotes about `n`, produced for both backends rather than
     # asserted in prose. laya: 64 cases x exactly 3 rows, and every case's rows carry ONE `probs`
-    # vector and ONE published `reported_confidence` -- while no case's three rows are identical as
-    # rows, since each carries its own repeat counter and elapsed time. The distinction is the whole
-    # point of the sentence: three rows that measure the same thing are not three observations, and
-    # calling them byte-identical would claim something the file refutes.
+    # vector, ONE published `reported_confidence` and ONE gold label -- while no case's three rows are
+    # identical as rows, since each carries its own repeat counter and elapsed time. The distinction is
+    # the whole point of the sentence: three rows that measure the same thing are not three
+    # observations, and calling them byte-identical would claim something the file refutes.
     def _groups(backend):
         grouped = {}
         for r in rows:
@@ -387,19 +398,54 @@ def test_the_archive_verdict_is_a_worst_case_gate_and_the_mixture_is_what_it_hid
     one_measurement_per_case = all(
         len({json.dumps(r["probs"], sort_keys=True) for r in g}) == 1
         and len({json.dumps(r["scores"], sort_keys=True) for r in g}) == 1
+        and len({json.dumps(r["gold"], sort_keys=True) for r in g}) == 1
         for g in laya_groups.values())
-    assert one_measurement_per_case, "laya's repeats no longer publish one vector and one number per case"
-    identical_rows = any(len({json.dumps(r, sort_keys=True) for r in g}) == 1
-                         for g in laya_groups.values())
-    assert not identical_rows, "laya's repeats became identical as ROWS; the comment's wording must follow"
-    # jev: 2 or 3 rows per case, and between 1 and 3 DISTINCT probability vectors inside a case.
-    # Pin, not a guard: nothing else in the suite reads this shape, so these two lines exist to keep
-    # the module comment's "1-3 DISTINCT probability vectors" figure owned by an artifact instead of
-    # restated from memory. The counts they depend on (191 rows, 64 cases) are guarded above.
+    assert one_measurement_per_case, \
+        "laya's repeats no longer publish one vector, one number and one gold label per case"
+    # README:33-35 says what a repeat shares is the measurement and NOT the row, naming the two fields
+    # that differ. Both halves are now produced: no case's three rows are identical, and the keys that
+    # vary are exactly `repeat`, `slices.repeat` and `meta.elapsed_ms` -- so the parenthetical is a
+    # measurement of the archive rather than a guess about which field carries the difference.
+    varying = collections.Counter()
+    for g in laya_groups.values():
+        assert len({json.dumps(r, sort_keys=True) for r in g}) > 1, "a laya case's rows became one row"
+        for key in set().union(*(set(r) for r in g)):
+            if len({json.dumps(r.get(key), sort_keys=True) for r in g}) > 1:
+                varying[key] += 1
+    assert dict(varying) == {"repeat": 64, "slices": 64, "meta": 64}, dict(varying)
+    nested = collections.Counter()
+    for g in laya_groups.values():
+        for field in ("slices", "meta"):
+            for key in set().union(*(set(r.get(field) or {}) for r in g)):
+                if len({json.dumps((r.get(field) or {}).get(key)) for r in g}) > 1:
+                    nested["%s.%s" % (field, key)] += 1
+    assert dict(nested) == {"slices.repeat": 64, "meta.elapsed_ms": 64}, dict(nested)
+    # jev: one case carries two rows and the other 63 carry three, and between 1 and 3 DISTINCT
+    # probability vectors sit inside a case. Counted as a DISTRIBUTION, not as the set of sizes that
+    # occur: `{2, 3} == {2, 3}` stays true if five cases carry two rows, and README:32's "one case
+    # carries two rows, not three" is exactly the claim that would then be false.
     jev_groups = _groups("jev")
-    assert len(jev_groups) == 64 and {len(g) for g in jev_groups.values()} == {2, 3}, len(jev_groups)
+    assert collections.Counter(len(g) for g in jev_groups.values()) == {3: 63, 2: 1}, jev_groups
+    assert len(jev_groups) == 64 and sum(len(g) for g in jev_groups.values()) == 191, jev_groups
     assert {len({json.dumps(r["probs"], sort_keys=True) for r in g})
             for g in jev_groups.values()} == {1, 2, 3}, jev_groups
+    # Both new lines above are guards, and what they guard is shown rather than claimed. This plant is
+    # in-memory over a copy of the parsed groups, so the archive is untouched: it is the case where the
+    # two weaker forms this file used to carry -- a set of sizes, and two equal lengths -- still pass
+    # while the README sentences they were quoted as owning are false. If the Counter or the set
+    # equality is ever relaxed back to those forms, the last two assertions here stop being interesting
+    # and the first two sentences above stop being owned, which is what a reader should notice.
+    doctored = {c: list(g) for c, g in jev_groups.items()}
+    for case_id in sorted(doctored)[:5]:
+        doctored[case_id] = doctored[case_id][:-1]
+    assert {len(g) for g in doctored.values()} == {2, 3}, \
+        "the set-of-sizes form is no longer blind here, so the Counter is doing nothing"
+    assert collections.Counter(len(g) for g in doctored.values()) != {3: 63, 2: 1}
+    planted = set(jev_cases)
+    moved = planted.pop()
+    planted.add(moved + "-renamed")
+    assert len(planted) == len(laya_cases) == 64, (len(planted), len(laya_cases))
+    assert planted != laya_cases
 
 
 _NOTE_FIRST_LINE = "The pair the old comment forecast"
