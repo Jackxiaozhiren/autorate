@@ -873,3 +873,36 @@ def test_a_reader_who_has_the_bytes_can_re_derive_every_pinned_number():
     ids = shared_id_set(CACHE_DIR, manifest)
     assert ids["identical"] is True, ids
     assert ids["n_independent"] == 2974, ids
+
+
+def test_a_connection_that_stops_mid_body_is_a_refusal_not_a_traceback(monkeypatch, tmp_path, capsys):
+    """The first live fetch refuted this tool's own rc-1 claim, so the refutation is now a test.
+
+    `main`'s docstring says rc 1 is unreachable "by construction: every raise site below is one of
+    these three, or an `OSError` from the filesystem". It was wrong: `http.client.IncompleteRead` --
+    raised when a CDN closes the body early, which is what happened to two of the 51 shards on
+    2026-10-06 -- is an `HTTPException`, neither an `OSError` nor a `FetchError`, so it escaped both
+    clauses and the process died with a traceback and exit 1, outside the published contract. A
+    partial read is the ordinary case a fetcher exists to survive, not a crash. The gzip family is
+    already handled by name (`GZIP_FAILURES` covers `EOFError` and `zlib.error`); this is the same
+    hole on the transport side, where the bytes come from.
+    """
+    import http.client
+
+    from tools.fetch_massive import FetchError, main, read_bytes
+
+    class _Truncating:
+        headers = {}
+
+        def read(self):
+            raise http.client.IncompleteRead(b"x" * 128, 8961)
+
+    with pytest.raises(FetchError, match="IncompleteRead"):
+        read_bytes("https://example.invalid/a", transport=lambda url: _Truncating())
+
+    monkeypatch.setattr(fetch_massive, "_urlopen", lambda *a, **k: _Truncating())
+    rc = main(["fetch", "--dest", str(tmp_path / "dest")])
+    assert rc == 4, rc
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    assert "COULD NOT COMPLETE" in err, err

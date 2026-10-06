@@ -24,8 +24,10 @@ Layout, so the failure modes are testable without a socket:
   _urlopen()         THE seam: the only function in this module that opens a socket, and it never
                      bypasses certificate verification
 
-Exceptions, and the exit code each one gets (rc 1 is unreachable by construction: every raise site
-below is one of these three, or an `OSError` from the filesystem):
+Exceptions, and the exit code each one gets. rc 1 is unreachable by construction -- and the
+construction was tested against a live CDN on 2026-10-06, which is how `http.client.HTTPException`
+joined the list: a truncated body raised `IncompleteRead`, that is neither an `OSError` nor a
+`FetchError`, and it reached the shell as a traceback and exit 1:
   ManifestError  the pin file cannot be read, is not this schema, or disagrees with its own declared
                  totals -- our published numbers have no owner -> 4, the code the CLI already gives
                  `ArithmeticError` for the same defect (`autorate.inventory.massive_pin`)
@@ -42,6 +44,7 @@ cache is absent, the pin is broken, or the network refused).
 import argparse
 import gzip
 import hashlib
+import http.client
 import json
 import ssl
 import sys
@@ -188,6 +191,13 @@ def read_bytes(url: str, transport=None) -> bytes:
                 status = getattr(response, "code", None)
         except urllib.error.HTTPError as exc:      # a 3xx reaches us this way when urllib is not auto-following
             body, headers, status = None, exc.headers, exc.code
+        except http.client.HTTPException as exc:
+            # Measured, not hypothetical: a CDN closed two of the 51 shards early on 2026-10-06 and
+            # the resulting `IncompleteRead` was neither an OSError nor a FetchError, so it escaped
+            # both clauses below and killed the process with a traceback and exit 1 -- the one exit
+            # code this tool's contract says no reachable input produces.
+            raise FetchError("the body of %s did not arrive complete: %s: %s"
+                             % (current, type(exc).__name__, exc)) from exc
         except OSError as exc:
             raise FetchError("could not read %s: %s: %s"
                              % (current, type(exc).__name__, _tls_failure_hint(exc))) from exc
@@ -498,8 +508,10 @@ def _dispatch(args) -> int:
 
 
 def main(argv=None) -> int:
-    """Map every reachable outcome onto 0 / 2 / 3 / 4. An rc 1 here would be an exception this tool named none.
+    """Map every reachable outcome onto 0 / 2 / 3 / 4. An rc 1 is an exception this tool failed to name.
 
+    Every transport failure is converted to `FetchError` at the seam that sees it (`read_bytes`), so
+    this map is deliberately short: a new exception class reaching here is a bug, and rc 1 says so.
     The order of the two clauses is the contract: `IntegrityError` is a `FetchError` subclass, so
     catching `FetchError` first would file "the bytes are not the pinned bytes" under "could not
     complete" and lose the distinction the exit codes exist to carry.
