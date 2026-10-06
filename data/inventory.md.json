@@ -118,7 +118,8 @@
     "mteb/amazon_massive_intent is not in the local HF dataset cache",
     "the archived corpus carries no randomisation draw (u), so APS ties resolve to 0 here",
     "the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (asks ['action', 'related', 'urgent', 'value'] are not among the case keys ['expected', 'family', 'id', 'messages', 'rationale', 'target_id']); only the composite 4-way label is supervised, so a noul certificate on this corpus would certify invented labels",
-    "1 archived choice line(s) publish probabilities that do not close to 1 within 0.005 and are quarantined by the reader rather than absorbed by a wider tolerance: jev/lifecycle-01/repeat=1 (sum 0.9900)"
+    "1 archived choice line(s) publish probabilities that do not close to 1 within 0.005 and are quarantined by the reader rather than absorbed by a wider tolerance: jev/lifecycle-01/repeat=1 (sum 0.9900)",
+    "1 archive line(s) sit outside the per-mode counts (0 unreadable, 1 readable but refused by the line rule the reader owns); the first 1 are named in `lines_outside_mode_counts` with backend, line number and reason: jev line 269 id=lifecycle-01 (probabilities do not close to 1 within tolerance)"
   ],
   "label_counts": {
     "noise": 16,
@@ -127,7 +128,7 @@
     "valuable": 16
   },
   "lines_by_mode_backend": {
-    "choice/jev": 192,
+    "choice/jev": 191,
     "choice/laya": 192,
     "four_noul/jev": 192,
     "four_noul/laya": 192
@@ -137,8 +138,24 @@
     "jev": 0,
     "laya": 0
   },
-  "lines_outside_mode_counts": [],
-  "lines_quarantined_only": {},
+  "lines_outside_mode_counts": [
+    {
+      "backend": "jev",
+      "error": "",
+      "id": "lifecycle-01",
+      "line_no": 269,
+      "mode": "choice",
+      "probs": [],
+      "probs_sum": 0.0,
+      "reason": "probabilities do not close to 1 within tolerance",
+      "repeat": 1,
+      "tolerance": 0.005
+    }
+  ],
+  "lines_quarantined_only": {
+    "choice": 1
+  },
+  "lines_refused_not_ok": 0,
   "manifest_declared_cases": 64,
   "per_ask_gold": {
     "asks": [

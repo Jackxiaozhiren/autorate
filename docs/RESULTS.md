@@ -12,7 +12,7 @@ carries no timestamp so a re-run is byte-comparable.
 - records per backend (lines are counted separately, above): laya=960, jev=959
 - upstream's own scores on it (read from its stdout, not recomputed here): laya/choice = 20/64, laya/four_noul = 18/64, jev/choice = 64/64, jev/four_noul = 63/64
 - provenance digests (owner: upstream `SOURCE.json`): **9/9 match**
-- gaps: 5 recorded, first clause each (full text in `data/inventory.md.json`): research/results/eval_english_51_languages.json: per-case records omitted; mteb/amazon_massive_intent is not in the local HF dataset cache; the archived corpus carries no randomisation draw (u), so APS ties resolve to ...; the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (a...; 1 archived choice line(s) publish probabilities that do not close to 1 within ...
+- gaps: 6 recorded, first clause each (full text in `data/inventory.md.json`): research/results/eval_english_51_languages.json: per-case records omitted; mteb/amazon_massive_intent is not in the local HF dataset cache; the archived corpus carries no randomisation draw (u), so APS ties resolve to ...; the four `noul` asks carry no per-ask ground truth anywhere in the fixtures (a...; 1 archived choice line(s) publish probabilities that do not close to 1 within ...; 1 archive line(s) sit outside the per-mode counts (0 unreadable, 1 readable bu...
 
 ## Is n big enough to certify?
 

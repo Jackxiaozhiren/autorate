@@ -457,3 +457,45 @@ having -- which inputs a gate actually consults, and where those inputs live.
 
 The superseded sentence is left in place above, since this file records what was published rather than
 what is currently true.
+
+## 2026-10-06 — the two ledgers published side by side disagreed about the shipped corpus's own line
+
+Task 1b's first fix round closed review M1/M2 by making the scanner ask the reader's first question
+first, and left the rest of M2's own table open. Re-measured against the shipped corpus at `5ec8639`,
+the two quarantine ledgers the artefact publishes beside each other were **not** equal: the scanner
+counted the `jev / lifecycle-01 / repeat=1` line in `lines_by_mode_backend["choice/jev"]` while the
+reader quarantined it, so the artefact read `lines_quarantined_only: {}` next to
+`reader_lines_quarantined_only: {"choice": 1}` -- and the comment over those two keys asserted they
+mirrored each other. Two published numbers move with the reconciliation, both in the same direction
+(the line is now named rather than bucketed, which is what the reader has always done with it):
+
+- `lines_by_mode_backend["choice/jev"]`: **192 -> 191**. The 192 `choice` lines archived on jev have
+  not changed; one of them is no longer counted *inside* the table.
+- `lines_quarantined_only`: **{} -> {"choice": 1}**, now equal to `reader_lines_quarantined_only`.
+- One new key, `lines_refused_not_ok` (**0** on this corpus, because all 768 archived lines carry
+  `status: "ok"`): a line refused on its own `status` is now counted there rather than in the per-mode
+  table, mirroring the reader, which declines a line before it reads a `mode`. Review M2's rows 3-5
+  were this shape: `mode: "ranked"` with no `status` measured `{'ranked': 1}` from the scanner and
+  `{}` from the reader, and a missing `mode` was published under the literal key `"None"`.
+- `data/inventory.md` gained its first disclosure sentence of that line ("1 archive line(s) sit
+  outside the per-mode counts (0 unreadable, 1 readable but refused by the line rule the reader
+  owns) ... jev line 269 id=lifecycle-01"), and `docs/RESULTS.md`'s gap count moved **5 -> 6** as the
+  same disclosure reached the report's first-clause list. The per-mode bullet still reads
+  "383 of 384 lines kept by the reader (1 quarantined for this mode)" -- the denominator is now
+  bucketed + named rather than the table alone, so the sentence did not have to move with them.
+
+No other count moved: `unique_ids` 64, `reader_lines_read` 768, `records per backend` 960/959, and
+every MASSIVE figure are what this file's earlier rows quoted. The keys the reconciliation touches
+are re-derived, not transcribed: `uv run --frozen autorate snapshot --out data/inventory.md`
+then `uv run --frozen autorate report --out docs/RESULTS.md` reproduce both artefacts byte for byte,
+and `uv run --frozen autorate verify` re-derives **82** values with the corpus present and **47**
+without (the corpus-less lane cannot see the counts, which is why the equality is also asserted
+against the committed artefact itself, in
+`tests/test_inventory.py::test_the_committed_snapshot_publishes_the_two_quarantine_ledgers_as_one_dict`).
+
+One boundary is recorded rather than fixed: the scanner reproduces the reader for the shapes the
+shared rule names, but not for a `four_noul` line's per-ask refusals ("carries no noul-typed answer",
+"noul probability outside [0,1]"), because mirroring those would mean a second implementation of the
+record-building rule -- the drift R-55 exists to prevent. This corpus contains no such line (measured:
+its `four_noul` ledger is empty), and the divergence is pinned as data in
+`tests/test_inventory.py::test_the_scanner_does_not_mirror_the_reader_s_per_ask_quarantine`.

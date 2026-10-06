@@ -20,20 +20,20 @@ from .records import SUM_TOL
 # is the point of the task -- a second `try/except (ValueError, KeyError, TypeError)` in this
 # module would be a second owner of the same rule, and two owners drift invisibly until one
 # guard names a line the other one crashes on.
-from .readers.feishu_zh import (MALFORMED_LINE, choice_probabilities, error_label,
-                                mode_bucket_key, parse_archive_line, quarantine_line_entry,
-                                unreadable_mode_reason)
+from .readers.feishu_zh import (MALFORMED_LINE, PROBS_NOT_CLOSING, choice_probabilities,
+                                error_label, mode_bucket_key, parse_archive_line,
+                                quarantine_line_entry, unreadable_mode_reason)
 # The interval arithmetic has one home (tails.py); this module reads it and publishes it,
 # so the inventory's feasibility verdict and the certificate's interval cannot drift apart.
 from .tails import bound_width, n_feasible
 
 MODES = ("choice", "four_noul")
 BACKENDS = ("laya", "jev")
-# The keys this module's own pass indexes straight off a line, required on the `status == "ok"`
-# branch only -- which is where the reader indexes them too. Each caller names what IT reads (the
-# reader asks for none at parse time), but both must ask AFTER the reader's first question, or one
+# The keys this module's own pass indexes straight off a line, required on the `ok` branch only --
+# which is where the reader indexes them too. Each caller names what IT reads (the reader asks for
+# none at parse time), but both must ask AFTER the reader's first question, `status == "ok"`, or one
 # defective line is `malformed_line` to this pass and `lines_dropped_not_ok` to that one, and the two
-# ledgers the artefact prints beside each other disagree (R-75).
+# ledgers the artefact prints beside each other disagree (R-75, and R-80 for the order itself).
 LINE_KEYS = ("mode", "id", "repeat")
 # How many offending lines the artefact names. The counts are never bounded -- a truncated list
 # is a disclosure limit, not a loss of the count, and the gap sentence says which is which.
@@ -86,7 +86,7 @@ def audit_command(root: Path) -> tuple[list[str], dict]:
 
 
 def _scan_jsonl(path: Path) -> tuple:
-    """One pass over a backend file, bucketed by `mode`, with every other line named.
+    """One pass over a backend file, bucketed by `mode`, with every other line counted or named.
 
     Each backend file holds both modes (192 choice + 192 four_noul = 384 lines), so
     counting lines per file and labelling them per mode is the same collapse the
@@ -96,20 +96,35 @@ def _scan_jsonl(path: Path) -> tuple:
     set for one rule drifts, and the drift is invisible until a line shape passes one guard and
     crashes the other -- which is how one unparseable line came to exit 1 (outside the published
     0/2/3/4 contract) here while the reader carried on. Every line this pass reads therefore
-    ends in exactly one of two places: `by_mode`, or `outside` with a reason.
+    ends in exactly one of three places: `by_mode`, `outside` with the reader's reason, or the
+    refused count for a line the reader declines before reading anything from it.
 
-    R-75: and the ORDER is part of the rule. The reader refuses a line whose `status` is not `ok`
-    before it reads a single field from it, so requiring `LINE_KEYS` at parse time named a
-    `malformed_line` of a line the reader had already dropped for its own reason -- the two
-    quarantine ledgers this artefact publishes side by side disagreed about the same line. The key
-    requirement therefore happens on the `ok` branch, which is the only branch where the reader
-    reads those fields at all.
+    R-75 and R-80: and the ORDER is part of the rule, asked in the reader's order.
+
+    1. Can the line be parsed at all? No -> `outside`, `malformed_line`.
+    2. Is `status` `ok`? No -> `lines_refused_not_ok`, and the `mode` is NEVER consulted. The
+       reader's own first line is `if obj.get("status") != "ok": return []`, so a refused line that
+       this pass named was a line filed in the quarantine ledger by one pass and absent from it by
+       the other -- review M2's rows 3-5, which the first fix left open (`mode: "ranked"` with no
+       `status` measured `{'ranked': 1}` here and `{}` for the reader, and an absent mode published
+       under the literal key `"None"`).
+    3. Does the line carry the keys this pass indexes blind (`LINE_KEYS`)? No -> `outside`,
+       `malformed_line` -- on this branch only, because it is the only branch where the reader
+       reads those fields at all.
+    4. Is the `mode` one this contract buckets? No -> `outside`, named by the reader's
+       `unreadable_mode_reason`, keyed by the reader's `mode_bucket_key`.
+    5. For a `choice` line, does the published vector close within `SUM_TOL`? No -> the reader
+       quarantines it under that reason and keeps no record, so this pass must neither count it in
+       `by_mode` nor invent a second reason for it (R-80's shape (b), which is the shipped corpus's
+       own single line): it goes to `outside` with the reader's own `PROBS_NOT_CLOSING`, and the
+       probabilities stay disclosed as detail in `unclosed`.
     """
     by_mode: dict = {}
     ids: set = set()
     repeats: set = set()
     unclosed: list = []
     outside: list = []
+    refused_not_ok = 0
     lines_read = 0
     backend = path.parent.name
     for line_no, line in enumerate(path.read_text().splitlines(), start=1):
@@ -120,19 +135,24 @@ def _scan_jsonl(path: Path) -> tuple:
         if error:
             outside.append(quarantine_line_entry(obj, backend, line_no, MALFORMED_LINE, error))
             continue
-        if obj.get("status") == "ok":
-            # The reader indexes these fields next, on this branch only; asking for them the same way
-            # the reader does is what keeps ONE failure string for one defective line.
-            obj, error = parse_archive_line(line, LINE_KEYS)
-            if error:
-                outside.append(quarantine_line_entry(obj, backend, line_no, MALFORMED_LINE, error))
-                continue
+        if obj.get("status") != "ok":
+            # Counted, not named: the reader drops it here and never reads its `mode`, so neither
+            # pass may file it in a quarantine ledger. It still stands for an archived line of
+            # this backend, which is why it has a counter rather than vanishing.
+            refused_not_ok += 1
+            continue
+        # The reader indexes these fields next, on this branch only; asking for them the same way
+        # the reader does is what keeps ONE failure string for one defective line.
+        obj, error = parse_archive_line(line, LINE_KEYS)
+        if error:
+            outside.append(quarantine_line_entry(obj, backend, line_no, MALFORMED_LINE, error))
+            continue
         mode = obj.get("mode")
         if mode not in MODES:
             outside.append(quarantine_line_entry(obj, backend, line_no,
                                                  unreadable_mode_reason(mode)))
             continue
-        if mode == "choice" and obj.get("status") == "ok":
+        if mode == "choice":
             # The same accessor the record builder uses, so the two cannot disagree about which
             # probability vector a line published -- and, unlike the builder, it never raises.
             _, probs, failure = choice_probabilities(obj)
@@ -141,38 +161,48 @@ def _scan_jsonl(path: Path) -> tuple:
                                                      error_label(failure)))
                 continue
             if abs(sum(probs) - 1.0) > SUM_TOL:
-                # The tolerance has one owner (records.SUM_TOL) and the reader
-                # quarantines the same lines, so inventory and reader cannot
-                # disagree about what the corpus contains.
+                # The tolerance has one owner (records.SUM_TOL) and the reader quarantines the
+                # same lines under the same words (`PROBS_NOT_CLOSING`), so the two published
+                # ledgers cannot disagree about what the corpus contains -- and the line is out of
+                # the per-mode counts, because the reader keeps no record for it.
                 unclosed.append({"id": obj["id"], "backend": backend,
                                  "repeat": obj["repeat"], "probs": list(probs),
                                  "probs_sum": round(sum(probs), 6)})
+                outside.append(quarantine_line_entry(obj, backend, line_no, PROBS_NOT_CLOSING))
+                continue
         by_mode[mode] = by_mode.get(mode, 0) + 1
-        # A refused line may carry neither field, and this pass must not invent a crash for it:
+        # A line missing a key may still be counted, and this pass must not invent a crash for it:
         # `obj["id"]` here was the rc-1 shape the 0/2/3/4 contract forbids.
         if "id" in obj:
             ids.add(obj["id"])
         if "repeat" in obj:
             repeats.add(obj["repeat"])
-    return by_mode, ids, sorted(repeats), unclosed, outside, lines_read
+    return by_mode, ids, sorted(repeats), unclosed, outside, refused_not_ok, lines_read
 
 
 def assert_line_conservation(lines_read: int, lines_by_mode: dict, lines_quarantined_only: dict,
-                             lines_malformed: int, lines_malformed_by_backend: dict) -> None:
-    """lines read = lines counted per mode + lines named outside those counts, or the run stops.
+                             lines_malformed: int, lines_malformed_by_backend: dict,
+                             lines_refused_not_ok: int) -> None:
+    """lines read = lines counted per mode + lines named outside those counts + refused lines.
 
     Asserted by inventory itself rather than only by a test, for the reason Task 1 gave the
     reader: a future branch that drops a line without a counter must raise, not shrink the
     corpus quietly. Two refusals, because two failures let that happen: buckets that do not
     cover every line read, and one quantity published under names that disagree -- the total,
     the bucket it belongs to and the per-backend split of the same lines.
+
+    R-80 adds the third place a line can legitimately land: refused on its own `status`, before
+    either pass reads a `mode` from it. It is counted, never named, because naming it is what put
+    one line in the scanner's quarantine ledger and in nobody's.
     """
     bucketed = sum(lines_by_mode.values())
     named = sum(lines_quarantined_only.values())
-    if bucketed + named != lines_read:
+    if bucketed + named + lines_refused_not_ok != lines_read:
         raise ArithmeticError(
             "inventory line accounting does not conserve: %d read, %d accounted (%d counted per "
-            "mode, %d named outside the mode counts)" % (lines_read, bucketed + named, bucketed, named))
+            "mode, %d named outside the mode counts, %d refused for their `status`)" % (
+                lines_read, bucketed + named + lines_refused_not_ok, bucketed, named,
+                lines_refused_not_ok))
     malformed_total = lines_quarantined_only.get(MALFORMED_LINE, 0)
     if lines_malformed != malformed_total or sum(lines_malformed_by_backend.values()) != malformed_total:
         raise ArithmeticError(
@@ -216,11 +246,14 @@ def inventory(root: Path) -> dict:
     unclosed: list = []
     outside: list = []
     lines_scanned = 0
+    lines_refused = 0
     for backend in BACKENDS:
         path = root / "results" / "v1" / backend / "raw.jsonl"
-        by_mode, this_ids, this_reps, this_unclosed, this_outside, this_lines = _scan_jsonl(path)
+        (by_mode, this_ids, this_reps, this_unclosed, this_outside, this_refused,
+         this_lines) = _scan_jsonl(path)
         unclosed += this_unclosed
         outside += this_outside
+        lines_refused += this_refused
         lines_scanned += this_lines
         for mode in MODES:
             # Separator is "/", not "|": these keys are rendered into a markdown table,
@@ -229,12 +262,15 @@ def inventory(root: Path) -> dict:
         if backend == "laya":  # uniqueness is asserted on one backend, not summed
             ids |= this_ids
             repeats = this_reps
-    # Every count of the unreadable lines is DERIVED from that one list, so no quantity gets a
-    # second counter (Task 1's review parked exactly that duplication). The bucket keys come from
-    # the reader's own `mode_bucket_key` -- `malformed_line` for a line neither pass can read, the
-    # mode string for a readable line this contract cannot bucket, and that string namespaced when
-    # it happens to spell the internal label (R-81) -- which is what lets a test compare the two
-    # dicts at all instead of comparing prose.
+    # Every count of the lines outside the per-mode table is DERIVED from that one list, so no
+    # quantity gets a second counter (Task 1's review parked exactly that duplication). The bucket
+    # keys come from the reader's own `mode_bucket_key` (R-81), and the reasons come from the
+    # reader too -- `malformed_line` plus its failure string for a line neither pass can read,
+    # `unreadable_mode_reason` for a mode this contract cannot bucket, and `PROBS_NOT_CLOSING` for
+    # a `choice` line whose published vector does not close. That is what lets a test compare the
+    # two dicts as data instead of comparing prose, and it is the agreement R-80 had to create:
+    # before it, the shipped corpus's one unclosing line was counted per mode by this pass and
+    # quarantined by the reader, so the published pair read `{}` beside `{'choice': 1}`.
     quarantined_only: dict = {}
     malformed_by_backend: dict = {}
     lines_malformed = 0
@@ -265,7 +301,8 @@ def inventory(root: Path) -> dict:
     assert_line_conservation(lines_read=lines_scanned, lines_by_mode=per_mode,
                              lines_quarantined_only=quarantined_only,
                              lines_malformed=lines_malformed,
-                             lines_malformed_by_backend=malformed_by_backend)
+                             lines_malformed_by_backend=malformed_by_backend,
+                             lines_refused_not_ok=lines_refused)
     cmd, env = audit_command(root)
     if not massive_pin():
         # An artefact written in this checkout without its own pin list would publish MASSIVE rows
@@ -286,6 +323,11 @@ def inventory(root: Path) -> dict:
         "lines_malformed": lines_malformed,
         "lines_malformed_by_backend": dict(sorted(malformed_by_backend.items())),
         "lines_quarantined_only": dict(sorted(quarantined_only.items())),
+        # R-80: a line refused on its own `status` is counted here and named nowhere, exactly as
+        # the reader drops it before reading its `mode`. It is published rather than left inside
+        # the conservation identity, because the per-mode table above no longer covers it and a
+        # reader of the artefact is owed the line that went missing from that total.
+        "lines_refused_not_ok": lines_refused,
         "lines_outside_mode_counts": outside[:UNREADABLE_DISCLOSURE_LIMIT],
         "unique_ids": len(ids),
         "repeats": repeats,
@@ -338,15 +380,28 @@ def inventory(root: Path) -> dict:
                          for u in unclosed)),
         ]) + ([] if not outside else [
             # Named here as well as in the list, because a reader of the markdown is owed the
-            # total: the list below is bounded for disclosure, the count is not.
-            "%d archive line(s) sit outside the per-mode counts (%d unreadable, %d whose `mode` "
-            "this contract cannot bucket); the first %d are named in "
-            "`lines_outside_mode_counts` with backend and line number: %s"
+            # total: the list below is bounded for disclosure, the count is not. The second half
+            # is no longer "whose `mode` this contract cannot bucket" -- R-80 moved the shipped
+            # corpus's unclosing `choice` line in here, and its mode IS bucketable, so the split
+            # is by disposition: unreadable, or readable and refused by the line rule the reader
+            # owns. The reason each line carries is in the list.
+            "%d archive line(s) sit outside the per-mode counts (%d unreadable, %d readable but "
+            "refused by the line rule the reader owns); the first %d are named in "
+            "`lines_outside_mode_counts` with backend, line number and reason: %s"
             % (len(outside), lines_malformed, len(outside) - lines_malformed,
                min(len(outside), UNREADABLE_DISCLOSURE_LIMIT),
                ", ".join("%s line %d id=%s (%s)" % (e["backend"], e["line_no"], e["id"],
                                                     e["reason"])
                          for e in outside[:UNREADABLE_DISCLOSURE_LIMIT])),
+        ]) + ([] if not lines_refused else [
+            # Counted, not named (R-80): the reader declines these before it reads a `mode`, so
+            # neither pass may file them in a quarantine ledger, and the per-mode table does not
+            # cover them either. Without this clause the line totals of the table above silently
+            # stop adding up.
+            "%d archive line(s) carry no `status` of `ok`: this pass counts them in "
+            "`lines_refused_not_ok` rather than in the per-mode table, mirroring the reader, "
+            "which refuses a line before it reads its `mode` (its own count for the same lines "
+            "is `reader_lines_dropped_not_ok`)" % lines_refused,
         ]),
     }
 
@@ -586,6 +641,34 @@ def corpus_options(feishu_unique_ids: Optional[int] = None, pin: Optional[dict] 
     return out
 
 
+def _count_phrase(count, noun: str) -> str:
+    """A count with its noun agreeing in number, or the absence named as an absence.
+
+    m-7: the artefact printed `%d malformed line` for any n, so three unreadable lines read
+    "3 malformed line". The count itself is a reader counter and may be absent when the reader
+    could not be opened, which is not the same statement as zero.
+    """
+    if count is None:
+        return "not measured"
+    return "%d %s%s" % (count, noun, "" if count == 1 else "s")
+
+
+def _independent_cell(option: dict) -> str:
+    """How a bound-table row says it has no independent-case count (m-4).
+
+    "not opened" was one string for two different findings. For `typed_decisions` it is true -- no
+    file of that corpus was opened, and its basis says so. For a MASSIVE row it was self-
+    contradicting: measured, a pin with `id_sets_identical: false` rendered
+    "| massive_intent_all_languages | not opened | 151674 | 51 of 51 pinned shards opened, hashed
+    and row-counted on ... |", one cell denying what the cell beside it asserts, with rc 0. The
+    figure is not un-opened there, it is un-measured AS AN ID SET, which is what the row now says.
+    """
+    if option["n_independent"] is not None:
+        return str(option["n_independent"])
+    return ("not measured (id sets not pinned)" if option["id"].startswith("massive")
+            else "not opened")
+
+
 def write_inventory(d: dict, out: Path) -> None:
     """Render the inventory. A corpus whose own integrity gate failed is not published."""
     if d["upstream_audit_rc"] != 0:
@@ -630,13 +713,20 @@ def write_inventory(d: dict, out: Path) -> None:
 
     kept = d.get("reader_lines_by_mode", {})
     quarantined_by_mode = d.get("reader_lines_quarantined_only", {})
-    lines += ["", "Counts here are archive LINES per mode and backend, taken before any",
-              "refusal. The reader keeps only the lines it can read and whose probabilities close,",
-              "so its own count can be smaller; what it did with the rest is named on its own line",
+    lines += ["", "Counts here are archive LINES per mode and backend, for the lines this pass",
+              "could bucket: a line it could not read, or one the shared line rule refused, is",
+              "counted beside the table rather than inside it, which is what the reader does with",
+              "the same bytes. The reader keeps only the lines it turns into records, so its own",
+              "count can still be smaller; what it did with the rest is named on its own line",
               "below rather than netted into a single difference.", ""]
     for mode in MODES:
         present = sum(v for k, v in d["lines_by_mode_backend"].items() if k.startswith(mode + "/"))
         kept_n = kept.get(mode)
+        # Both ledgers now come from the same rule (R-80/R-81), and the line a pass names rather
+        # than buckets is in neither table, so the denominator this bullet quotes is the bucketed
+        # count plus the named one -- the archive lines that carry this mode, whichever way they
+        # left the pass. Quoting only the table would print "383 of 383 kept (1 quarantined)".
+        quarantined_n = quarantined_by_mode.get(mode, 0)
         if kept_n is None:
             lines.append("- %s: %d lines present, reader count not measured in this run"
                          % (mode, present))
@@ -644,10 +734,17 @@ def write_inventory(d: dict, out: Path) -> None:
             # Read from the reader's own per-mode ledger. The subtraction this line used to print --
             # `present - kept` labelled "quarantined" -- charged a refused line to the quarantine.
             lines.append("- %s: **%d of %d** lines kept by the reader (%d quarantined for this mode)"
-                         % (mode, kept_n, present, quarantined_by_mode.get(mode, 0)))
-    lines.append("- reader dispositions: %s malformed line, %s named by mode, %s refused "
+                         % (mode, kept_n, present + quarantined_n, quarantined_n))
+    refused_n = d.get("lines_refused_not_ok")
+    if refused_n:
+        # m-7's attribution, closed per line: these are the lines neither ledger names, so the
+        # table above does not add up without saying where they went.
+        lines.append("- scanner: %d line(s) carried no `status` of `ok` and are counted in "
+                     "`lines_refused_not_ok` -- outside the table above, and named in no "
+                     "quarantine ledger, exactly as the reader drops them" % refused_n)
+    lines.append("- reader dispositions: %s, %s named by mode, %s refused "
                  "(status not ok), %s filtered"
-                 % (d.get("reader_lines_malformed"),
+                 % (_count_phrase(d.get("reader_lines_malformed"), "malformed line"),
                     sum(v for k, v in quarantined_by_mode.items() if k != MALFORMED_LINE),
                     d.get("reader_lines_dropped_not_ok"), d.get("reader_lines_filtered")))
     lines.append("")
@@ -665,7 +762,7 @@ def write_inventory(d: dict, out: Path) -> None:
     for o in d["corpus_options"]:
         lines.append("| %s | %s | %s | %s | %s | %s |" % (
             o["id"],
-            "not opened" if o["n_independent"] is None else o["n_independent"],
+            _independent_cell(o),
             "-" if o["n_rows"] is None else o["n_rows"],
             o["basis"],
             "-" if o["bound_width_at_0.05"] is None else "%.4f" % o["bound_width_at_0.05"],

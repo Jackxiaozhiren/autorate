@@ -19,6 +19,12 @@ CHOICE_QUESTION = "category"
 # bucket: an unreadable line has no readable `mode` to key on, so the conservation identity
 # in `read_archive` closes over it under this label rather than a mode label.
 MALFORMED_LINE = "malformed_line"
+# The reader's own words for the one archived `choice` line whose published probabilities do not
+# close (ledger R-28: `jev / lifecycle-01 / repeat=1`). It is a constant because the inventory
+# scanner files the SAME line under the SAME reason (R-80): the two passes publish their quarantine
+# ledgers beside each other, and a line the reader refuses for a reason the scanner paraphrases is
+# two owners of one rule -- the defect class R-55 was raised for.
+PROBS_NOT_CLOSING = "probabilities do not close to 1 within tolerance"
 
 
 def _quarantine(obj: dict, backend: str, probs, reason: str) -> dict:
@@ -207,8 +213,7 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
         a = answers[CHOICE_QUESTION]
         if abs(sum(probs) - 1.0) > SUM_TOL:
             if quarantine is not None:
-                quarantine.append(_quarantine(
-                    obj, backend, probs, "probabilities do not close to 1 within tolerance"))
+                quarantine.append(_quarantine(obj, backend, probs, PROBS_NOT_CLOSING))
             return []
         out.append(Record(
             id=obj["id"], qtype="choice", backend=backend, repeat=repeat,
@@ -303,9 +308,13 @@ def read_archive(root: Path, backend: Optional[str] = None, repeat: Optional[int
             # appends as it goes, so a line that quarantines one ask and then fails on the next
             # would publish two entries for the one line the conservation identity counts.
             # The parse-and-shape rule is the shared one (R-55), so the scanner that counts
-            # these same files cannot disagree about which lines it could not read; this pass
-            # asks for no keys here, because a line missing `mode` reaches the same named
-            # failure one read further down and the published stats must not move.
+            # these same files cannot disagree about which lines it could not read. This pass asks
+            # for no keys here, and the sentence's precondition is the one the scanner mirrors
+            # (R-80): it holds for a line this pass goes on to READ, i.e. one whose `status` is
+            # `ok` -- a line missing `mode` AND missing `status` is dropped below as not-ok and
+            # never reaches the named failure at all. The old claim that any line missing `mode`
+            # "reaches the same named failure one read further down" was refuted by that shape:
+            # it is why the scanner, not the reader, had to move (review M2's rows 3-5).
             obj, error = parse_archive_line(line)
             q_before = len(quarantine)
             if not error:

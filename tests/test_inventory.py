@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from autorate.inventory import corpus_options, inventory, n_feasible, write_inventory
+from autorate.readers.feishu_zh import MALFORMED_LINE
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -35,12 +36,17 @@ def test_inventory_sees_the_recorded_shape():
     d = inventory(UPSTREAM)
     assert d["unique_ids"] == 64
     assert d["repeats"] == [0, 1, 2]
+    # 192 `choice` lines were archived on each backend; R-80 names the jev one whose published
+    # probabilities do not close rather than bucketing it, because the reader keeps no record for
+    # it, so the table reads 191 for `choice/jev` and `lines_quarantined_only` carries the 192nd.
     assert d["lines_by_mode_backend"] == {
         "choice/laya": 192,
-        "choice/jev": 192,
+        "choice/jev": 191,
         "four_noul/laya": 192,
         "four_noul/jev": 192,
     }
+    assert d["lines_quarantined_only"] == d["reader_lines_quarantined_only"] == {"choice": 1}, d
+    assert d["lines_refused_not_ok"] == 0, d
     assert sorted(d["families"]) == [
         "conditional",
         "cross_chat",
@@ -222,11 +228,12 @@ def test_a_closing_corpus_produces_neither_finding_nor_gap_line():
         p = Path(td) / "laya" / "raw.jsonl"
         p.parent.mkdir(parents=True)
         p.write_text(json.dumps(fake) + "\n")
-        by_mode, ids, reps, unclosed, outside, lines_read = _scan_jsonl(p)
+        by_mode, ids, reps, unclosed, outside, refused, lines_read = _scan_jsonl(p)
     assert by_mode == {"choice": 1} and unclosed == []
     # Task 1b: one readable line, so the unreadable buckets are empty and the identity
     # closes over the line the pass read.
-    assert outside == [] and lines_read == 1 and ids == {"k-0"} and reps == [0]
+    assert (outside == [] and refused == 0 and lines_read == 1 and ids == {"k-0"}
+            and reps == [0])
 
 
 @skip
@@ -506,6 +513,40 @@ _PLANTED = (
 # without filing it under the unreadable bucket -- the reader already files it by mode string.
 _UNBUCKETABLE_MODE = json.dumps(_planted_row(mode="ranked"))
 
+# R-80 (review MA-2's rows 3-5, the half the first fix left open): readable lines that must be
+# COUNTED and named NOWHERE, plus the readable line whose `mode` spells the internal bucket. The
+# first fix put `LINE_KEYS` on the `status == "ok"` branch, which closed the shape it planted and
+# proved nothing about the ones below -- the shipped corpus is entirely `status: "ok"` (measured:
+# `{'ok': 768}` across both `raw.jsonl`), so only a planted lane can see this class at all.
+_PLANTED_REFUSED = (
+    ("not ok, mode outside MODES", json.dumps(_planted_row(mode="ranked", status="cached"))),
+    ("not ok, no mode", json.dumps(_planted_row(drop=("mode",), status="error"))),
+    ("not ok, mode in MODES", json.dumps(_planted_row(status="error"))),
+    ("mode spells the internal bucket", json.dumps(_planted_row(mode=MALFORMED_LINE))),
+)
+
+# The ledger each refused shape must produce in BOTH passes: `{}` for a line refused on its
+# `status`, because the reader declines it before it reads a `mode`, and the namespaced key for a
+# mode string that would otherwise borrow the internal bucket's name (R-81).
+_REFUSED_LEDGER = {
+    "not ok, mode outside MODES": {},
+    "not ok, no mode": {},
+    "not ok, mode in MODES": {},
+    "mode spells the internal bucket": {"mode:malformed_line": 1},
+}
+
+
+def _every_planted_shape():
+    """The whole planted sweep: unreadable shapes, the unbucketable mode, and the refused ones.
+
+    Each entry carries the quarantine ledger BOTH passes must publish for that single planted line,
+    which is the claim R-80 makes -- `{}` for a line refused on its `status`, and the namespaced key
+    for a mode string that would otherwise borrow the internal bucket's name.
+    """
+    return ([(label, raw, {"malformed_line": 1}) for label, raw, _ in _PLANTED]
+            + [("mode outside MODES", _UNBUCKETABLE_MODE, {"ranked": 1})]
+            + [(label, raw, _REFUSED_LEDGER[label]) for label, raw in _PLANTED_REFUSED])
+
 
 def _plant(tmp_path, raw_lines, n_good=2, backend="laya"):
     """`_tiny_corpus`, then planted lines appended to ONE backend so per-backend counts are real.
@@ -520,8 +561,14 @@ def _plant(tmp_path, raw_lines, n_good=2, backend="laya"):
 
 
 def _identity(d):
-    """The quantity the conservation identity is asserted over: bucketed + named lines."""
-    return sum(d["lines_by_mode_backend"].values()) + sum(d["lines_quarantined_only"].values())
+    """The quantity the conservation identity is asserted over: bucketed, named, and refused lines.
+
+    R-80 added the third term: a line refused on its own `status` is counted by the scanner and
+    named by neither pass's quarantine ledger, so it appears in neither of the first two totals and
+    the identity only closes over all three.
+    """
+    return (sum(d["lines_by_mode_backend"].values()) + sum(d["lines_quarantined_only"].values())
+            + d["lines_refused_not_ok"])
 
 
 def _snapshot_cli(root, out):
@@ -611,29 +658,74 @@ def test_a_mode_this_inventory_cannot_bucket_is_named_but_is_not_unreadable(tmp_
     assert stats["lines_malformed"] == 0, stats
 
 
-def test_the_conservation_identity_closes_over_a_mixed_corpus(tmp_path):
-    """lines read = lines counted per mode + lines named outside those counts, asserted by inventory.
+@pytest.mark.parametrize("label,raw,ledger", _every_planted_shape())
+def test_the_two_published_quarantine_ledgers_are_one_dict_for_every_planted_shape(tmp_path,
+                                                                                   label, raw,
+                                                                                   ledger):
+    """R-80 as a gate that can fail: the artefact publishes two ledgers, and they must be equal.
 
-    Three good lines and nine planted defects per backend pair: the identity has to account for
-    every one of them, and the reader's own count of the same files has to agree.
+    `lines_quarantined_only` (the scanner) and `reader_lines_quarantined_only` (the reader) sit
+    beside each other in `data/inventory.md.json`, and the comment over them claimed they mirrored
+    each other while two shapes refuted it: a refused line whose `mode` was outside MODES (named by
+    one pass, dropped by the other, and under the literal key `"None"` at that), and the shipped
+    corpus's one unclosing `choice` line (bucketed by the scanner, quarantined by the reader). The
+    sweep covers both, and the ledger is asserted as data on BOTH dicts rather than on prose.
+
+    Before this round's source change the three refused shapes measured `{'ranked': 1}`, `{'None':
+    1}` and `{}` against the reader's empty ledger, and the real corpus measured `{}` against
+    `{'choice': 1}`.
     """
     from autorate.readers.feishu_zh import read_archive
 
-    planted = [raw for _, raw, _ in _PLANTED] + [_UNBUCKETABLE_MODE]
+    sub = tmp_path / label.replace(" ", "_").replace("`", "")
+    sub.mkdir()
+    root, _ = _plant(sub, [raw])
+    d = inventory(root)
+    stats = {}
+    read_archive(root, stats=stats)
+    assert d["lines_quarantined_only"] == ledger, (label, d)
+    assert d["reader_lines_quarantined_only"] == ledger, (label, d)
+    assert stats["lines_quarantined_only"] == ledger, (label, stats)
+    # The refused counter is the other half of the same ruling: equal for every shape, because
+    # neither pass reads a `mode` from a line it declined.
+    assert d["lines_refused_not_ok"] == stats["lines_dropped_not_ok"], (label, d, stats)
+    assert _identity(d) == d["reader_lines_read"] == 5, (label, d)
+
+
+def test_the_conservation_identity_closes_over_a_mixed_corpus(tmp_path):
+    """lines read = bucketed + named + refused, asserted by inventory, over every planted shape.
+
+    Three good lines and every defect this file can plant -- unreadable, unbucketable mode, refused
+    `status`, and a mode string that spells the internal bucket -- in one corpus: the identity has to
+    account for each of them, the reader's own count of the same files has to agree, and the two
+    published quarantine ledgers have to be the same dict (R-80).
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    refused_lines = [raw for _, raw in _PLANTED_REFUSED]
+    planted = [raw for _, raw, _ in _PLANTED] + [_UNBUCKETABLE_MODE] + refused_lines
     root, first_planted = _plant(tmp_path, planted, n_good=3)
     d = inventory(root)
     assert first_planted == 4, first_planted
     assert d["lines_malformed"] == len(_PLANTED), d
     assert d["lines_malformed_by_backend"] == {"laya": len(_PLANTED), "jev": 0}, d
-    assert d["lines_quarantined_only"] == {"malformed_line": len(_PLANTED), "ranked": 1}, d
+    assert d["lines_quarantined_only"] == {"malformed_line": len(_PLANTED), "ranked": 1,
+                                          "mode:malformed_line": 1}, d
     entries = d["lines_outside_mode_counts"]
-    assert sorted(e["line_no"] for e in entries) == list(range(4, 4 + len(planted))), entries
+    # The three refused shapes are counted, never named, so they are absent from the list the
+    # named shapes are disclosed in: unreadable lines on 4..3+N, the unbucketable mode right after
+    # them, then three refused lines with no entry, then the mode that spells the internal bucket.
+    n_unreadable = len(_PLANTED)
+    assert sorted(e["line_no"] for e in entries) == sorted(
+        list(range(4, 4 + n_unreadable)) + [4 + n_unreadable, 8 + n_unreadable]), entries
     assert d["unique_ids"] == 3, "an unreadable line must not join the case count"
     assert d["lines_by_mode_backend"]["choice/laya"] == 3, d
+    assert d["lines_refused_not_ok"] == 3, d
     assert _identity(d) == d["reader_lines_read"] == 3 * 2 + len(planted), d
     stats = {}
     read_archive(root, stats=stats)
     assert d["lines_quarantined_only"] == stats["lines_quarantined_only"], stats
+    assert d["lines_refused_not_ok"] == stats["lines_dropped_not_ok"], stats
 
 
 def test_a_good_corpus_publishes_exactly_the_numbers_it_did_before_the_guard(tmp_path):
@@ -652,33 +744,115 @@ def test_a_good_corpus_publishes_exactly_the_numbers_it_did_before_the_guard(tmp
     assert _identity(d) == d["reader_lines_read"] == 8, d
 
 
-def test_the_committed_snapshot_gained_the_new_buckets_and_no_moved_number():
-    """The shipped corpus has nothing to quarantine, so the guard publishes zeros there too.
+def test_the_committed_snapshot_publishes_the_two_quarantine_ledgers_as_one_dict():
+    """R-80 on the shipped artefact: the ledgers published side by side ARE the same dict.
 
-    Read from the committed artefact rather than from a fresh scan: this is the check that the
-    re-snapshot landed additive keys and left every published number alone.
+    Read from the committed file rather than from a fresh scan, because this is the CI-runnable
+    half of the claim: a corpus-less runner cannot re-derive the counts, but it can see that the
+    artefact contradicts itself. Before the reconciliation the pair published `{}` beside
+    `{'choice': 1}` for the shipped corpus's one unclosing `choice` line, while the comment over the
+    two keys asserted they mirrored each other.
+
+    Two published numbers move, and both are disclosed in `docs/ERRATA.md`: `choice/jev` 192 -> 191
+    (that line is named, not bucketed), and `lines_quarantined_only` `{}` -> `{'choice': 1}`.
+    `lines_refused_not_ok` is new and is 0 here, because the shipped archive is entirely `ok`.
     """
     published = json.loads((REPO / "data" / "inventory.md.json").read_text())
     assert published["unique_ids"] == 64 and published["repeats"] == [0, 1, 2], published
-    assert published["lines_by_mode_backend"] == {"choice/jev": 192, "choice/laya": 192,
+    assert published["lines_by_mode_backend"] == {"choice/jev": 191, "choice/laya": 192,
                                                   "four_noul/jev": 192, "four_noul/laya": 192}
     assert published["lines_malformed"] == 0, published
     assert published["lines_malformed_by_backend"] == {"jev": 0, "laya": 0}, published
-    assert published["lines_outside_mode_counts"] == [], published
+    assert published["lines_refused_not_ok"] == 0, published
+    assert len(published["lines_outside_mode_counts"]) == 1, published
+    outside = published["lines_outside_mode_counts"][0]
+    assert (outside["backend"], outside["id"], outside["repeat"]) == ("jev", "lifecycle-01", 1), \
+        outside
+    assert outside["reason"] == "probabilities do not close to 1 within tolerance", outside
+    assert published["lines_quarantined_only"] == {"choice": 1}, published
+    assert published["reader_lines_quarantined_only"] == {"choice": 1}, published
+    # The equality this round exists to create, asserted as data on the published artefact.
+    assert published["lines_quarantined_only"] == published["reader_lines_quarantined_only"]
     assert published["reader_lines_read"] == 768, published
-    assert sum(published["lines_by_mode_backend"].values()) == published["reader_lines_read"]
+    assert (sum(published["lines_by_mode_backend"].values())
+            + sum(published["lines_quarantined_only"].values())
+            + published["lines_refused_not_ok"]) == published["reader_lines_read"], published
+    # And the reader's record count is still not a published quantity (m-2).
+    assert "records_kept" not in published, sorted(published)
 
 
-def test_the_committed_inventory_markdown_names_no_unreadable_line():
-    """The guard is latent on the shipped corpus, so the human artefact must not change either.
+@skip
+def test_the_real_corpus_publishes_the_two_quarantine_ledgers_equal(tmp_path):
+    """R-80's claim on the corpus itself, not on its transcription: one line, named once, by both.
 
-    Asserted against the committed file rather than a fresh render, because this task's own
-    gate is "no published number and no published sentence moves": zeros belong in the
-    machine-readable snapshot, not in prose an operator reads as a finding.
+    `autorate snapshot` writes the committed artefact from this same call, so the CI-runnable test
+    above is a check on the transcription of what this one measures. The shipped corpus has exactly
+    one line outside the per-mode counts, and both passes must agree that it is the jev
+    `lifecycle-01` repeat=1 whose published probabilities do not close.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    d = inventory(UPSTREAM)
+    stats = {}
+    read_archive(UPSTREAM, stats=stats)
+    assert d["lines_quarantined_only"] == d["reader_lines_quarantined_only"] == {"choice": 1}, d
+    assert d["lines_quarantined_only"] == stats["lines_quarantined_only"], stats
+    assert d["lines_refused_not_ok"] == stats["lines_dropped_not_ok"] == 0, (d, stats)
+    assert d["lines_malformed"] == stats["lines_malformed"] == 0, (d, stats)
+    assert sum(d["lines_by_mode_backend"].values()) == sum(
+        d["reader_lines_by_mode"].values()) == 767, d
+    assert _identity(d) == d["reader_lines_read"] == 768, d
+    assert [(u["backend"], u["id"], u["repeat"]) for u in d["probs_not_closing"]] == [
+        ("jev", "lifecycle-01", 1)], d
+
+
+def test_the_scanner_does_not_mirror_the_reader_s_per_ask_quarantine(tmp_path):
+    """The measured limit of R-80, pinned so the equality above is never read as a theorem.
+
+    The scanner reproduces the reader for the two shapes R-80 named. It does not model the
+    `four_noul` per-ask refusals ("carries no noul-typed answer", "noul probability outside [0,1]"),
+    because doing so would be a second implementation of the record-building rule -- and R-55 is the
+    reason there is only one. So this shape is the one where the two published ledgers genuinely
+    differ, on data the shipped corpus does not contain (measured: its `four_noul` ledger is empty
+    and all 768 lines are `ok`), and the artefact's per-mode denominator double-counts it.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    empty_noul = json.dumps(_planted_row(mode="four_noul", response={"model": "m", "answers": {
+        "urgent": {"type": "score", "noul": 0.5}}}))
+    root, _ = _plant(tmp_path, [empty_noul])
+    d = inventory(root)
+    stats = {}
+    read_archive(root, stats=stats)
+    assert d["lines_quarantined_only"] == {}, d
+    assert stats["lines_quarantined_only"] == {"four_noul": 1}, stats      # the planted line only
+    assert d["reader_lines_quarantined_only"] == {"four_noul": 1}, d
+    assert d["lines_by_mode_backend"]["four_noul/laya"] == 1, d            # bucketed by the scanner
+    assert d["reader_lines_by_mode"].get("four_noul", 0) == 0, d           # kept by nobody
+    # Both passes still account for every line, and neither exits 4 over it.
+    assert _identity(d) == d["reader_lines_read"] == 5, d
+
+
+def test_the_committed_inventory_markdown_names_the_one_line_it_holds(tmp_path):
+    """R-80 moved a shipped finding into the human artefact, so the artefact must say it.
+
+    This test used to assert the opposite -- that the disclosure never appears in `data/inventory.md`
+    -- because the guard it policed was latent: the scanner counted the shipped corpus's unclosing
+    `choice` line in the per-mode table while the reader quarantined it, so `lines_outside_mode_counts`
+    was empty and the prose stayed quiet. Reconciling the two passes makes the finding real and
+    published, and the artefact is required to name it: which line, in which backend, on which
+    line number, for what reason, and the per-mode table's own total no longer adding up on its own.
     """
     body = (REPO / "data" / "inventory.md").read_text()
-    assert "outside the per-mode counts" not in body, body
+    assert "outside the per-mode counts" in body, body
+    assert "1 archive line(s) sit outside the per-mode counts (0 unreadable, 1 readable but " \
+        "refused by the line rule the reader owns)" in body, body
+    assert "jev line 269 id=lifecycle-01 (probabilities do not close to 1 within tolerance)" \
+        in body, body
+    assert "| choice/jev | 191 |" in body, body
     assert len(_tables(body)) == 3, [h for h, _ in _tables(body)]
+    # The refused-line clause is NOT here: the shipped archive is entirely `status: "ok"`.
+    assert "carried no `status` of `ok`" not in body, body
 
 
 def test_the_unreadable_disclosure_is_bounded_and_says_what_it_left_out(tmp_path):
@@ -724,8 +898,8 @@ def test_rc_one_is_unreachable_for_every_planted_shape(tmp_path):
     `main` maps to EXIT_USAGE) or 1 (`TypeError`/`KeyError` escaped every catch). Both were
     wrong: the corpus is neither certified-nothing nor the operator's mistake.
     """
-    for label, raw, _ in _PLANTED + (("mode outside MODES", _UNBUCKETABLE_MODE, "n/a"),):
-        case = tmp_path / label.replace(" ", "_")
+    for label, raw, ledger in _every_planted_shape():
+        case = tmp_path / label.replace(" ", "_").replace("`", "")
         case.mkdir()
         proc = _snapshot_cli(_plant(case, [raw])[0], case / "inventory.md")
         # rc 0 is the whole claim: 1 would be a traceback and 2 would file a corpus defect as a
@@ -738,10 +912,14 @@ def test_rc_one_is_unreachable_for_every_planted_shape(tmp_path):
         # `assert_line_conservation` refuses to let drift. Adding the two would count the planted
         # line twice and call the artefact wrong; the line is named once, per bucket.
         named = sum(sidecar["lines_quarantined_only"].values())
-        assert named == 1, (label, sidecar["lines_quarantined_only"])
-        assert len(sidecar["lines_outside_mode_counts"]) == 1, (label, sidecar)
+        assert sidecar["lines_quarantined_only"] == ledger, (label, sidecar)
+        assert named == sum(ledger.values()), (label, sidecar)
+        assert len(sidecar["lines_outside_mode_counts"]) == named, (label, sidecar)
         assert sidecar["lines_malformed"] == sum(
             sidecar["lines_malformed_by_backend"].values()), (label, sidecar)
+        # The refused shapes are the class this sweep used to omit entirely: counted somewhere,
+        # so the identity still closes over the planted line, and named nowhere.
+        assert (sidecar["lines_refused_not_ok"] == 1) == (ledger == {}), (label, sidecar)
 
 
 def test_a_refused_corpus_still_exits_two_while_an_unreadable_line_exits_zero(tmp_path):
@@ -807,8 +985,13 @@ def test_a_line_the_reader_refuses_before_reading_its_keys_is_not_named_unreadab
     assert d["lines_malformed"] == 0, d
     assert d["lines_quarantined_only"] == {}, d
     assert d["lines_outside_mode_counts"] == [], d
-    # Counted, not lost: the line still stands for an archived choice line of this backend.
-    assert d["lines_by_mode_backend"]["choice/laya"] == 3, d
+    # Counted, not lost -- and R-80 moved WHERE it is counted. The first fix left the scanner
+    # consulting the `mode` of a line the reader had already declined, so this line inflated the
+    # per-mode archive table (`choice/laya == 3`); it is now held in its own counter, because the
+    # reader refuses a line before it reads a `mode` and the artefact must not bucket what the
+    # reader never read.
+    assert d["lines_by_mode_backend"]["choice/laya"] == 2, d
+    assert d["lines_refused_not_ok"] == 1, d
     assert _identity(d) == d["reader_lines_read"] == 5, d
 
     stats = {}
@@ -818,6 +1001,9 @@ def test_a_line_the_reader_refuses_before_reading_its_keys_is_not_named_unreadab
     # The assertion the old corpus could not make: the two passes' quarantine ledgers agree.
     assert d["lines_quarantined_only"] == stats["lines_quarantined_only"] == {}, (
         d["lines_quarantined_only"], stats["lines_quarantined_only"])
+    # And the two passes' refused counters are the same quantity read twice, which is what makes
+    # the split above more than a relocation of the line.
+    assert d["lines_refused_not_ok"] == stats["lines_dropped_not_ok"] == 1, (d, stats)
     # And the shape that IS unreadable to both still agrees, so the fix did not just move the hole.
     ok_but_no_id = json.dumps(_planted_row(drop=("id",)))
     root2, _ = _plant(tmp_path / "ok", [ok_but_no_id])
@@ -845,11 +1031,11 @@ def test_inventory_itself_refuses_a_pass_that_loses_a_line(monkeypatch, tmp_path
     real = inventory_module._scan_jsonl
 
     def losing_pass(path):
-        by_mode, ids, repeats, unclosed, outside, lines_read = real(path)
+        by_mode, ids, repeats, unclosed, outside, refused, lines_read = real(path)
         for mode in list(by_mode):
             if by_mode[mode] > 1:
                 by_mode[mode] -= 1          # the line is gone, and no bucket mentions it
-                return by_mode, ids, repeats, unclosed, outside, lines_read
+                return by_mode, ids, repeats, unclosed, outside, refused, lines_read
         raise AssertionError("the fixture has no mode with more than one line to drop")
 
     monkeypatch.setattr(inventory_module, "_scan_jsonl", losing_pass)
@@ -885,13 +1071,13 @@ def test_write_inventory_names_the_reader_its_own_buckets_and_not_a_difference(t
 def test_a_line_the_reader_drops_for_its_own_reason_is_not_the_same_as_unreadable(tmp_path):
     """The measured boundary of the shared rule, recorded so nobody "fixes" it into agreement.
 
-    A line carrying no `status` is readable and its `mode` is in MODES, so the scanner counts it
-    in the per-mode table; the reader never tries to turn it into a record and files it under its
-    own `lines_dropped_not_ok`. Neither pass loses it -- both see 5 lines -- and the labels differ
-    on purpose: dropping a refused response is not the same rule as failing to parse a line. The
-    asymmetry is real and pinned here rather than smoothed over, because the same two counters
-    answering "how many choice lines are in the archive" is how a reader comes to believe 192
-    lines became 192 records.
+    A line carrying no `status` is READABLE, so it is not `malformed_line` to either pass; and it is
+    refused before its `mode` means anything, so R-80 moved it out of the per-mode table into
+    `lines_refused_not_ok`, where the reader's own `lines_dropped_not_ok` already counted it. Neither
+    pass loses it -- both see 5 lines -- and the labels differ on purpose: dropping a refused
+    response is not the same rule as failing to parse a line. The asymmetry is real and pinned here
+    rather than smoothed over, because the same two counters answering "how many choice lines are in
+    the archive" is how a reader comes to believe 192 lines became 192 records.
     """
     from autorate.readers.feishu_zh import read_archive
 
@@ -901,19 +1087,24 @@ def test_a_line_the_reader_drops_for_its_own_reason_is_not_the_same_as_unreadabl
     assert d["lines_malformed"] == 0, d
     assert d["lines_quarantined_only"] == {}, d
     assert d["lines_outside_mode_counts"] == [], d
-    assert d["lines_by_mode_backend"]["choice/jev"] == 3, d      # 2 good + the refused line
+    assert d["lines_by_mode_backend"]["choice/jev"] == 2, d      # the refused line is not bucketed
+    assert d["lines_refused_not_ok"] == 1, d
     stats = {}
     read_archive(root, stats=stats)
     assert stats["lines_malformed"] == 0, stats
     assert stats["lines_dropped_not_ok"] == 1, stats
     assert _identity(d) == d["reader_lines_read"] == 5, d
-    # The two passes' per-mode counts are different quantities, and the artefact names them
-    # apart: `lines_by_mode_backend` is every archive line with a readable mode, while
-    # `reader_lines_by_mode` counts only the lines the reader kept (still LINES, not records --
-    # one `four_noul` line yields four records, so a reader's record count is a different
-    # quantity from both of these and is published as `records_kept`).
-    assert sum(d["lines_by_mode_backend"].values()) == 5, d
+    # The two passes' per-mode counts are different quantities, and the artefact names them apart:
+    # `lines_by_mode_backend` counts archive lines the scanner could bucket, while
+    # `reader_lines_by_mode` counts only the lines the reader turned into at least one record --
+    # still LINES, not records: one `four_noul` line yields four records, and the reader's record
+    # count is a third quantity, `records_kept`, returned by `read_archive(stats=...)` and NOT
+    # published in the inventory artefact at all (m-2: the sentence this test replaces claimed it
+    # was, and no key of that name exists in `data/inventory.md.json`).
+    assert sum(d["lines_by_mode_backend"].values()) == 4, d
     assert sum(d["reader_lines_by_mode"].values()) == 4, d
+    assert "records_kept" not in json.dumps(
+        json.loads((REPO / "data" / "inventory.md.json").read_text())), "the artefact grew the key"
 
 
 def test_the_conservation_check_can_fire():
@@ -926,15 +1117,30 @@ def test_the_conservation_check_can_fire():
 
     assert_line_conservation(lines_read=5, lines_by_mode={"choice": 3},
                              lines_quarantined_only={"malformed_line": 2},
-                             lines_malformed=2, lines_malformed_by_backend={"laya": 2})
+                             lines_malformed=2, lines_malformed_by_backend={"laya": 2},
+                             lines_refused_not_ok=0)
+    # R-80's third term, falsified on its own: everything the other two arms police is right here,
+    # so only the refused line is missing. Without this arm a scanner that dropped a refused line
+    # entirely would still satisfy every other term of the identity.
     with pytest.raises(ArithmeticError, match="does not conserve"):
         assert_line_conservation(lines_read=5, lines_by_mode={"choice": 3},
                                  lines_quarantined_only={"malformed_line": 1},
-                                 lines_malformed=1, lines_malformed_by_backend={"laya": 1})
+                                 lines_malformed=1, lines_malformed_by_backend={"laya": 1},
+                                 lines_refused_not_ok=0)
+    assert_line_conservation(lines_read=5, lines_by_mode={"choice": 3},
+                             lines_quarantined_only={"malformed_line": 1},
+                             lines_malformed=1, lines_malformed_by_backend={"laya": 1},
+                             lines_refused_not_ok=1)
+    with pytest.raises(ArithmeticError, match="does not conserve"):
+        assert_line_conservation(lines_read=5, lines_by_mode={"choice": 3},
+                                 lines_quarantined_only={"malformed_line": 2},
+                                 lines_malformed=2, lines_malformed_by_backend={"laya": 2},
+                                 lines_refused_not_ok=1)
     with pytest.raises(ArithmeticError, match="does not match"):
         assert_line_conservation(lines_read=4, lines_by_mode={"choice": 2},
                                  lines_quarantined_only={"malformed_line": 2},
-                                 lines_malformed=1, lines_malformed_by_backend={"laya": 1})
+                                 lines_malformed=1, lines_malformed_by_backend={"laya": 1},
+                                 lines_refused_not_ok=0)
 
 
 def test_the_pin_list_refuses_to_disagree_with_itself(tmp_path):
