@@ -274,9 +274,13 @@ def _denominator_note(inv: dict) -> str:
     These four numbers used to be typed into the sentence, and the typing had already cost the project
     twice: the prose said "MASSIVE's 51 language files" beside an inventory whose own recorded basis says
     3 of 51 were opened, so prose and artifact had drifted in opposite directions and nothing could see
-    it. Every figure below is read from `inv`, and the translation claim is asserted only when the
-    per-language and pooled options actually report the same row count -- which is what translations of
-    one utterance set must do -- so a future divergence silences the claim instead of repeating it.
+    it. Every figure below is read from `inv`, and the translation claim is asserted only while three
+    separately-recorded fields satisfy one equation -- the pooled rows (`rows_total`), the shard count
+    (`n_files`) and the independent count (`distinct_ids`, measured by comparing the shards' id sets)
+    -- plus the per-language rows (`files[].rows`) matching that independent count. Comparing the two
+    options' figures to each other was not a guard: both came from one expression in one module, so
+    the equality could not have failed, and the claim would have gone on asserting after the
+    measurement behind it stopped holding.
     """
     def option(kind):
         return next((o for o in inv["corpus_options"] if o["id"] == kind), None)
@@ -287,7 +291,9 @@ def _denominator_note(inv: dict) -> str:
     if feishu is not None:
         parts.append("feishu's %d archived lines are %d unique cases;"
                      % (inv["reader_lines_read"], feishu["n_independent"]))
-    if pooled and per_lang and pooled["n_independent"] == per_lang["n_independent"]:
+    if (pooled and per_lang and pooled.get("n_independent") is not None and pooled.get("n_shards")
+            and pooled["n_rows"] == pooled["n_independent"] * pooled["n_shards"]
+            and per_lang["n_independent"] == pooled["n_independent"]):
         parts.append("MASSIVE's per-language and pooled options both report %d independent rows, which "
                      "is what translations of one utterance set must give;" % pooled["n_independent"])
     parts.append("counting rows instead of cases flatters the bound. Each option's own count basis is "

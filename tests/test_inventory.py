@@ -1024,3 +1024,85 @@ def test_the_per_ask_gold_local_is_named_for_what_it_holds():
     assert 'ask_gold_measurement["asks_with_gold"]' in src, src
     mutated = src.replace("ask_gold_measurement[", "gold[")
     assert 'gold["asks_with_gold"]' in mutated, "the predicate above cannot fail"
+
+
+def test_the_pooled_row_takes_its_independent_count_from_the_id_set_not_the_row_count():
+    """R-75 (review M3): "measured, not asserted" was said of a figure nothing had measured.
+
+    Both MASSIVE rows used to fill `n_independent` from `files[].rows` -- a ROW count. That 2,974 rows
+    and 2,974 independent cases are the same number is the whole translation claim, so the claim now
+    reads a field that was produced by comparing id sets across shards (`distinct_ids`,
+    `id_sets_identical`), and the two figures can disagree. If a future pin adds a 52nd shard with new
+    utterances, `n_independent` moves while `rows` does not, and the pooled row stops claiming a
+    sample it cannot support rather than quietly reusing the old number.
+    """
+    from autorate.inventory import corpus_options, massive_pin
+
+    pin = massive_pin()
+    assert pin["id_sets_identical"] is True, pin["provenance"].get("id_sets")
+    opts = {o["id"]: o for o in corpus_options(64, pin=pin)}
+    pooled, per_lang = opts["massive_intent_all_languages"], opts["massive_intent_per_language"]
+    assert pooled["n_independent"] == pin["distinct_ids"]
+    assert pooled["n_independent"] != pooled["n_rows"], "rows are not a sample"
+    assert pooled["n_shards"] == pin["n_files"]
+    assert per_lang["n_independent"] == pin["files"][0]["rows"]
+    # The arithmetic that ties them: rows = shards x independent, one equation, three fields.
+    assert pooled["n_rows"] == pooled["n_shards"] * pooled["n_independent"], pooled
+
+    not_identical = {**pin, "id_sets_identical": False}
+    opts2 = {o["id"]: o for o in corpus_options(64, pin=not_identical)}
+    assert opts2["massive_intent_all_languages"]["n_independent"] is None, opts2
+    assert "cannot" in opts2["massive_intent_all_languages"]["basis"].lower(), opts2
+
+
+def test_the_pin_refuses_a_declared_field_its_entries_do_not_sum_to(tmp_path):
+    """The loader polices every declared total, including the two that describe id sets.
+
+    `distinct_row_counts` and `distinct_ids` are claims ABOUT `files`, so a pin that keeps one field
+    while an entry changes must refuse rather than publish the stale aggregate (review M3's minor).
+    """
+    from autorate.inventory import massive_pin
+
+    good = massive_pin()
+    path = tmp_path / "massive_provenance.json"
+    for key, mutate in (
+        ("distinct_row_counts", lambda p: p.update(distinct_row_counts=[1, 2974])),
+        ("distinct_ids", lambda p: p.update(distinct_ids=p["distinct_ids"] + 1)),
+    ):
+        broken = json.loads(json.dumps(good))
+        mutate(broken)
+        path.write_text(json.dumps(broken))
+        with pytest.raises(ArithmeticError, match=key):
+            massive_pin(path)
+
+
+def test_a_missing_or_corrupt_pin_refuses_as_drift_not_as_a_usage_error(monkeypatch, tmp_path,
+                                                                         capsys):
+    """R-75 (review M5): a repository data defect must not be filed under the operator's mistake.
+
+    Measured before the fix: truncating `data/massive_provenance.json` made `autorate snapshot` exit 2
+    with `JSONDecodeError` (a `ValueError`, which `main` maps to EXIT_USAGE), and deleting it made the
+    same command exit 0 while the artefact's MASSIVE rows read "not opened" -- one case blamed the
+    person running the command, the other reported a corpus finding that was not a finding. Both are
+    "this checkout cannot re-derive its own published numbers", which is exactly what EXIT_DRIFT means
+    here, and `main` already maps `ArithmeticError` to it.
+    """
+    from autorate import inventory as inv_module
+    from autorate.cli import EXIT_DRIFT, main
+
+    root = _tiny_corpus(tmp_path / "corpus", n_ids=2)
+    out = str(tmp_path / "inventory.md")
+
+    monkeypatch.setattr(inv_module, "MASSIVE_PIN_PATH", tmp_path / "absent.json")
+    assert main(["snapshot", "--root", str(root), "--out", out]) == EXIT_DRIFT
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    assert "massive_provenance.json is missing or unreadable" in err, err
+
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text('{"files": [')
+    monkeypatch.setattr(inv_module, "MASSIVE_PIN_PATH", corrupt)
+    assert main(["snapshot", "--root", str(root), "--out", out]) == EXIT_DRIFT
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    assert "not readable JSON" in err, err

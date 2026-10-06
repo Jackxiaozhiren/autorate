@@ -41,7 +41,7 @@ repeats or translations of the same case do not add sample size.
 |---|---|---|---|---|---|
 | feishu_zh | 64 | - | scanned from results/v1/{laya,jev}/raw.jsonl | 0.3395 | no |
 | massive_intent_per_language | 2974 | 2974 | each of the data/massive_provenance.json pinned test shards opened and counted, 2974 rows per shard | 0.0498 | yes |
-| massive_intent_all_languages | 2974 | 151674 | 51 of 51 pinned shards opened, hashed and row-counted on 2026-10-05 at revision 940fd47a81eaa7f2cc7b129674d945d618ac38c2; the digests live in data/massive_provenance.json and the bytes are not vendored | 0.0498 | yes |
+| massive_intent_all_languages | 2974 | 151674 | 51 of 51 pinned shards opened, hashed and row-counted on 2026-10-06 at revision 940fd47a81eaa7f2cc7b129674d945d618ac38c2; the digests live in data/massive_provenance.json and the bytes are not vendored | 0.0498 | yes |
 | typed_decisions | not opened | - | dataset card size category 1K<n<10K only; no file opened | - | - |
 
 | corpus | unit | note |

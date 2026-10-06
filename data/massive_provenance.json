@@ -1,6 +1,7 @@
 {
  "bytes_total": 3221662,
  "dataset": "mteb/amazon_massive_intent",
+ "distinct_ids": 2974,
  "distinct_row_counts": [
   2974
  ],
@@ -363,16 +364,20 @@
    "sha256": "23a01dd66538ea30ea5cd6105f19870ca7703b2771067c2aac13a2caa8992bb1"
   }
  ],
+ "id_sets_identical": true,
  "license": "Apache-2.0",
  "n_files": 51,
  "provenance": {
   "agreement": "51 of 51 digests, byte lengths and row counts equal the values first recorded",
   "bytes_retained": "the shards are not vendored here: 3.2 MB of verified bytes were measured and discarded, so re-hashing requires the fetch, while every number in this file is checkable against it",
   "first_recorded": "2026-10-03, by a fetch script that was never committed",
-  "id_sets": "all 51 shards carry the identical set of 2974 utterance ids",
+  "id_sets": "re-derived by `tools/fetch_massive.py ids --cache <dir>`: all 51 shards report the same 2974 utterance ids (union 2974, intersection 2974, distinct id-sets 1), so 2,974 -- not 151,674 -- is the count a bound may sit on",
   "method": "each pinned path fetched over HTTPS from the pinned revision, TLS certificate verification enabled and redirects followed by the client; sha256 computed on the bytes returned; rows counted as non-empty lines of the gunzipped JSONL",
   "reverified_on": "2026-10-05",
-  "transport_note": "huggingface.co answers only with the local HTTP proxy bypassed: through the proxy the handshake presents a CN=*.facebook.com certificate and verification fails. Verification was not bypassed; the proxy was."
+  "tool_verified_by": "`tools/fetch_massive.py fetch --dest <cache>` then `verify --cache`: every shard re-downloaded from the pinned revision with certificate verification on and re-hashed against this file (51 of 51 ok, 0 mismatched, 0 missing)",
+  "tool_verified_on": "2026-10-06",
+  "transport_note": "huggingface.co answers only with the local HTTP proxy bypassed: through the proxy the handshake presents a CN=*.facebook.com certificate and verification fails. Verification was not bypassed; the proxy was.",
+  "transport_retry_note": "the first pass stopped on two shards with `http.client.IncompleteRead`, which the fetcher then began to name as a refusal; a retry completed all 51. Bytes are discarded after checking -- they are not vendored."
  },
  "resolve_route": "https://huggingface.co/datasets/mteb/amazon_massive_intent/resolve/<rev>/<path>",
  "revision": "940fd47a81eaa7f2cc7b129674d945d618ac38c2",

@@ -265,6 +265,15 @@ def inventory(root: Path) -> dict:
                              lines_malformed=lines_malformed,
                              lines_malformed_by_backend=malformed_by_backend)
     cmd, env = audit_command(root)
+    if not massive_pin():
+        # An artefact written in this checkout without its own pin list would publish MASSIVE rows
+        # that say "not opened" while the corpus they describe is pinned -- the absence is a broken
+        # tree, not a finding about the corpus, and rc 0 with a refusal sentence in a table cell is
+        # how it used to leave. `corpus_options` still renders the absent-pin case (a library outside
+        # this repository has no pin), but the command that writes the published artefact refuses.
+        raise ArithmeticError(
+            "%s is missing or unreadable from this checkout, so the MASSIVE rows have no owner"
+            % MASSIVE_PIN_LABEL)
     audit = subprocess.run(cmd, capture_output=True, text=True, cwd=str(root), env=env)
     return {
         "source": corpus_label(root),
@@ -355,15 +364,25 @@ def massive_pin(path: Optional[Path] = None) -> dict:
     """The committed MASSIVE pin list -- the owner of every figure this project prints about it.
 
     Returns `{}` when the file cannot be opened, because a library used outside this repository
-    has no pin and the basis sentence then says it cannot state a count. A pin whose entries
-    disagree with their own declared totals raises: the same quantity published under two values
-    is drift, and `main` maps `ArithmeticError` to that exit code rather than to a usage error.
+    has no pin and `inventory()` refuses that case rather than publishing around it. A file that
+    exists but is not JSON is a different failure: it is not the operator's mistake, so the parse
+    error is re-raised as the refusal `main` already maps to EXIT_DRIFT rather than left as a
+    `ValueError` (which would exit 2 and blame whoever ran the command).
+
+    A pin whose entries disagree with their own declared totals raises for the same reason: the
+    same quantity published under two values is drift, and `main` maps `ArithmeticError` to that
+    exit code rather than to a usage error.
     """
     pin_path = Path(path) if path is not None else MASSIVE_PIN_PATH
     try:
-        pin = json.loads(pin_path.read_text())
+        raw = pin_path.read_text()
     except OSError:
         return {}
+    try:
+        pin = json.loads(raw)
+    except ValueError as exc:
+        raise ArithmeticError("%s is not readable JSON (%s); the MASSIVE figures have no owner"
+                              % (MASSIVE_PIN_LABEL, exc)) from exc
     files = pin.get("files")
     if not isinstance(files, list):
         raise ArithmeticError(
@@ -379,6 +398,22 @@ def massive_pin(path: Optional[Path] = None) -> dict:
             raise ArithmeticError(
                 "%s declares %s=%r where its %d entries sum to %d" % (
                     MASSIVE_PIN_LABEL, key, pin.get(key), len(files), want))
+    rows_of_entries = sorted({f["rows"] for f in files})
+    if pin.get("distinct_row_counts") != rows_of_entries:
+        raise ArithmeticError(
+            "%s declares distinct_row_counts=%r while its entries report %r" % (
+                MASSIVE_PIN_LABEL, pin.get("distinct_row_counts"), rows_of_entries))
+    # `distinct_ids` is NOT derived from `files[].rows`: it was measured by comparing the id sets
+    # across shards, and keeping it a separate field is what lets the pooled row's `n_independent`
+    # disagree with the row count instead of silently reusing it. What can be checked is the
+    # arithmetic the pin's own identity claim implies: if every shard holds the same id set and the
+    # same row count, then rows_total == distinct_ids x n_files.
+    if pin.get("id_sets_identical") is True:
+        expect = pin.get("distinct_ids")
+        if expect is None or declared * expect != pin.get("rows_total"):
+            raise ArithmeticError(
+                "%s declares distinct_ids=%r with id_sets_identical true, but %d x that is not "
+                "rows_total=%r" % (MASSIVE_PIN_LABEL, expect, declared, pin.get("rows_total")))
     return pin
 
 
@@ -406,10 +441,18 @@ def massive_pooled_basis(pin: dict) -> str:
     files = pin.get("files") or []
     digestless = listed - sum(1 for f in files if _is_digest(f.get("sha256")))
     clause = "" if not digestless else "; %d listed shard(s) carry no digest" % digestless
+    if pin.get("id_sets_identical") is not True:
+        clause += ("; the shards' id sets are not recorded as identical, so this row cannot state "
+                   "an independent case count")
     provenance = pin.get("provenance") or {}
+    # The most recent verification, not the first one: `reverified_on` records the controller's
+    # manual re-hash and `tool_verified_on` records the committed fetcher doing the same job. A
+    # published sentence that keeps naming the older date understates what now backs it.
+    verified_on = provenance.get("tool_verified_on") or provenance.get("reverified_on") \
+        or "an unrecorded date"
     return ("%d of %d pinned shards opened, hashed and row-counted on %s at revision %s; the "
             "digests live in %s and the bytes are not vendored%s" % (
-                listed, declared, provenance.get("reverified_on", "an unrecorded date"),
+                listed, declared, verified_on,
                 pin.get("revision", "an unpinned revision"), MASSIVE_PIN_LABEL, clause))
 
 
@@ -424,7 +467,7 @@ def _massive_rows_per_shard(pin: dict):
     return rows[0] if len(rows) == 1 else None
 
 
-def corpus_options(feishu_unique_ids: Optional[int] = None) -> list:
+def corpus_options(feishu_unique_ids: Optional[int] = None, pin: Optional[dict] = None) -> list:
     """Candidate corpora, with the bound computed on the number of INDEPENDENT cases.
 
     Three disclosures per row, because one of them was missing: `n_rows` counts what is in
@@ -433,12 +476,19 @@ def corpus_options(feishu_unique_ids: Optional[int] = None) -> list:
     language files by a file listing and printed the product in a column labelled
     "measured", which flattered the bound by 51x: MASSIVE's 51 test files are translations
     of the same 2,974 utterances, so an automation rate estimated over them is a rate
-    measured 2,974 ways, not 151,674 ways. The pin list owns those numbers now, and the
-    identity that makes 2,974 the independent count is measured, not asserted: the 51 shards
-    carry the identical set of utterance ids (151,674 rows over 2,974 distinct ids).
+    measured 2,974 ways, not 151,674 ways.
+
+    That identity is a *measurement recorded in the pin*, not a derivation this function makes:
+    `distinct_ids` was obtained by comparing the id sets of all 51 shards (`tools/fetch_massive.py
+    ids`), and `n_independent` reads that field while `n_rows` reads `rows_total`. They agree at
+    2,974 x 51 = 151,674 because the shards hold the same utterances, and if a future pin ever
+    breaks that, the pooled row reports no independent count rather than reusing a row count --
+    which is the difference between a bound on a sample and a bound on a translation table.
     """
-    pin = massive_pin()
+    pin = massive_pin() if pin is None else pin
     per_shard = _massive_rows_per_shard(pin)
+    listed, declared = massive_pinned_shards(pin)
+    independent = pin.get("distinct_ids") if pin.get("id_sets_identical") is True else None
     specs = (
         {"id": "feishu_zh",
          "unit": "unique labelled cases, each answered twice per backend over 3 repeats",
@@ -455,7 +505,7 @@ def corpus_options(feishu_unique_ids: Optional[int] = None) -> list:
          "note": "each language file is a candidate Mondrian slice"},
         {"id": "massive_intent_all_languages",
          "unit": "(language, utterance) pairs -- NOT independent cases",
-         "n_rows": pin.get("rows_total"), "n_independent": per_shard,
+         "n_rows": pin.get("rows_total"), "n_independent": independent, "n_shards": declared,
          "basis": massive_pooled_basis(pin),
          "note": "Apache-2.0, %s of pinned bytes; the extra shards are translations of the same "
                  "utterances, so the row multiple is coverage, not sample size"

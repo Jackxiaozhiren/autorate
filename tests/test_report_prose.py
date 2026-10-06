@@ -542,3 +542,34 @@ def test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity():
     # the earned form, and every noun it identifies must be one the measurement above proved identical.
     assert "byte-identical probability vectors, scores and gold labels" in bullet, bullet
     assert "repeats of one case are one observation" in bullet, bullet
+
+
+def test_the_translation_claim_needs_two_figures_that_can_disagree():
+    """R-75 (review M4): the guard compared a number to itself, so it could never fall silent.
+
+    `_denominator_note` asserted the MASSIVE translation claim while `pooled["n_independent"] ==
+    per_lang["n_independent"]` -- and both of those came from the same expression in the same module,
+    so the comparison was structurally true and the "a future divergence silences the claim" sentence
+    in its own docstring described a guard that does not exist. The claim now requires the rows to be
+    the shard count times the independent count, with the independent count sourced from the id-set
+    measurement and the shard count from the file list: three fields, and the equation can fail.
+    """
+    from autorate.report import _denominator_note
+
+    def inv(pooled_over, per_lang_over=None):
+        pooled = {"id": "massive_intent_all_languages", "n_rows": 151674, "n_independent": 2974,
+                  "n_shards": 51}
+        per_lang = {"id": "massive_intent_per_language", "n_rows": 2974, "n_independent": 2974}
+        pooled.update(pooled_over)
+        per_lang.update(per_lang_over or {})
+        return {"corpus_options": [{"id": "feishu_zh", "n_independent": 64, "n_rows": None},
+                                   pooled, per_lang],
+                "reader_lines_read": 768}
+
+    assert "translations" in _denominator_note(inv({})), _denominator_note(inv({}))
+    # A 52nd shard whose rows are not the same utterances: the multiple no longer holds.
+    text = _denominator_note(inv({"n_rows": 154648, "n_shards": 52, "n_independent": 3074}))
+    assert "translations" not in text, text
+    # And an absent independent count (a pin that cannot claim one) must not be read as zero.
+    text = _denominator_note(inv({"n_independent": None}))
+    assert "translations" not in text, text

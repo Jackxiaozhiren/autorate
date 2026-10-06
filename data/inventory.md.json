@@ -24,13 +24,14 @@
       "unit": "labelled decision rows (one utterance, one intent)"
     },
     {
-      "basis": "51 of 51 pinned shards opened, hashed and row-counted on 2026-10-05 at revision 940fd47a81eaa7f2cc7b129674d945d618ac38c2; the digests live in data/massive_provenance.json and the bytes are not vendored",
+      "basis": "51 of 51 pinned shards opened, hashed and row-counted on 2026-10-06 at revision 940fd47a81eaa7f2cc7b129674d945d618ac38c2; the digests live in data/massive_provenance.json and the bytes are not vendored",
       "bound_width_at_0.05": 0.0498,
       "feasible_at_0.10": true,
       "feasible_at_0.25": true,
       "id": "massive_intent_all_languages",
       "n_independent": 2974,
       "n_rows": 151674,
+      "n_shards": 51,
       "note": "Apache-2.0, 3.2 MB of pinned bytes; the extra shards are translations of the same utterances, so the row multiple is coverage, not sample size",
       "unit": "(language, utterance) pairs -- NOT independent cases"
     },

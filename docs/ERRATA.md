@@ -375,3 +375,59 @@ place under a dated correction marker so the change stays auditable.
 Reproduce the second row from the source: `sed -n '244,266p;348p;368,372p'` on the vendored
 `research/eval/laya_eval.py`, and `grep -rl "p_gold"` over the vendored tree returns nothing. The vendored
 corpus is read-only; nothing here was written to it.
+
+## 2026-10-06 — a review's six findings, and the first live fetch that refuted one tool's own contract
+
+The Task 1b review (`.superpowers/sdd/…/task-1b-review-report.md`) reported no blocker but six
+majors; all six were re-measured against the code before anything changed, and the fixes are in
+`202686c` and the commit that adds this row. Three of them were not the controller's own claims but
+claims the artefact made about itself:
+
+- **The shared line rule has an order** (M2). The scanner required its `LINE_KEYS` at parse time while
+  the reader refuses a non-`ok` line before reading any field, so one line missing both `id` and
+  `status` was `malformed_line` to the inventory and `lines_dropped_not_ok` to the reader. Measured
+  before the fix: `lines_quarantined_only == {'malformed_line': 1}` beside
+  `reader_lines_quarantined_only == {}` for the same bytes. The two published ledgers now agree on both
+  shapes, and the assertion that was supposed to police their equality is now exercised on a non-`ok`
+  line, which the whole planted corpus had hitherto omitted.
+- **`present - kept` is not `quarantined`** (M1). The markdown subtracted the reader's kept-line count
+  from the scanner's line count and labelled the remainder a quarantine, so a line the reader declined
+  on its own rule was charged to its quarantine. The reader's three dispositions are now published and
+  named separately: malformed / named-by-mode / refused / filtered.
+- **A guard that compares a figure to itself** (M4). `report._denominator_note` asserted the MASSIVE
+  translation claim while `pooled.n_independent == per_lang.n_independent` -- both produced by one
+  expression in one module, so the equality could not have failed and the docstring's promise that "a
+  future divergence silences the claim" described nothing. The claim now requires
+  `rows_total == distinct_ids x n_files` with the independent count read from a field that was produced
+  by comparing the shards' id sets, and `tests/test_report_prose.py` plants a 52nd shard with a
+  different id count to show the sentence goes quiet.
+- **The independent count had no owner** (M3). Both MASSIVE rows filled `n_independent` from
+  `files[].rows`; the equality of "2,974 rows per shard" and "2,974 distinct utterances" is exactly the
+  claim under dispute, so it is now a recorded measurement with its own field.
+- **A repository data defect filed as the operator's mistake** (M5). Truncating the pin made
+  `autorate snapshot` exit 2 (`JSONDecodeError` is a `ValueError`, mapped to EXIT_USAGE); deleting it
+  made the same command exit 0 with the rows reading "not opened". Both now refuse as
+  `ArithmeticError`, which this CLI already means as "cannot re-derive my own numbers" -> rc 4.
+
+**The fetcher's rc-1 claim was false, and only a real network could show it.** `tools/fetch_massive.py`
+documented that exit 1 is unreachable "by construction: every raise site is one of these three, or an
+`OSError` from the filesystem". Its first live run stopped on two shards with
+`http.client.IncompleteRead` -- a CDN closing a body early, neither an `OSError` nor a `FetchError` --
+and the process died with a traceback and exit 1. That is now a named refusal at the seam
+(`read_bytes`), with a test that plants the truncated read and asserts rc 4 with no traceback. Nothing
+about the failure was visible to 71 offline tests built on a transport seam that only ever returned
+clean bytes or an `HTTPError`: a seam that cannot deliver the ordinary network fault tests the mock, not
+the transport.
+
+The retry verified the corpus properly, and the pinned figures are now backed by the committed tool
+rather than by a controller script: all 51 shards re-downloaded from revision
+`940fd47a81eaa7f2cc7b129674d945d618ac38c2` with certificate verification on, **51 of 51 ok, 0
+mismatched, 0 missing**, and `ids` reporting `distinct_id_sets: 1`, union = intersection = **2,974**
+(`n_independent: 2974`). Consequently one published sentence moved: the MASSIVE basis now reads
+"opened, hashed and row-counted on **2026-10-06**" where this file's 2026-10-05 row quoted
+2026-10-05 -- the date is the most recent verification, not the first. No count changed; `verify`
+re-derives 68 figures with the corpus present and 34 without.
+
+Reproduce: `uv run --frozen python tools/fetch_massive.py fetch --dest <cache>` (bypass the local HTTP
+proxy; verification is not bypassed), then `verify --cache <cache>` and `ids --cache <cache>`, or run
+the gated test with `AUTORATE_MASSIVE_CACHE=<cache> uv run --frozen pytest tests/test_provenance.py`.
