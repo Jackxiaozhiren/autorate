@@ -22,3 +22,6 @@ packages = ["src/autorate"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The build-step tools live outside the `src` package, so a test that imports one needs the
+# repo root on sys.path; pytest alone puts `tests/` there, not `.`.
+pythonpath = ["."]
