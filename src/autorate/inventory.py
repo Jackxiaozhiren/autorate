@@ -422,7 +422,11 @@ def massive_pinned_shards(pin: dict) -> tuple:
 
     The pair, not a single number, is the disclosure: `50 of 51` means a shard is missing from the
     list that the pin says belongs in it, which is a different finding from `51 of 51` with a
-    digest missing, and the basis sentence names the second separately.
+    digest missing, and the basis sentence names the second separately. Reachability is honest to
+    state: `massive_pin` refuses a file whose `n_files` disagrees with its list, so a truncated
+    committed pin never renders `50 of 51` -- it exits 4 instead. The pair exists because
+    `massive_pooled_basis` is a pure function of a dict, and the shape this project publishes for
+    a partial pin list is the sentence above, not a silent 51.
     """
     return len(pin.get("files") or []), (pin.get("n_files") or 0)
 

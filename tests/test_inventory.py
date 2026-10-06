@@ -728,8 +728,9 @@ def test_rc_one_is_unreachable_for_every_planted_shape(tmp_path):
         case = tmp_path / label.replace(" ", "_")
         case.mkdir()
         proc = _snapshot_cli(_plant(case, [raw])[0], case / "inventory.md")
+        # rc 0 is the whole claim: 1 would be a traceback and 2 would file a corpus defect as a
+        # usage error, and `== 0` rules out both. A separate `!= 1` here could never fail.
         assert proc.returncode == 0, (label, proc.returncode, proc.stderr[-500:])
-        assert proc.returncode != 1, label
         assert "Traceback" not in proc.stderr, (label, proc.stderr[-500:])
         sidecar = json.loads(Path(str(case / "inventory.md") + ".json").read_text())
         # `lines_quarantined_only` is the total of every line named outside the mode counts, and
@@ -907,7 +908,10 @@ def test_a_line_the_reader_drops_for_its_own_reason_is_not_the_same_as_unreadabl
     assert stats["lines_dropped_not_ok"] == 1, stats
     assert _identity(d) == d["reader_lines_read"] == 5, d
     # The two passes' per-mode counts are different quantities, and the artefact names them
-    # apart: `lines_by_mode_backend` is archive lines, `reader_lines_by_mode` is records kept.
+    # apart: `lines_by_mode_backend` is every archive line with a readable mode, while
+    # `reader_lines_by_mode` counts only the lines the reader kept (still LINES, not records --
+    # one `four_noul` line yields four records, so a reader's record count is a different
+    # quantity from both of these and is published as `records_kept`).
     assert sum(d["lines_by_mode_backend"].values()) == 5, d
     assert sum(d["reader_lines_by_mode"].values()) == 4, d
 

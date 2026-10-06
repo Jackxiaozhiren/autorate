@@ -431,3 +431,29 @@ re-derives 68 figures with the corpus present and 34 without.
 Reproduce: `uv run --frozen python tools/fetch_massive.py fetch --dest <cache>` (bypass the local HTTP
 proxy; verification is not bypassed), then `verify --cache <cache>` and `ids --cache <cache>`, or run
 the gated test with `AUTORATE_MASSIVE_CACHE=<cache> uv run --frozen pytest tests/test_provenance.py`.
+
+## 2026-10-06 — the 2026-10-05 row credited `verify` with a check it did not perform
+
+This file's entry titled "the MASSIVE rows' count basis moved from three files opened to all
+fifty-one" closes with "`uv run --frozen autorate verify` re-derives the new basis in both arms (65/65
+with the corpus, 34/34 without)". That sentence was false when written, and it was false in the worst
+way: not overstating a number, but crediting a gate with a comparison it never made. `grep -n
+"corpus_options\|basis" src/autorate/cli.py` returned nothing -- the verification loop compared
+certificates, digests, the report bytes and the inventory bytes, and no figure it read had come from
+`data/massive_provenance.json`. In the corpus-less lane the inventory itself is transcribed from the
+committed snapshot, so a pin edited on disk could not contradict anything; the 65 and 34 counts were
+accurate, and the claim about them was not. A reviewer found it as a minor against the round.
+
+The comparison now exists. `verify` re-derives each MASSIVE option's `n_rows`, `n_independent`,
+`n_shards` and `basis` from the pin and expects them against the published table, in both lanes, which
+takes the gate to 75 values with the corpus and 41 without. Falsified rather than asserted:
+`tests/test_cli.py::test_verify_reds_when_the_pin_and_the_published_rows_disagree` drops one shard
+from a copy of the pin, leaves that copy internally consistent (50 x 2,974 = 148,700 rows, and every
+declared total matching its entries, so no loader check fires), and requires `verify` to exit 4
+quoting both 148,700 and the published 151,674. The first version of that control ran the CLI in a
+copied checkout and stayed green for the wrong reason: the pin path is resolved from the package's own
+`data/`, not from the working directory, so the tampered file was never read. Both facts are worth
+having -- which inputs a gate actually consults, and where those inputs live.
+
+The superseded sentence is left in place above, since this file records what was published rather than
+what is currently true.

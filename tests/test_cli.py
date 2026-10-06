@@ -78,9 +78,59 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     from autorate.cli import CERT_COMPARE_FIELDS
 
     # two certificates x (each compared field + its summary), then the two published
-    # artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md
-    expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 2
+    # artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md,
+    # then every MASSIVE figure that `data/massive_provenance.json` owns. The pin rows are
+    # counted from the same producer's output, and the ids it covers are pinned separately so
+    # a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change.
+    from autorate.inventory import corpus_options, massive_pin
+
+    pin_options = [o for o in corpus_options(None, pin=massive_pin())
+                   if o["id"].startswith("massive")]
+    assert sorted(o["id"] for o in pin_options) == ["massive_intent_all_languages",
+                                                    "massive_intent_per_language"], pin_options
+    pin_rows = sum(1 for o in pin_options
+                   for k in ("n_rows", "n_independent", "n_shards", "basis") if k in o)
+    assert pin_rows == 7, pin_rows       # rows/independent/shards/basis for pooled, 3 for per-shard
+    expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 2 + pin_rows
     assert total == expected, (total, expected, p.stdout)
+
+
+def test_verify_reds_when_the_pin_and_the_published_rows_disagree(monkeypatch, tmp_path,
+                                                         capsys):
+    """The new pin arm must be able to fail, or it is a second copy of the snapshot.
+
+    A self-consistent pin that simply describes a smaller corpus -- 50 shards instead of 51, every
+    declared total matching its entries -- passes every loader check. If `verify` re-derives the
+    MASSIVE rows from the pin rather than transcribing the snapshot, it must still catch that the
+    published table says 151,674 rows and the committed evidence now says 148,700.
+
+    Patched at `MASSIVE_PIN_PATH` rather than by running in a copied directory: the loader resolves
+    the pin from the package's own `data/`, so a working directory does not select a different pin.
+    That is worth knowing on its own -- the path is where the artefact's inputs live, not a
+    parameter -- so the first version of this test was run in a tampered checkout, stayed green, and
+    proved nothing.
+    """
+    import json
+
+    from autorate import inventory as inv_module
+    from autorate.cli import EXIT_DRIFT, main
+
+    pin = json.loads((REPO / "data" / "massive_provenance.json").read_text())
+    del pin["files"][-1]
+    pin["n_files"] = len(pin["files"])
+    pin["rows_total"] = sum(f["rows"] for f in pin["files"])
+    pin["bytes_total"] = sum(f["bytes"] for f in pin["files"])
+    assert pin["rows_total"] == pin["distinct_ids"] * pin["n_files"], pin["rows_total"]
+    tampered = tmp_path / "massive_provenance.json"
+    tampered.write_text(json.dumps(pin))
+    monkeypatch.setattr(inv_module, "MASSIVE_PIN_PATH", tampered)
+
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus"))
+    rc = main(["verify"])
+    err = capsys.readouterr().err
+    assert rc == EXIT_DRIFT, (rc, err)
+    assert "pin option massive_intent_all_languages.n_rows" in err, err
+    assert "148700" in err and "151674" in err, err
 
 
 def test_report_is_byte_identical_with_and_without_the_corpus(tmp_path):

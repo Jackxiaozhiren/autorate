@@ -303,6 +303,25 @@ def cmd_verify(args) -> int:
             "transcribed from the committed %s, not recomputed -- this run cannot see "
             "whether that snapshot went stale" % (len(inv["digests"]), INVENTORY_JSON))
 
+    # The MASSIVE rows are derived from a committed file, not from the corpus, so this arm of the
+    # gate is where they can be re-derived in BOTH lanes -- which is the point of the sentence in
+    # `docs/ERRATA.md` that claims `verify` re-derives the basis. Read from the pin, never from the
+    # snapshot, so a pin edited on disk cannot agree with a snapshot that was written before it.
+    from .inventory import corpus_options as _corpus_options
+    from .inventory import massive_pin as _massive_pin
+
+    pin = _massive_pin()
+    recomputed = {o["id"]: o for o in _corpus_options(None, pin=pin)}
+    published = {o["id"]: o for o in inv["corpus_options"]}
+    for opt_id in sorted(recomputed):
+        if not opt_id.startswith("massive"):
+            continue          # feishu's counts are corpus-derived; the absent arm cannot see them
+        for key in ("n_rows", "n_independent", "n_shards", "basis"):
+            if key not in recomputed[opt_id]:
+                continue
+            expect("pin option %s.%s" % (opt_id, key), recomputed[opt_id].get(key),
+                   published.get(opt_id, {}).get(key))
+
     print("inventory source: %s" % source)
     print("disclosure: %s" % disclosure)
     print("re-derived %d /%d values" % (checked, total))
