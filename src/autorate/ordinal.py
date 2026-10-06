@@ -21,7 +21,7 @@ from typing import Sequence
 
 # Masses are sums of doubles, so a threshold the caller rounded to two decimals can land one
 # ulp below the span that equals it. Compared with a tolerance, not by exact equality: an exact
-# `<=` would drop a level whose chain mass IS the requested alpha, and the set would then be
+# `<=` would drop a level whose chain mass IS the requested threshold, and the set would then be
 # nested-looking but wrong at its own boundary.
 TOL = 1e-12
 
@@ -70,8 +70,8 @@ def score_ordinal(probs: Sequence[float], gold_index: int, u: float = 0.0) -> fl
     return masses[gold_index]
 
 
-def interval_set(probs: Sequence[float], alpha: float, u: float = 0.0) -> list:
-    """`{g : score_ordinal(probs, g) <= alpha}`: contiguous, mode-containing, nested in `alpha`.
+def interval_set(probs: Sequence[float], threshold: float, u: float = 0.0) -> list:
+    """`{g : score_ordinal(probs, g) <= threshold}`: contiguous, mode-containing, nested in `threshold`.
 
     `u` -- the recorded randomisation draw the `Record` contract carries -- is part of the
     signature for symmetry with the set gate and is **not** allowed to move membership here.
@@ -82,7 +82,7 @@ def interval_set(probs: Sequence[float], alpha: float, u: float = 0.0) -> list:
     in the calibration quantile, where the randomisation belongs.
     """
     masses = chain_masses(probs)
-    return [g for g, m in enumerate(masses) if m <= alpha + TOL]
+    return [g for g, m in enumerate(masses) if m <= threshold + TOL]
 
 
 def is_contiguous(indices: Sequence[int]) -> bool:
