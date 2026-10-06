@@ -49,7 +49,7 @@
 - [ ] **Step 1: Write the failing tests.** The point of these is that they encode *why* multiclass sets are invalid here, not just that the function returns something.
 
 ```python
-"""Minimum-length contiguous ordinal intervals: nested, contiguous, and mass-ordered."""
+"""Modal-anchored chain sets: contiguous around the mode, nested by construction."""
 import random
 
 import pytest
@@ -57,9 +57,14 @@ import pytest
 from autorate.ordinal import interval_set, is_contiguous, score_ordinal
 
 
-def test_the_interval_is_the_shortest_one_reaching_the_requested_mass():
+def test_the_set_is_the_sublevel_set_of_the_chain_score():
     # R-68: re-derived for the modal-anchored family. Chain scores of this ballot are
     # [0.45, 0.40, 0.75, 0.85, 0.95], so the sublevel sets below are what the code must return.
+    # The name matters as much as the numbers: this is NOT "the shortest interval reaching the
+    # requested mass". At 0.85 the cheapest contiguous span reaching that mass is [1, 2, 3]
+    # (0.40+0.35+0.10 = 0.85), while the chain's sublevel set is [0, 1, 2, 3] at a mass of 0.90.
+    # The extra level is the point -- membership is by chain score around the mode, so the family
+    # stays nested, and this pair of expectations is what distinguishes the two constructions.
     p = [0.05, 0.4, 0.35, 0.1, 0.1]
     assert interval_set(p, 0.4) == [1]
     assert interval_set(p, 0.75) == [0, 1, 2]
