@@ -21,11 +21,13 @@ from the corpus or opened from a file, and the count basis is named per row.
 | four_noul/laya | 192 |
 
 Counts here are archive LINES per mode and backend, taken before any
-quarantine. The reader keeps only the lines whose probabilities close, so its
-own count can be smaller.
+refusal. The reader keeps only the lines it can read and whose probabilities close,
+so its own count can be smaller; what it did with the rest is named on its own line
+below rather than netted into a single difference.
 
-- choice: **383 of 384** lines kept by the reader (1 quarantined)
-- four_noul: **384 of 384** lines kept by the reader (0 quarantined)
+- choice: **383 of 384** lines kept by the reader (1 quarantined for this mode)
+- four_noul: **384 of 384** lines kept by the reader (0 quarantined for this mode)
+- reader dispositions: 0 malformed line, 1 named by mode, 0 refused (status not ok), 0 filtered
 
 
 ## Can this corpus support a bound?

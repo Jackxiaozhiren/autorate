@@ -784,6 +784,103 @@ def test_a_refused_corpus_still_exits_two_while_an_unreadable_line_exits_zero(tm
     assert sidecar["lines_outside_mode_counts"][0]["reason"] == "malformed_line", sidecar
 
 
+def test_a_line_the_reader_refuses_before_reading_its_keys_is_not_named_unreadable(tmp_path):
+    """R-75 (review M2): the ORDER of the shared rule is part of having one owner.
+
+    Measured before this test existed: a line carrying no `id` and no `status` was filed
+    `malformed_line` by the scanner, because the scanner required its `LINE_KEYS` at parse time,
+    while the reader drops a non-`ok` line at `records_from_line`'s first line and never reads a key
+    from it -- so it landed in `lines_dropped_not_ok` and in neither quarantine dict. The artefact
+    publishes `lines_quarantined_only` and `reader_lines_quarantined_only` beside each other, and
+    `test_the_conservation_identity_closes_over_a_mixed_corpus` asserts the two are equal; that
+    assertion held only because every planted shape carries `status: "ok"`, which hid the whole class.
+
+    The scanner now asks the reader's first question first, so the two dicts agree for both shapes:
+    an `ok` line missing a key is malformed to both, and a refused line is malformed to neither.
+    """
+    from autorate.readers.feishu_zh import read_archive
+
+    refused_and_incomplete = json.dumps(_planted_row(drop=("id", "status")))
+    root, line_no = _plant(tmp_path, [refused_and_incomplete])
+    d = inventory(root)
+    assert d["lines_malformed"] == 0, d
+    assert d["lines_quarantined_only"] == {}, d
+    assert d["lines_outside_mode_counts"] == [], d
+    # Counted, not lost: the line still stands for an archived choice line of this backend.
+    assert d["lines_by_mode_backend"]["choice/laya"] == 3, d
+    assert _identity(d) == d["reader_lines_read"] == 5, d
+
+    stats = {}
+    read_archive(root, stats=stats)
+    assert stats["lines_dropped_not_ok"] == 1, stats
+    assert stats["lines_malformed"] == 0, stats
+    # The assertion the old corpus could not make: the two passes' quarantine ledgers agree.
+    assert d["lines_quarantined_only"] == stats["lines_quarantined_only"] == {}, (
+        d["lines_quarantined_only"], stats["lines_quarantined_only"])
+    # And the shape that IS unreadable to both still agrees, so the fix did not just move the hole.
+    ok_but_no_id = json.dumps(_planted_row(drop=("id",)))
+    root2, _ = _plant(tmp_path / "ok", [ok_but_no_id])
+    d2 = inventory(root2)
+    stats2 = {}
+    read_archive(root2, stats=stats2)
+    assert d2["lines_malformed"] == stats2["lines_malformed"] == 1, (d2, stats2)
+    assert d2["lines_quarantined_only"] == stats2["lines_quarantined_only"], (d2, stats2)
+    assert [e["error"] for e in d2["lines_outside_mode_counts"]] == \
+           [e["error"] for e in stats2["quarantined"]], (d2, stats2)
+
+
+def test_inventory_itself_refuses_a_pass_that_loses_a_line(monkeypatch, tmp_path):
+    """R-75 (review M6): the conservation guard has to be reachable through `inventory`.
+
+    `test_the_conservation_check_can_fire` calls the helper with literals, which proves the helper
+    can refuse but says nothing about the call site: with only that test, a branch that drops a line
+    without a counter would still produce an artefact, because nothing in the pipeline was shown to
+    consult the identity. So this fakes exactly that defect -- a scan that forgets one line -- and
+    requires `inventory()` to stop rather than publish a smaller corpus.
+    """
+    from autorate import inventory as inventory_module
+
+    root, _ = _plant(tmp_path, [json.dumps(_planted_row(drop=("status",)))])
+    real = inventory_module._scan_jsonl
+
+    def losing_pass(path):
+        by_mode, ids, repeats, unclosed, outside, lines_read = real(path)
+        for mode in list(by_mode):
+            if by_mode[mode] > 1:
+                by_mode[mode] -= 1          # the line is gone, and no bucket mentions it
+                return by_mode, ids, repeats, unclosed, outside, lines_read
+        raise AssertionError("the fixture has no mode with more than one line to drop")
+
+    monkeypatch.setattr(inventory_module, "_scan_jsonl", losing_pass)
+    with pytest.raises(ArithmeticError, match="does not conserve"):
+        inventory(root)
+    # The unpatched pass still conserved, so the refusal came from the injected loss.
+    monkeypatch.undo()
+    assert _identity(inventory(root)) == inventory(root)["reader_lines_read"]
+
+
+def test_write_inventory_names_the_reader_its_own_buckets_and_not_a_difference(tmp_path):
+    """R-75 (review M1): `present - kept` is not `quarantined`, and the artefact said it was.
+
+    The per-mode bullet subtracted the reader's kept-line count from the scanner's line count and
+    labelled the remainder "quarantined". For a refused (`status != "ok"`) line the reader quarantines
+    nothing, so the sentence accused the quarantine of a line it had declined on its own rule -- and it
+    invented a number by subtraction instead of reading the two the reader already publishes.
+    """
+    dirty = tmp_path / "dirty"
+    dirty.mkdir()
+    root, _ = _plant(dirty, [json.dumps(_planted_row(drop=("status",))),
+                             json.dumps(_planted_row(response={"model": "m", "answers": {}}))])
+    out = dirty / "inventory.md"
+    write_inventory(inventory(root), out)
+    body = out.read_text()
+    # One refused line, one unreadable line: the bullet must name each disposition as itself, and the
+    # two must not be netted into one "quarantined" figure.
+    assert "1 refused" in body, body
+    assert "1 malformed" in body, body
+    assert "2 quarantined" not in body, body
+
+
 def test_a_line_the_reader_drops_for_its_own_reason_is_not_the_same_as_unreadable(tmp_path):
     """The measured boundary of the shared rule, recorded so nobody "fixes" it into agreement.
 

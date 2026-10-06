@@ -176,6 +176,9 @@
     "choice": 383,
     "four_noul": 384
   },
+  "reader_lines_dropped_not_ok": 0,
+  "reader_lines_filtered": 0,
+  "reader_lines_malformed": 0,
   "reader_lines_quarantined_only": {
     "choice": 1
   },

@@ -28,9 +28,11 @@ from .tails import bound_width, n_feasible
 
 MODES = ("choice", "four_noul")
 BACKENDS = ("laya", "jev")
-# The keys this module's own pass indexes straight off a line. Each caller names what IT reads:
-# the reader asks for none at parse time, because a line missing `mode` reaches the same named
-# failure one read further down and its published stats must not move.
+# The keys this module's own pass indexes straight off a line, required on the `status == "ok"`
+# branch only -- which is where the reader indexes them too. Each caller names what IT reads (the
+# reader asks for none at parse time), but both must ask AFTER the reader's first question, or one
+# defective line is `malformed_line` to this pass and `lines_dropped_not_ok` to that one, and the two
+# ledgers the artefact prints beside each other disagree (R-75).
 LINE_KEYS = ("mode", "id", "repeat")
 # How many offending lines the artefact names. The counts are never bounded -- a truncated list
 # is a disclosure limit, not a loss of the count, and the gap sentence says which is which.
@@ -94,6 +96,13 @@ def _scan_jsonl(path: Path) -> tuple:
     crashes the other -- which is how one unparseable line came to exit 1 (outside the published
     0/2/3/4 contract) here while the reader carried on. Every line this pass reads therefore
     ends in exactly one of two places: `by_mode`, or `outside` with a reason.
+
+    R-75: and the ORDER is part of the rule. The reader refuses a line whose `status` is not `ok`
+    before it reads a single field from it, so requiring `LINE_KEYS` at parse time named a
+    `malformed_line` of a line the reader had already dropped for its own reason -- the two
+    quarantine ledgers this artefact publishes side by side disagreed about the same line. The key
+    requirement therefore happens on the `ok` branch, which is the only branch where the reader
+    reads those fields at all.
     """
     by_mode: dict = {}
     ids: set = set()
@@ -106,15 +115,23 @@ def _scan_jsonl(path: Path) -> tuple:
         if not line.strip():
             continue
         lines_read += 1              # before parsing: an unread line is still a line seen
-        obj, error = parse_archive_line(line, LINE_KEYS)
+        obj, error = parse_archive_line(line)
         if error:
             outside.append(quarantine_line_entry(obj, backend, line_no, MALFORMED_LINE, error))
             continue
-        if obj["mode"] not in MODES:
+        if obj.get("status") == "ok":
+            # The reader indexes these fields next, on this branch only; asking for them the same way
+            # the reader does is what keeps ONE failure string for one defective line.
+            obj, error = parse_archive_line(line, LINE_KEYS)
+            if error:
+                outside.append(quarantine_line_entry(obj, backend, line_no, MALFORMED_LINE, error))
+                continue
+        mode = obj.get("mode")
+        if mode not in MODES:
             outside.append(quarantine_line_entry(obj, backend, line_no,
-                                                 unreadable_mode_reason(obj["mode"])))
+                                                 unreadable_mode_reason(mode)))
             continue
-        if obj["mode"] == "choice" and obj.get("status") == "ok":
+        if mode == "choice" and obj.get("status") == "ok":
             # The same accessor the record builder uses, so the two cannot disagree about which
             # probability vector a line published -- and, unlike the builder, it never raises.
             _, probs, failure = choice_probabilities(obj)
@@ -129,9 +146,13 @@ def _scan_jsonl(path: Path) -> tuple:
                 unclosed.append({"id": obj["id"], "backend": backend,
                                  "repeat": obj["repeat"], "probs": list(probs),
                                  "probs_sum": round(sum(probs), 6)})
-        by_mode[obj["mode"]] = by_mode.get(obj["mode"], 0) + 1
-        ids.add(obj["id"])
-        repeats.add(obj["repeat"])
+        by_mode[mode] = by_mode.get(mode, 0) + 1
+        # A refused line may carry neither field, and this pass must not invent a crash for it:
+        # `obj["id"]` here was the rc-1 shape the 0/2/3/4 contract forbids.
+        if "id" in obj:
+            ids.add(obj["id"])
+        if "repeat" in obj:
+            repeats.add(obj["repeat"])
     return by_mode, ids, sorted(repeats), unclosed, outside, lines_read
 
 
@@ -276,6 +297,14 @@ def inventory(root: Path) -> dict:
         "reader_lines_by_mode": {k: v for k, v in sorted(
             reader_stats.get("lines_by_mode", {}).items())},
         "reader_quarantined": len(reader_stats.get("quarantined", [])),
+        # R-75 (review M1): the reader's own dispositions, published rather than derived by
+        # subtraction. `reader_quarantined` counts lines it quarantined; a line it REFUSED because
+        # `status != "ok"` and a line it FILTERED by language are neither, and the markdown used to
+        # call the difference between "lines present" and "lines kept" a quarantine -- so an honest
+        # artefact needed these three numbers of its own.
+        "reader_lines_malformed": reader_stats.get("lines_malformed"),
+        "reader_lines_dropped_not_ok": reader_stats.get("lines_dropped_not_ok"),
+        "reader_lines_filtered": reader_stats.get("lines_filtered"),
         "reader_lines_read": reader_stats.get("lines_read"),
         "reader_lines_quarantined_only": reader_stats.get("lines_quarantined_only"),
         "digests": corpus_digests(root),
@@ -493,9 +522,11 @@ def write_inventory(d: dict, out: Path) -> None:
         lines.append("| %s | %d |" % (k, v))
 
     kept = d.get("reader_lines_by_mode", {})
+    quarantined_by_mode = d.get("reader_lines_quarantined_only", {})
     lines += ["", "Counts here are archive LINES per mode and backend, taken before any",
-              "quarantine. The reader keeps only the lines whose probabilities close, so its",
-              "own count can be smaller.", ""]
+              "refusal. The reader keeps only the lines it can read and whose probabilities close,",
+              "so its own count can be smaller; what it did with the rest is named on its own line",
+              "below rather than netted into a single difference.", ""]
     for mode in MODES:
         present = sum(v for k, v in d["lines_by_mode_backend"].items() if k.startswith(mode + "/"))
         kept_n = kept.get(mode)
@@ -503,8 +534,15 @@ def write_inventory(d: dict, out: Path) -> None:
             lines.append("- %s: %d lines present, reader count not measured in this run"
                          % (mode, present))
         else:
-            lines.append("- %s: **%d of %d** lines kept by the reader (%d quarantined)"
-                         % (mode, kept_n, present, present - kept_n))
+            # Read from the reader's own per-mode ledger. The subtraction this line used to print --
+            # `present - kept` labelled "quarantined" -- charged a refused line to the quarantine.
+            lines.append("- %s: **%d of %d** lines kept by the reader (%d quarantined for this mode)"
+                         % (mode, kept_n, present, quarantined_by_mode.get(mode, 0)))
+    lines.append("- reader dispositions: %s malformed line, %s named by mode, %s refused "
+                 "(status not ok), %s filtered"
+                 % (d.get("reader_lines_malformed"),
+                    sum(v for k, v in quarantined_by_mode.items() if k != MALFORMED_LINE),
+                    d.get("reader_lines_dropped_not_ok"), d.get("reader_lines_filtered")))
     lines.append("")
     lines += ["", "## Can this corpus support a bound?", ""]
     lines.append(
