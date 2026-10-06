@@ -545,31 +545,55 @@ def test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity():
 
 
 def test_the_translation_claim_needs_two_figures_that_can_disagree():
-    """R-75 (review M4): the guard compared a number to itself, so it could never fall silent.
+    """R-75 + R-83 (review M4, MA-3): the guard has four conjuncts and every one must be reachable.
 
-    `_denominator_note` asserted the MASSIVE translation claim while `pooled["n_independent"] ==
-    per_lang["n_independent"]` -- and both of those came from the same expression in the same module,
-    so the comparison was structurally true and the "a future divergence silences the claim" sentence
-    in its own docstring described a guard that does not exist. The claim now requires the rows to be
-    the shard count times the independent count, with the independent count sourced from the id-set
-    measurement and the shard count from the file list: three fields, and the equation can fail.
+    M4's defect was that `_denominator_note` compared a number to itself -- the pooled and per-language
+    independent counts came from one expression in one module -- so its own "a future divergence
+    silences the claim" described a guard that could not fall. `b964af0` added the shard-count test and
+    the row equation, but MA-3 measured that the test written for it still passed against the PRE-fix
+    guard, and it reproduces: rewriting the conjunct back to `pooled == per_lang` in a scratch copy
+    leaves this file's named test `1 passed`, because both of its negative arms changed
+    `n_independent` as well, so they broke the pooled/per-language conjunct first and the two new
+    conjuncts were never the discriminator. Two arms are added here for exactly that shape: a pooled
+    row whose rows are one off `2974 x 51` while both options still report 2974, and a pooled row that
+    records no shard count at all. The old guard asserts the claim through both; the new one is silent
+    on both, which is what makes the arms discriminate the conjuncts this round added.
+
+    MA-4 is answered as (b), not (a): inside the product path those two arms are the loader's invariant
+    restated -- `massive_pin` refuses (rc 4) a pin where `n_files x distinct_ids != rows_total`, and the
+    per-language option's `n_rows` and `n_independent` are the same single value -- so they can only
+    fire on a dict that skipped the loader, and the sentence's real divergence valve is the two
+    "no count was recorded" arms, as `_denominator_note`'s docstring now states. The reviewer's (a)
+    candidate, comparing `per_lang["n_rows"]` to `pooled["n_independent"]` instead, is the same pair of
+    figures this conjunct already compares, so it buys no reachability.
     """
     from autorate.report import _denominator_note
 
-    def inv(pooled_over, per_lang_over=None):
+    def inv(pooled_over=None, per_lang_over=None, pooled_drop=()):
         pooled = {"id": "massive_intent_all_languages", "n_rows": 151674, "n_independent": 2974,
                   "n_shards": 51}
         per_lang = {"id": "massive_intent_per_language", "n_rows": 2974, "n_independent": 2974}
-        pooled.update(pooled_over)
+        pooled.update(pooled_over or {})
         per_lang.update(per_lang_over or {})
+        for key in pooled_drop:
+            del pooled[key]
         return {"corpus_options": [{"id": "feishu_zh", "n_independent": 64, "n_rows": None},
                                    pooled, per_lang],
                 "reader_lines_read": 768}
 
-    assert "translations" in _denominator_note(inv({})), _denominator_note(inv({}))
+    assert "translations" in _denominator_note(inv()), _denominator_note(inv())
     # A 52nd shard whose rows are not the same utterances: the multiple no longer holds.
     text = _denominator_note(inv({"n_rows": 154648, "n_shards": 52, "n_independent": 3074}))
     assert "translations" not in text, text
     # And an absent independent count (a pin that cannot claim one) must not be read as zero.
     text = _denominator_note(inv({"n_independent": None}))
+    assert "translations" not in text, text
+    # MA-3 arm 4: ONLY the equation fails. Both options agree on 2,974 and a shard count is recorded,
+    # so the pre-fix guard asserted the claim straight through this row -- rows_total having drifted one
+    # row away from n_independent x n_shards is the shape the new conjuncts were added for.
+    text = _denominator_note(inv({"n_rows": 151675}))
+    assert "translations" not in text, text
+    # MA-3 arm 5: ONLY the shard count is missing. A pooled row that records no `n_shards` states a
+    # multiple of nothing, and the pre-fix guard could not see it either: the two options still matched.
+    text = _denominator_note(inv(pooled_drop=("n_shards",)))
     assert "translations" not in text, text

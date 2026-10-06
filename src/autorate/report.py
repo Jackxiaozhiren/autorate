@@ -274,13 +274,22 @@ def _denominator_note(inv: dict) -> str:
     These four numbers used to be typed into the sentence, and the typing had already cost the project
     twice: the prose said "MASSIVE's 51 language files" beside an inventory whose own recorded basis says
     3 of 51 were opened, so prose and artifact had drifted in opposite directions and nothing could see
-    it. Every figure below is read from `inv`, and the translation claim is asserted only while three
-    separately-recorded fields satisfy one equation -- the pooled rows (`rows_total`), the shard count
-    (`n_files`) and the independent count (`distinct_ids`, measured by comparing the shards' id sets)
-    -- plus the per-language rows (`files[].rows`) matching that independent count. Comparing the two
-    options' figures to each other was not a guard: both came from one expression in one module, so
-    the equality could not have failed, and the claim would have gone on asserting after the
-    measurement behind it stopped holding.
+    it. Every figure below is read from `inv`, and the sentence is asserted only while four things hold:
+    an independent count was recorded at all, a shard count was recorded, the pooled rows are that count
+    times that shard count, and the per-language shards report the same count as the pooled row.
+
+    Where the valve actually lives (R-83, review MA-4): the last two conditions are the loader's own
+    invariant re-printed here, not a cross-check. `massive_pin` refuses -- `ArithmeticError`, which
+    `main` maps to exit 4, before any row is rendered -- a pin whose `n_files x distinct_ids` is not its
+    `rows_total`, so for every pin it accepts the product holds by construction. Measured: over 128
+    loader-accepted pin shapes, none made the equation or the shard-count test the only conjunct that
+    failed. What silences this sentence on real data is the first two -- `n_independent` is None when the
+    pin does not record the shards' id sets as identical, and the per-language count is None when the
+    pinned shards do not all report one row count, a shape the loader accepts because it polices the SET
+    of row counts rather than that the set has a single member. The equation and the shard test stay as
+    the defence for a dict that never went through the loader -- a committed `data/inventory.md.json`
+    edited or left stale, whose live counterpart `verify` re-derives from the pin itself
+    (`cli.py`, `PIN_DERIVED_KEYS`) rather than from the artefact.
     """
     def option(kind):
         return next((o for o in inv["corpus_options"] if o["id"] == kind), None)
