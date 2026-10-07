@@ -1,4 +1,4 @@
-"""The only module that prints: certify / compare / gate / report / verify / export-feishu."""
+"""The only module that prints: certify / compare / gate / report / verify / export-feishu / audit."""
 from __future__ import annotations
 
 import argparse
@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+from .audit import DEFAULT_DELTA, DEFAULT_GATE, audit_fields, check_audit, render_audit
 from .certify_choice import certify_choice
 from .gate import Gate
 from .inventory import corpus_label, inventory, write_inventory
@@ -30,6 +31,7 @@ class UsageError(ValueError):
 
 
 RESULTS = Path("docs/RESULTS.md")
+AUDIT_MD = Path("docs/AUDIT.md")
 INVENTORY_MD = Path("data/inventory.md")
 FROM_CORPUS = "recomputed from the corpus"
 FROM_SNAPSHOT = "committed %s" % INVENTORY_JSON
@@ -272,6 +274,76 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_audit(args) -> int:
+    """Emit G2: the gate the reference README instructs, measured against what it implies.
+
+    Offline, on committed inputs only (`data/records_feishu.jsonl`), no corpus and no inference.
+
+    Which arm each failure is, because the map is the product:
+
+    - **rc 2 (usage)** -- `load_records` cannot open the file, the named backend is not in it, the
+      gate or delta is not a probability, or every row of the population was excluded. The last one
+      is the arm a naive implementation gets wrong: 1,536 of the 1,919 archived rows carry
+      `gold is None`, so an audit that iterates all of them reports a rate by invention. Nothing to
+      audit is the operator's question, not an answer about the corpus.
+    - **rc 3 (not certifiable)** -- the audit ran, measured everything it could, and NO published
+      row is informative: on every field the exact upper bound sits above the error rate the gate's
+      own sentence implies, so the corpus cannot bound the gate. `autorate audit laya` lands here
+      today, and that is §5.5's refusal-as-product, not a crash.
+    - **rc 4 (drift)** -- `audit.AuditDriftError`, an `ArithmeticError`: the audit's own figures
+      contradict each other (a case partition that does not close, an excluded row that was not
+      counted, a bound below the rate it bounds, a frontier that is not monotone in its own gate).
+      `main` already maps that family here for the two sibling invariants; this is the third.
+    - **rc 1 is unreachable from a data defect.** A record the counter cannot score would surface
+      as `ValueError` -> 2, and a rate over an empty denominator is published as a named note
+      instead of a number, so there is no path from "the archive is awkward" to a traceback.
+    """
+    records = load_records(Path(args.records))
+    if args.backend:
+        if args.backend not in records:
+            raise UsageError("no records for backend %r in %s (it holds: %s)" % (
+                args.backend, args.records, ", ".join(sorted(records)) or "nothing"))
+        wanted = [args.backend]
+    else:
+        wanted = sorted(records)
+    if not wanted:
+        raise UsageError("no records to audit in %s: an audit over an empty file measures nothing"
+                         % args.records)
+    audits = {b: audit_fields(records[b], gate=args.gate, delta=args.delta) for b in wanted}
+    check_audit(audits)
+    text = render_audit(audits)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
+    for backend in wanted:
+        first = next(iter(audits[backend].values()))
+        print("%s: %d rows handed over, %d audited, %d excluded (%s)" % (
+            backend, first["n_rows_handed_over"], first["n_records"],
+            sum(first["excluded_reasons"].values()),
+            "; ".join("%d: %s" % (count, reason)
+                      for reason, count in sorted(first["excluded_reasons"].items()))
+            or "no exclusions"))
+        for field in sorted(audits[backend]):
+            row = audits[backend][field]
+            print("  %s/%s: %d of %d cases automated, %d wrong -> measured %s vs implied %.2f"
+                  " = %s; CP upper %s (one-sided) / %s (two-sided); informative: %s%s" % (
+                      backend, field, row["automated_cases"], row["n_cases"],
+                      row["erroneous_cases"],
+                      "n/a" if row["measured_error"] is None else "%.4f" % row["measured_error"],
+                      row["implied_error"],
+                      "n/a" if row["multiple"] is None else "%.2fx" % row["multiple"],
+                      "-" if row["bound"] is None else "%.4f" % row["bound"],
+                      "-" if row["bound_two_sided"] is None else "%.4f" % row["bound_two_sided"],
+                      "-" if row["informative"] is None else ("yes" if row["informative"] else "NO"),
+                      (" -- " + row["note"]) if row.get("note") else ""))
+    print("wrote %s" % out)
+    # rc 3 vs rc 0: a refusal is a result, so it must be loud in the exit code. Informative means
+    # the audit produced at least one bound that actually sits under the implied error rate; if
+    # every row failed that test, no gate on this corpus is bounded and nothing was certified.
+    informative = any(row["informative"] for table in audits.values() for row in table.values())
+    return EXIT_CERTIFIED if informative else EXIT_NOT_CERTIFIABLE
+
+
 def cmd_verify(args) -> int:
     """Recompute every published number from committed inputs and fail on drift."""
     checked = total = 0
@@ -389,6 +461,20 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report", help="write docs/RESULTS.md from the inputs")
     r.add_argument("--out", default=str(RESULTS))
     r.set_defaults(fn=cmd_report)
+
+    a = sub.add_parser(
+        "audit", help="G2: measure the gate the reference README instructs against the error "
+                      "rate its own sentence implies, on committed records only (offline)")
+    a.add_argument("backend", nargs="?", help="audit one backend; default: every backend in the "
+                                              "records file, each audited on its own cases")
+    a.add_argument("--gate", type=float, default=DEFAULT_GATE,
+                   help="the threshold the README instructs (default %.2f); the implied error "
+                        "rate is 1 - gate" % DEFAULT_GATE)
+    a.add_argument("--delta", type=float, default=DEFAULT_DELTA,
+                   help="level of the exact Clopper-Pearson bounds (default %.2f)" % DEFAULT_DELTA)
+    a.add_argument("--records", default=RECORDS, help="committed records file (default %s)" % RECORDS)
+    a.add_argument("--out", default=str(AUDIT_MD))
+    a.set_defaults(fn=cmd_audit)
 
     v = sub.add_parser("verify", help="re-derive every published number")
     v.set_defaults(fn=cmd_verify)
