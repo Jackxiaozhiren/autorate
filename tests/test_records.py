@@ -1,9 +1,11 @@
 """Task 4: the one public data contract. Field names live here; statistics do not.
 
 Every constant quoted from upstream is measured against the archived record it comes
-from, not from upstream's prose.
+from, not from prose.
 """
 import json
+import math
+import re
 from pathlib import Path
 
 import pytest
@@ -274,6 +276,93 @@ def test_case_id_survives_both_round_trips_because_it_is_the_bound_denominator()
 
 
 COMMITTED = Path(__file__).resolve().parents[1] / "data" / "records_feishu.jsonl"
+ERRATA = Path(__file__).resolve().parents[1] / "docs" / "ERRATA.md"
+
+# The rounding half-step of a 4-decimal published cell, and the tolerance the errata guard uses. One
+# constant, both places: the guard compares through `_float_form_agrees` at `<= HALF_STEP` and the probe
+# sweep walks the two basin edges `quoted +/- HALF_STEP`, and those are the same number -- making it a
+# literal in one place and a magic constant in the other is how a tolerance and its own justification
+# drift apart.
+HALF_STEP = 5e-5
+
+
+def _published_gate_table(text):
+    """Read the published gate table out of `docs/ERRATA.md`: its header columns and its two rows.
+
+    The option counts come from the HEADER ROW, not from a tuple typed in this file. `ks = (2, 4, 10,
+    20, 51)` was hand-written here while the shape guard compared each published row against it, so a
+    table whose header and cells disagree -- add a `k=100` column to the header and leave the rows
+    alone -- satisfied the guard that exists to catch exactly that. Now the header is the producer of
+    `ks`, and the guard checks the cells against it.
+
+    The table arrives as TEXT rather than being read here, because a guard whose producer is a file can
+    only be falsified by editing the file: every plant below hands this same reader a doctored table and
+    shows the guard reddening on it, which is the difference between a check and a transcription.
+
+    Returns `(ks, rows)` where each row is `(gate_cell, cells)` and `cells` keeps the gate cell at
+    index 0, which is the shape the guard below asserts on.
+    """
+    lines = text.splitlines()
+    headers = [l for l in lines if l.startswith("| gate |")]
+    assert len(headers) == 1, headers
+    header_cells = [c.strip() for c in headers[0].strip().strip("|").split("|")]
+    columns = [c for c in header_cells[1:] if c.startswith("k=")]
+    assert columns, header_cells
+    ks = tuple(int(c[len("k="):]) for c in columns)
+    rows = []
+    for line in lines:
+        if line.startswith("| `confidence >="):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            gate = re.search(r"(\d+\.\d+)", cells[0])
+            assert gate, cells
+            rows.append((cells[0], cells))
+    assert len(rows) == 2, rows
+    return ks, rows
+
+
+def _published_cells(text):
+    """Every `(tau, k, quoted)` cell the published gate table carries -- ten for the two rows.
+
+    Derived from `_published_gate_table`, so the sweep below probes the cells the document actually
+    publishes and not a copy of them typed into this file.
+    """
+    ks, rows = _published_gate_table(text)
+    cells = []
+    for gate, line_cells in rows:
+        tau = float(re.search(r"(\d+\.\d+)", gate).group(1))
+        cells.extend((tau, k, quoted) for k, quoted in zip(ks, line_cells[1:]))
+    return cells
+
+
+def _float_form_agrees(value, quoted) -> bool:
+    """The guard's own comparison: the solver within the rounding half-step of the published cell."""
+    return abs(value - float(quoted)) <= HALF_STEP
+
+
+def _string_form_agrees(value, quoted) -> bool:
+    """The withdrawn proposal's comparison: the rendered value must equal the published TEXT.
+
+    Kept next to `_float_form_agrees` because the whole 2026-10-04 row is about what the two do and do
+    not share, and a reader should be able to run both from one place rather than re-type either.
+    """
+    return f"{value:.4f}" == quoted
+
+
+def _basin_probes(cells):
+    """Six probes per published cell: each of its two rounding-basin edges, plus one double each side.
+
+    The edge of `quoted`'s basin is `quoted +/- HALF_STEP`, computed in doubles -- the recipe the
+    2026-10-05 note of the 2026-10-04 errata entry gave as a parenthetical ("the edge itself plus one
+    representable double each side") and no code implemented. Ten cells make the 60 probes that row
+    counts, and this is where that count is produced rather than remembered.
+    """
+    probes = []
+    for tau, k, quoted in cells:
+        q = float(quoted)
+        for edge in (q - HALF_STEP, q + HALF_STEP):
+            for x in (edge, math.nextafter(edge, -math.inf), math.nextafter(edge, math.inf)):
+                probes.append((tau, k, quoted, x))
+    return probes
 
 
 @pytest.mark.skipif(not COMMITTED.exists(), reason="committed records not present")
@@ -301,49 +390,183 @@ def test_noul_asks_of_one_case_group_to_one_case_after_a_round_trip():
 def test_the_errata_table_matches_the_function_that_produced_it():
     """A correction can go stale like any number, so the errata file is checked too.
 
-    The check re-derives every published cell through the solver and compares FLOATS at 5e-5. It is
-    not a byte comparison -- a byte check on a 4-decimal cell would be the weaker claim, since the
-    solver's full-precision value has no bytes in this document -- and the second `2026-10-04` note in
-    `docs/ERRATA.md`'s 2026-10-01 entry says so in the file that once claimed otherwise.
+    The check re-derives every published cell through the solver and compares FLOATS at `HALF_STEP` --
+    the rounding half-step of a 4-decimal cell, the same constant the basin sweep below walks its edges
+    with. It is not a byte comparison -- a byte check on a 4-decimal cell would be the weaker claim,
+    since the solver's full-precision value has no bytes in this document -- and the second
+    `2026-10-04` note in `docs/ERRATA.md`'s 2026-10-01 entry says so in the file that once claimed
+    otherwise.
 
-    The `5e-5` is not slack that can run out: it is the rounding half-step, because every published cell is
-    a 4-decimal rounding of this solver's own value (measured agreement, 2.8e-6 to 4.888e-5). That fixes
-    what the guard can see. A solver change that leaves every published 4th decimal intact passes by
-    construction; a change that moves a value across a rounding boundary reddens it. So its drift
-    sensitivity is set by where each cell sits relative to a midpoint. Comparing the rendered strings
-    instead would be the same test EVERYWHERE EXCEPT at an exact rounding midpoint, and at a midpoint the
-    string form is strictly stricter: measured 60 probes at the two basin edges of the ten cells, 9
-    disagree and all 9 are float-passes/string-fails, none the other way -- `0.97855` is within `5e-5` of
-    `0.9785` and renders `0.9786`. That form also has no stable tie rule (`f"{0.96095:.4f}"` renders
-    `0.9609`), and it reads the published TEXT as well as the solver: a cell republished as `0.89` --
-    correctly rounded, two digits shorter -- fails it while passing this one, so the two guards differ on
-    formatting, which is a fragility a published table must not acquire. See the 2026-10-04 entry that
-    withdraws that proposal and its 2026-10-05 note for these measurements. Making the guard able to see
-    sub-4th-decimal drift means publishing more digits, which is a decision about this document, not about
-    this test.
+    `HALF_STEP` is not slack that can run out: it is the half-step, because every published cell is a
+    4-decimal rounding of this solver's own value. That fixes what the guard can see. A solver change
+    that leaves every published 4th decimal intact passes by construction; a change that moves a value
+    across a rounding boundary reddens it. So its drift sensitivity is set by where each cell sits
+    relative to a midpoint.
+
+    Every figure this docstring used to state as a measurement of its own -- the `2.8e-6 to 4.888e-5`
+    agreement, the binding cell and its headroom, the 60 probes and the 9 disagreements, `0.97855`,
+    `f"{0.96095:.4f}"` -> `0.9609`, `0.889972135562` and the `0.89` republishing argument -- is produced
+    by `test_the_string_form_is_strictly_stricter_at_the_ten_basin_edges`, which reads this same table
+    through this same reader and sweeps this same solver. Those were the present-tense claims of a run
+    nobody could re-run (R-87); a docstring that quotes them is pointing at that test, not at a scratch
+    directory. Comparing the rendered strings instead would be the same test EVERYWHERE EXCEPT at an
+    exact rounding midpoint, and at a midpoint the string form is strictly stricter -- that is what the
+    producer demonstrates, cell by cell. It also reads the published TEXT as well as the solver, so a
+    cell republished as `0.89` -- correctly rounded, two digits shorter -- fails it while passing this
+    one: the two guards differ on formatting, which is a fragility a published table must not acquire.
+    See the 2026-10-04 entry that withdraws that proposal, its 2026-10-05 note, and the 2026-10-07 row
+    that gives the whole set a producer. Making the guard able to see sub-4th-decimal drift means
+    publishing more digits, which is a decision about this document, not about this test.
     """
-    from pathlib import Path
-
-    import re
-
-    doc = Path(__file__).resolve().parents[1] / "docs" / "ERRATA.md"
-    assert doc.exists(), "docs/ERRATA.md missing"
-    ks = (2, 4, 10, 20, 51)
-    lines = [l for l in doc.read_text().splitlines() if l.startswith("| `confidence >=")]
-    assert len(lines) == 2, lines
-    for line in lines:
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        # The shape is part of the published claim: one gate cell plus one cell for every k. This line is
-        # the FIRST catcher for both deletions, measured both ways: drop a MIDDLE cell (k=20) and the
-        # guard reddens HERE with `5 == 1 + 5`, and only when this line is deleted as well does the same
-        # plant reach the float loop below (it then re-aligns `0.9203` onto k=20 and misses by 1.157e-2).
-        # What it exists for above all is the deletion the float check can never see: drop the LAST cell
-        # and `zip` simply stops early, the four survivors still agree, and the row silently stops
-        # claiming k=51. So this is a guard, not a pin -- it is the sole catcher of the last column.
+    assert ERRATA.exists(), "docs/ERRATA.md missing"
+    text = ERRATA.read_text()
+    ks, rows = _published_gate_table(text)
+    for gate, cells in rows:
+        # The shape is part of the published claim: one gate cell plus one cell for every k. `ks` comes
+        # from the table's own HEADER ROW now, so the claim "the row has one cell per column" is
+        # checked against the columns rather than against a tuple typed here. The first catcher for a
+        # deleted cell is still this line, measured both ways: drop a MIDDLE cell (k=20) and the guard
+        # reddens HERE with `5 == 1 + 5`, and only when this line is deleted as well does the same
+        # plant reach the float loop below (it then re-aligns `0.9203` onto k=20 and misses by
+        # 1.157e-2). What it exists for above all is the deletion the float check can never see: drop
+        # the LAST cell and `zip` simply stops early, the four survivors still agree, and the row
+        # silently stops claiming k=51. So this is a guard, not a pin -- it is the sole catcher of the
+        # last column, and the plant below is what says so.
         assert len(cells) == 1 + len(ks), (cells, len(cells))
-        tau = float(re.search(r"(\d+\.\d+)", cells[0]).group(1))
+        tau = float(re.search(r"(\d+\.\d+)", gate).group(1))
         for k, quoted in zip(ks, cells[1:]):
-            assert abs(p_max_for_entropy(target=tau, k=k) - float(quoted)) <= 5e-5, (tau, k, quoted)
+            assert _float_form_agrees(p_max_for_entropy(target=tau, k=k), quoted), (tau, k, quoted)
+
+    # The header-as-producer is a guard that can fail, so it is executed rather than described. Both
+    # directions of a table whose columns and cells disagree are planted by rewriting the header line
+    # FROM the parsed `ks` -- no column name is typed here, so the plant cannot drift from the table --
+    # and each planted table is then run through the float loop exactly as `zip` hands it: every pair it
+    # does make still agrees (adding a column leaves a promised pair unmade, dropping one leaves a
+    # published cell unclaimed), so the comparison is silent on both and only the shape line above
+    # is loud. That is what "a guard, not a pin" has to mean, and it is measured rather than asserted.
+    header = next(l for l in text.splitlines() if l.startswith("| gate |"))
+    for planted_ks, why in ((ks + (100,), "a k=100 column added to the header alone"),
+                            (ks[:-1], "the header's last column deleted alone")):
+        planted_header = "| gate | " + " | ".join("k=%d" % k for k in planted_ks) + " |"
+        planted_ks_read, planted_rows = _published_gate_table(text.replace(header, planted_header))
+        assert planted_ks_read == planted_ks, (why, planted_ks_read)
+        assert all(len(p_cells) != 1 + len(planted_ks) for _, p_cells in planted_rows), (why,
+                                                                                        planted_rows)
+        survivors = []
+        for gate, p_cells in planted_rows:
+            tau = float(re.search(r"(\d+\.\d+)", gate).group(1))
+            survivors.extend(_float_form_agrees(p_max_for_entropy(target=tau, k=k), quoted)
+                             for k, quoted in zip(planted_ks, p_cells[1:]))
+        assert all(survivors), (why, survivors)
+        # The float loop always under-covers a table whose columns and cells disagree: compared pairs is
+        # fewer than the header PROMISES when a column has no cell (10 of 12), and fewer than the table
+        # PUBLISHES when a cell has no column (8 of 10). Either way every comparison it does make passes,
+        # which is exactly why the shape line above is the guard and this loop is not.
+        compared = len(survivors)
+        promised = len(planted_ks) * len(planted_rows)
+        published = sum(len(p_cells) - 1 for _, p_cells in planted_rows)
+        assert compared < max(promised, published), (why, compared, promised, published)
+
+
+def test_the_string_form_is_strictly_stricter_at_the_ten_basin_edges():
+    """The producer for every probe figure this file and `docs/ERRATA.md` state in present tense.
+
+    R-87's standing rule is that a number quoted in the present tense needs a producer the suite runs.
+    The 2026-10-04 entry and its 2026-10-05 note published a set of them -- `60 probes`, `9
+    disagreements`, `zero in the other direction`, the nine named edges, `4.887545e-05`, `97.75%`,
+    `tau=0.50, k=10`, `1.125e-6`, the `2.8e-6 to 4.888e-5` spread, `f"{0.96095:.4f}"` -> `0.9609`,
+    `0.889972135562`, and the `0.89` republishing argument -- and for two rounds the only code beside
+    them was `<= 5e-5`, which cannot see a single one. This test is option (a) of that ruling: the
+    values are load-bearing for a published claim about the guard's own drift sensitivity, so they are
+    recomputed here rather than demoted to a dated record. Each is derived from the published table
+    through `_published_gate_table` and from the shared bisection, so a solver change or a republished
+    cell that moves a figure reddens THIS test instead of leaving the prose behind it.
+
+    Two tolerances are stated as decisions rather than inherited. The agreement figures are published at
+    3 or 4 significant digits, whose own half-steps are 5e-8, 5e-9, 5e-10 and 5e-9; the two thin ones
+    are bracketed at `1e-8` -- 2e-4 of the basin this whole row is about, and eight orders of magnitude
+    above the last-bit libm drift R-121 measured -- because a bracket a reader cannot meet on their own
+    libc is a second defect rather than a stricter gate. The `97.75%` ratio is held to the half-step of
+    its own published digits, which it clears by 5x.
+
+    What makes this more than a transcription of the note: the disagreement SET is computed from the
+    table, so the plants at the end -- a cell republished with two digits fewer, and the binding cell
+    transcribed one last digit wide -- change it. A count that could only move when the assertion above
+    it were edited would not be a guard.
+    """
+    assert ERRATA.exists(), "docs/ERRATA.md missing"
+    cells = _published_cells(ERRATA.read_text())
+    assert len(cells) == 10, cells
+
+    # 1. all ten published cells pass BOTH forms: `0` mismatches, the consistency check that made the
+    #    equivalence 2026-10-04 argued from visible in the first place.
+    devs = []
+    for tau, k, quoted in cells:
+        solver = p_max_for_entropy(target=tau, k=k)
+        assert _float_form_agrees(solver, quoted), (tau, k, quoted)
+        assert _string_form_agrees(solver, quoted), (tau, k, quoted)
+        devs.append((abs(solver - float(quoted)), tau, k, quoted))
+
+    # 2. the agreement spread, the cell that binds it, and the headroom beside it. These are three
+    #    renderings of ONE measurement -- the largest deviation, its ratio to the ceiling, the ceiling
+    #    minus it -- so they pin the published text, they do not corroborate each other.
+    worst = max(devs, key=lambda d: d[0])
+    best = min(devs, key=lambda d: d[0])
+    assert best[0] == pytest.approx(2.8e-6, abs=1e-8), best
+    assert worst[0] == pytest.approx(4.888e-5, abs=1e-8), worst
+    assert (worst[1], worst[2]) == (0.5, 10), worst
+    assert worst[0] / HALF_STEP == pytest.approx(0.9775, abs=5e-5), worst
+    assert HALF_STEP - worst[0] == pytest.approx(1.125e-6, abs=1e-8), worst
+
+    # 3. the sweep: six probes per cell -- each basin edge, then one representable double either side.
+    probes = _basin_probes(cells)
+    assert len(probes) == 60, len(probes)
+    forward, reverse = [], []
+    for tau, k, quoted, x in probes:
+        if _float_form_agrees(x, quoted) and not _string_form_agrees(x, quoted):
+            forward.append((x, quoted))
+        elif _string_form_agrees(x, quoted) and not _float_form_agrees(x, quoted):
+            reverse.append((x, quoted))
+    assert len(forward) == 9, [(f"{x:.6f}", q) for x, q in forward]
+    assert reverse == [], [(f"{x:.6f}", q) for x, q in reverse]
+    # The nine edges the 2026-10-05 note names, each "within `5e-5` of the cell and rendering to the
+    # wrong 4 decimals", compared as the five-decimal texts a reader checks by eye.
+    published_edges = ("0.97855", "0.96085", "0.94265", "0.93185", "0.92035", "0.89005", "0.81065",
+                       "0.69895", "0.66115")
+    measured_edges = sorted((f"{x:.5f}" for x, _ in forward), reverse=True)
+    assert measured_edges == sorted(published_edges, reverse=True), (measured_edges,
+                                                                    sorted(published_edges,
+                                                                           reverse=True))
+    for x, quoted in forward:
+        assert f"{x:.4f}" != quoted, (x, quoted)
+        assert _float_form_agrees(x, quoted), (x, quoted)
+
+    # 4. the tie rule the string form does not have, and the value the note quotes for k=2.
+    assert f"{0.96095:.4f}" == "0.9609"
+    k2 = p_max_for_entropy(target=0.50, k=2)
+    assert k2 == pytest.approx(0.889972135562, abs=1e-8), k2
+
+    # 5. the plants. `docs/ERRATA.md` is not edited for any of this: the cell list is doctored in memory
+    #    and fed to the same predicates, which is the only way to show a file-fed guard bites without
+    #    leaving a published correction wrong on disk.
+    republished = [(tau, k, ("0.89" if (tau, k) == (0.5, 2) else quoted)) for tau, k, quoted in cells]
+    assert len(republished) == 10, republished
+    # correctly rounded, two digits shorter: the float check still passes everywhere...
+    assert all(_float_form_agrees(p_max_for_entropy(target=t, k=kk), q) for t, kk, q in republished)
+    # ...and the string check fails on the republished cell alone, which is the formatting-as-drift
+    # fragility the withdrawal argued from.
+    assert not _string_form_agrees(k2, "0.89"), k2
+    assert sum(1 for t, kk, q in republished
+               if not _string_form_agrees(p_max_for_entropy(target=t, k=kk), q)) == 1, republished
+    transcribed = [(tau, k, ("%.4f" % (float(quoted) + 1e-4) if (tau, k) == (0.5, 10) else quoted))
+                   for tau, k, quoted in cells]
+    assert not all(_float_form_agrees(p_max_for_entropy(target=t, k=kk), q)
+                   for t, kk, q in transcribed), transcribed
+    planted_forward = [x for _, _, q, x in _basin_probes(transcribed)
+                       if _float_form_agrees(x, q) and not _string_form_agrees(x, q)]
+    assert len(planted_forward) != 9, len(planted_forward)
+    assert sorted((f"{x:.5f}" for x in planted_forward), reverse=True) != sorted(
+        published_edges, reverse=True), planted_forward
 
 
 def test_a_record_is_immutable_but_not_a_dict_key():
