@@ -24,8 +24,11 @@ says that and the measurement is taken from the rows rather than remembered.
 """
 import json
 import re
+import sys
 from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from autorate.certify_choice import certify_choice
 from autorate.report import build_report, load_records, read_certificate
@@ -37,16 +40,53 @@ NO_ATTEMPT = object()
 
 # The coarse predication: `byte-identical` asserted of the rows, records or repeats themselves. Written as
 # a pattern rather than the one literal string it started as, because the claim can be typed in more than
-# one shape -- measured, all five of "laya's three repeats per case are byte-identical", "the 192 records
-# are byte-identical within a case", "Each record is byte-identical to its two siblings", "the three rows
-# are all byte identical" and "repeats of one case are byte-identical rows" match it, while the four
-# earned or unrelated forms ("carry byte-identical probability vectors, scores and gold labels" among
-# them) do not. Where the two could still be confused the pattern errs toward flagging, which is the right
-# direction for a guard on a published sentence. It matches zero lines of the document `build_report`
-# renders today, in either lane, and the next assertion is only meaningful because that was measured.
+# one shape. What that shape covers is no longer recited here -- `_COARSE_PROHIBITED` and `_COARSE_EARNED`
+# below are checked against the pattern by the suite, and the end-to-end reach is checked by planting the
+# claim into a rendered artifact. Two facts the tables cannot express are stated instead:
+#   * The pattern reads ONE surface: the document `build_report` renders. A sentence typed into this file,
+#     the plan, `README.md` or a comment can never redden it.
+#   * The attributive form ("laya ships three byte-identical repeats per case", "the slice is 192
+#     byte-identical rows") is NOT policed, by ruling and not by accident: widening the alternation to
+#     reach it was considered and rejected, because the earned bullet puts `byte-identical` attributively
+#     in front of the three quantities the measurement does prove identical. `_COARSE_EARNED` therefore
+#     lists attributive forms as permitted, and no claim of over-flagging is made for them.
 _COARSE_ROW_IDENTITY = re.compile(
     r"\b(?:rows?|records?|repeats?)\b[^.]{0,60}?\b(?:are|is|were)\s+(?:all\s+)?byte[- ]?identical\b",
     re.IGNORECASE)
+
+# The coarse claim, in every shape the artifact's history contains. The last one is past tense and is the
+# only thing keeping `were` in the copula alternation, which is why it is here rather than assumed.
+_COARSE_PROHIBITED = (
+    "laya's three repeats per case are byte-identical",
+    "the 192 records are byte-identical within a case",
+    "Each record is byte-identical to its two siblings",
+    "the three rows are all byte identical",
+    "repeats of one case are byte-identical rows",
+    "the archived rows were byte-identical inside a case",
+)
+
+# Forms the guard must let through. The first three are the wording `build_report` publishes today, so an
+# over-broad pattern would redden the artifact it is meant to be protecting; the fourth and fifth are the
+# earned sentences this file's sibling tests assert; the last is the one that tests the `[^.]` in the
+# middle of the pattern, because a rows-claim in one sentence and a probabilities-claim in the next are
+# not one predication.
+_COARSE_EARNED = (
+    "laya's three per case carry byte-identical probability vectors, scores and gold labels",
+    "repeats of one case are one observation",
+    "not identical rows -- `meta`, `repeat` and `slices` differ",
+    "0 of 64 groups have identical rows",
+    "What a repeat shares is the measurement, not the row",
+    "the rows are not identical. The probabilities are byte-identical",
+)
+
+# The attributive shapes named in the ruling above, kept separate from `_COARSE_EARNED` so that "permitted"
+# is never mistaken for "earned": these are coarse in intent and silent in practice, and this is the record
+# of that being deliberate.
+_COARSE_SILENT_BY_DESIGN = (
+    "laya ships three byte-identical repeats per case",
+    "the slice is 192 byte-identical rows",
+    "laya's repeats are, row for row, byte-identical copies",
+)
 
 
 def _swap(cert, overrides: dict, bound, attempt=None):
@@ -530,18 +570,100 @@ def test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity():
                               "jev": read_certificate(Path("data/cert_jev.json"))},
                         {b: len(rs) for b, rs in records.items()})
     bullet = next((l for l in text.splitlines() if l.startswith("- The bounds are per CASE")), text)
-    # The guard is keyed on the CLAIM, not on the bullet that first carried it. Measured on the previous
-    # form of this line: planting "laya's three repeats per case are byte-identical" into a DIFFERENT
-    # generated line -- the Exchangeability bullet -- rendered it in the artifact and left all 24 tests in
-    # this file green, because the negated assertion read only the per-CASE bullet. So the negation runs
-    # against the whole rendered document now, and the positive ones stay where they belong, on the
-    # bullet whose claim this is.
+    # The guard is keyed on the CLAIM, not on the bullet that first carried it, and that is now executed
+    # rather than recited: `test_the_row_identity_guard_reddens_on_a_planted_claim` plants the coarse form
+    # into the Exchangeability bullet and fails the `assert not coarse` two lines below. What this comment
+    # used to remember -- that a per-bullet-only negation had left the whole file green on exactly that
+    # plant -- is the regression that test exists to make impossible to repeat.
     coarse = _COARSE_ROW_IDENTITY.findall(text)
     assert not coarse, coarse
     assert bullet.startswith("- The bounds are per CASE"), text[:200]
     # the earned form, and every noun it identifies must be one the measurement above proved identical.
     assert "byte-identical probability vectors, scores and gold labels" in bullet, bullet
     assert "repeats of one case are one observation" in bullet, bullet
+
+
+def test_the_row_identity_pattern_matches_every_prohibited_form_it_claims():
+    """R-88, pattern arm: the guard's reach is a table the suite runs, not a comment that remembers it.
+
+    Three things are proved here and none of them was provable before: the pattern still sees all six
+    coarse shapes; it does not see the six earned ones, two of which are wording the artifact publishes
+    today; and every arm of the alternation is load-bearing, because dropping it reddens a named row of
+    `_COARSE_PROHIBITED`. That last arm is what makes a narrowing impossible to land quietly -- the failure
+    this file was written for was a guard whose comment claimed five shapes and whose code could have
+    drifted to fewer with nothing in the suite noticing.
+    """
+    for text in _COARSE_PROHIBITED:
+        assert _COARSE_ROW_IDENTITY.search(text), text
+    for text in _COARSE_EARNED:
+        assert not _COARSE_ROW_IDENTITY.search(text), text
+    # Permitted-but-coarse, asserted rather than argued: the ruling is that these are silent by design, so
+    # they must not be written as if the guard catches them, and must not start matching on their own.
+    for text in _COARSE_SILENT_BY_DESIGN:
+        assert not _COARSE_ROW_IDENTITY.search(text), text
+
+    narrowings = (
+        ("drop `records?` from the noun alternation", "(?:rows?|records?|repeats?)", "(?:rows?|repeats?)", 1),
+        ("drop `rows?` from the noun alternation", "(?:rows?|records?|repeats?)", "(?:records?|repeats?)", 3),
+        ("drop `repeats?` from the noun alternation", "(?:rows?|records?|repeats?)", "(?:rows?|records?)", 0),
+        ("drop `were` from the copula", "(?:are|is|were)", "(?:are|is)", 5),
+        ("make the hyphen mandatory", r"byte[- ]?identical", r"byte-identical", 3),
+        ("drop the `all` slot", r"(?:all\s+)?", "", 3),
+        ("tighten the 60-character span to 10", "{0,60}?", "{0,10}?", 4),
+    )
+    for label, old, new, victim in narrowings:
+        narrowed_pattern = _COARSE_ROW_IDENTITY.pattern.replace(old, new)
+        assert narrowed_pattern != _COARSE_ROW_IDENTITY.pattern, \
+            "%s is no longer a substring of the shipped pattern: this narrowing is not being tested" % label
+        narrowed = re.compile(narrowed_pattern, re.IGNORECASE)
+        assert not narrowed.search(_COARSE_PROHIBITED[victim]), (label, _COARSE_PROHIBITED[victim])
+        assert _COARSE_ROW_IDENTITY.search(_COARSE_PROHIBITED[victim]), \
+            (label, "the shipped pattern must still match the row this narrowing is defined to lose")
+
+
+def test_the_row_identity_guard_reddens_on_a_planted_claim(monkeypatch):
+    """R-88, end-to-end arm: the guard test itself is run against a rendered artifact that carries the lie.
+
+    The claim is planted where the ruling says the guard has to be blind-proof -- in a bullet that is NOT
+    the per-CASE one -- by wrapping the renderer the same way the earlier measurement wrapped it by hand.
+    Two rows are recorded as reddening, and both are asserted rather than described: the `assert not coarse`
+    inside `test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity`, whose failure message
+    must name the planted match, and the pattern table above. The restoration arm runs the same test again
+    with the real renderer, so the plant is shown to be what reddened it and not the fixture.
+
+    The plant's own landing check raises `RuntimeError`, not `AssertionError`: inside `pytest.raises
+    (AssertionError)` an assertion about the plant would be swallowed and a plant that never reached the
+    document would pass. That is the difference between this test and the comment it replaced.
+    """
+    module = sys.modules[__name__]
+    real_build_report = module.build_report
+    exchange = "- Exchangeability is assumed within a backend and a question shape"
+    planted_clause = " (laya's three repeats per case are byte-identical),"
+
+    records = load_records(Path("data/records_feishu.jsonl"))
+    inv = json.loads(Path("data/inventory.md.json").read_text())
+    certs = {"laya": read_certificate(Path("data/cert_laya.json")),
+             "jev": read_certificate(Path("data/cert_jev.json"))}
+    counts = {b: len(rs) for b, rs in records.items()}
+    ground = real_build_report(inv, certs, counts)
+    assert exchange in ground, "the plant's anchor line is no longer in the rendered artifact"
+    assert _COARSE_ROW_IDENTITY.findall(ground) == [], "the guard is not silent on the shipped artifact"
+
+    def planting_build_report(inv, certs, counts):
+        text = real_build_report(inv, certs, counts)
+        planted = text.replace(exchange, exchange + planted_clause, 1)
+        if planted == text:
+            raise RuntimeError("the plant did not land: the anchor line is not where the render puts it")
+        return planted
+
+    monkeypatch.setattr(module, "build_report", planting_build_report)
+    with pytest.raises(AssertionError) as guard_raised:
+        module.test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity()
+    # The red is the guard's own, on the guard's own line, and it names the coarse match it found.
+    assert "are byte-identical" in str(guard_raised.value), str(guard_raised.value)
+
+    monkeypatch.undo()
+    module.test_the_per_case_bullet_names_the_vector_identity_not_the_row_identity()
 
 
 def test_the_translation_claim_needs_two_figures_that_can_disagree():
