@@ -462,7 +462,13 @@ def test_the_denominator_is_cases_and_says_so(laya):
     # the SAME published confidence -- not identical ROWS, since `meta`, `repeat` and `slices` differ
     # (jev's 191 rows are the same 64 cases carrying 1-3 distinct vectors). Counting rows would print a
     # 3x larger sample than the one that exists (R-36, R-44). Do not write "byte-identical repeats": the
-    # archive refutes it of the rows, and tests/test_report_prose.py reddens the sentence if it is typed.
+    # archive refutes it of the ROWS. No guard will catch you writing it -- `tests/test_report_prose.py`'s
+    # `_COARSE_ROW_IDENTITY` reads ONE surface, the document `build_report` renders (measured: the pattern
+    # returns no match for "laya ships three byte-identical repeats per case", "the slice is 192
+    # byte-identical rows" or "laya's repeats are, row for row, byte-identical copies", and the guard never
+    # opens a plan, `README.md`, `docs/RESULTS.md` prose or a comment). It rejects the predicated form,
+    # "the three rows are all byte identical", and is silent on this attributive one by design. The reason
+    # not to write it is the measurement above, not a test.
     rows = audit_fields(laya, gate=0.85)
     assert rows["confidence"]["n_records"] == 192
     assert rows["confidence"]["n_cases"] == 64
