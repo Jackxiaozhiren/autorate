@@ -602,3 +602,56 @@ the markdown disagrees with itself.
 The README sentence was not hedged and no hedge belongs in it: the gate re-derives those values today,
 and a claim qualified for a defect that no longer exists is its own inaccuracy. The disclosure lives
 here, in the file that records what was published rather than what is currently true.
+
+## 2026-10-07 — "re-derives every published number" held on the machine that wrote the artefacts and red on the runner
+
+The disclosure this owes is not that a number was wrong. It is that `README.md:86`'s sentence -- and G5's
+literal measurement, "`autorate verify` re-derives every published number" -- carried an unstated premise:
+that a double stored by one C library is reproduced bit for bit by another. `verify` compares re-derived
+certificate values with `==`, which is an exact gate only if the committed bytes are reproducible exactly,
+and two published field families are not. `conditional_error_bound` and `marginal_error_bound` come from
+`tails.clopper_pearson_upper`, inverting a binomial tail through `math.log` and `math.exp`, and the last
+bits of those transcendentals differ between Apple libm and glibc.
+
+- Measured on the runner at `351845e`: the recomputed `cert laya.meta` bound was `0.7884344428029711`
+  where the artefact stored `0.7884344428029715`. Four units in the last place of a double -- 4e-16 -- red
+  in CI, green locally, and ten seeded reruns of the whole suite in a clean export were green each time --
+  although that evidence does not show what it appears to: `pytest-randomly` is not a dependency of this
+  project (absent from `uv.lock` and both venvs), so `--randomly-seed` changed nothing and the ten reruns
+  were ten copies of one deterministic order. What actually left the platform as the only variable was the
+  artifact diff itself, which named the field and the four units, together with the fact that test order is
+  not a variable here at all (ledger R-121, re-measured and corrected as R-140).
+- Measured across the three byte-compared surfaces before fixing anything (ledger R-122): the drift could
+  not move a reading a reader sees. Re-measured on this commit's artefacts, `docs/RESULTS.md`'s longest
+  fraction is 3 decimals and `data/inventory.md`'s is 3, while `data/cert_laya.json` stored 16. So the
+  exposure was the stored artefact's bytes, not a published figure -- which is also why the fix moves
+  artefact bytes and no rendered number.
+
+`4185f87` canonicalises at the producer instead of loosening the comparison everywhere:
+`certificate.PUBLISHED_DECIMALS = 12` and `CANONICALISED_BOUND_FIELDS = ("conditional_error_bound",
+"marginal_error_bound")`, mapped as a ceiling onto that grid so the published upper bound is never rounded
+down, and taken from the nearest value rather than `math.ceil(x * 1e12) / 1e12` so the mapping is
+idempotent -- the producer rounds, the artefact stores what it rounded, and the gate compares those two.
+Named fields only: the certificate's other floats are quotients of integers or correctly-rounded sums, and
+IEEE 754 requires `+ - * /` to be exactly rounded, so they already agreed on the runner (25 of the 28
+diagnostic-curve points matched, and every mismatch was a bound). A blanket tolerance would have absorbed a
+genuinely changed automation rate as cheerfully as it absorbs a libm difference, which is what the ruling
+forbade.
+
+Measured after, on the committed artefacts: `data/cert_laya.json`'s bound fields are stored at 12 decimals
+(`0.974679434481`, `0.77499233523`) where they were stored at 16 (`0.9746794344808963`,
+`0.7749923352291154`); the `observed_*` ratios and `qhat` keep full precision, deliberately and by name.
+`docs/RESULTS.md` does not move. The artefacts were regenerated through `autorate certify`, not edited.
+
+What the sentence means now, stated rather than implied: `verify` re-derives every published number **to the
+precision the number is published at**. That is what a reader needs from a reproduction claim and what a
+byte-exact double was never actually promising. The gate still bites -- `tests/test_certify_choice.py`
+carries the pair that distinguishes a fix from a blinder, `test_verify_absorbs_a_last_bit_libm_drift_and_stays_green`
+and `test_verify_reds_when_a_bound_moves_in_the_tenth_decimal`, plus
+`test_a_stored_bound_the_producer_cannot_write_is_still_drift` for the stored side, while
+`tests/test_certificate_shape.py::test_the_canonical_field_list_is_exactly_the_bounds_the_shape_publishes`
+makes widening the field list a deliberate two-file edit and
+`test_the_canonical_form_is_idempotent_a_ceiling_and_swamps_the_libm_drift` pins the mapping's own property.
+
+No published figure in this project changed, and none of the sentences above is a correction of a number:
+the CI failures were real, the local greens were real, and the gap between them was the unstated premise.
