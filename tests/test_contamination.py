@@ -521,7 +521,8 @@ def test_the_probe_reads_the_denominators_the_certifier_published_and_counts_not
 
     The probe imports no record-level counting and calls `clopper_pearson_upper` for every bound, so
     a row count cannot become a denominator here and no binomial machinery is re-implemented. The
-    source-text arms are how that is checked without a `# noqa` or an ignore list.
+    source-text arms are how that is checked, rather than by suppressing a lint rule or adding an
+    ignore list -- the two moves this repository has already ruled out.
     """
     moved = stratified({"in": _stratum(24, 3), "out": _wide_out()})
     assert moved["R_in"] == pytest.approx(3 / 24.0), moved["R_in"]
