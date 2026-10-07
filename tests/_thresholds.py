@@ -1,11 +1,16 @@
-"""Threshold solvers shared by the test suite -- one owner per derivation.
+"""Scale derivations the test suite shares -- one owner per derivation.
 
 This module is the suite's OWNER FILE for arithmetic on the published scales: `tests/test_scales.py`
 asserts that every helper in `tests/` which reads `entropy_confidence` lives here, and that inventory
 by name. The rule is stated in `_entropy_scale_owners` there; what it means for a reader of this file
 is that a new derivation over the entropy scale belongs in this module, not in a second test file,
 because the last time the same derivation existed twice a transposed parameter order survived a whole
-review round.
+review round. Two boundaries on that claim, both measured rather than assumed: the rule is keyed on ONE
+name, `entropy_confidence`, so a helper that re-derives the ANSWER scale or inverts `max_confidence` is
+unreported by it -- the only thing that catches the narrowest case of that is
+`tests/test_scales.py::_inline_scale_subtractions`, which watches one expression rather than one name --
+and the inventory is of `tests/`, never of `src/autorate/`, because production code computing with the
+scale is what that package exists to do.
 
 `tests/test_records.py` and `tests/test_scales.py` both need the same question: "what `p_max`
 makes the entropy scale reach `target` at option count k". A bisection written twice is two
@@ -29,16 +34,30 @@ fixed reference point, which is what a body-level exchange of the two meanings i
 Scales here, not the figures: the k=4 / 0.85 anchor values themselves stay pinned where they
 were first established (`tests/test_records.py`, which owns the cross-k spread argument).
 
+Not every helper here is shared, and the honest reason for the two that are not: `scale_gap` and
+`scale_midpoint` have exactly one importer each (`tests/test_scales.py`), so the suite's usual trigger
+for a `tests/_name.py` module -- used by more than one test file -- is not what puts them here. They are
+here because the ownership rule exempts only this file, and a derivation the rule is meant to police has
+to be allowed to live somewhere; the alternative was to leave the subtraction of the two published scales
+inside a `test_*` body, which is the scope the rule cannot see (see `_inline_scale_subtractions` there).
+
 Both documents that quote these figures were retargeted to this function in the same commit that deleted
 the second copy: `docs/ERRATA.md` and spec section 7.4 both name
 `tests/_thresholds.py::p_max_for_entropy` as the producer of the table those sentences describe, and
 `tests/test_records.py::test_the_errata_table_matches_the_function_that_produced_it` re-derives every
-published cell through this function and asserts the row shape it reads. Two other mentions of
-`_pmax_reaching` remain, and both are correct as written: the note opening "this entry's main paragraph
-says \"The table above is byte-checked" -- the first of the two `2026-10-04` notes in the
-`docs/ERRATA.md` 2026-10-01 entry -- records that the entry used to name the deleted local copy, which is
-the history a reader of that correction needs, and Plan A's completed task text still shows the old helper
-because that plan records what was executed, not what the suite contains today.
+published cell through this function and checks each row against the header row of that same table.
+
+The deleted name is a live symbol nowhere, and every place it still appears is history with a reason to
+stand. `docs/ERRATA.md`'s entry "2026-10-01 -- an entropy-confidence figure was wrong in both value and
+direction" carries TWO `2026-10-04` notes, and they are about different things: the FIRST opens "until the
+Task 2 fix round 2 merged the suite's two copies of the bisection, this entry named
+`tests/test_records.py::_pmax_reaching`, the local copy", and that is the one recording the deletion, the
+history a reader of that correction needs; the SECOND opens "this entry's main paragraph says \"The table
+above is byte-checked\"", and that one is about the guard's comparison and says nothing about the helper.
+Plan A's completed task text still shows the old helper because that plan records what was executed, not
+what the suite contains today. `tests/test_scales.py` names it twice in prose and once as an assertion --
+the guard that reddens the moment a second copy is re-added to `tests/test_records.py`. Enumerated rather
+than counted, because a count of these mentions has been wrong in three consecutive rounds.
 """
 from autorate.records import entropy_confidence, max_confidence
 
