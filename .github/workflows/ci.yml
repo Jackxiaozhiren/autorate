@@ -13,16 +13,71 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with: { python-version: "3.12" }
       - run: uv sync --frozen --extra dev
+      # The platform record, first, so every later line in this job's logs has a machine beside
+      # it. R-121 was diagnosed from two red runs and one green local run that printed the same
+      # conclusion and no libm: `autorate verify` compares a re-derived float with `==`, and the
+      # last bits of `math.log`/`math.exp` are not the same between Apple libm and glibc. Same
+      # commit + same probe bits + a mismatched artefact means the artefact or the code is wrong;
+      # same commit + different probe bits means the platform does. This step is what separates
+      # the two, and it prints the ordering fact too: `pytest-randomly` is not a dependency here
+      # (absent from uv.lock and from the synced venv), so test order is deterministic and there
+      # is no seed to record -- see tools/float_probe.py, which probes rather than asserts that.
+      - run: uv run --frozen python3 tools/float_probe.py | tee /tmp/float-probe.log
       # `tools` is the third root: build-step code that produces a committed artefact
       # (data/massive_provenance.json). An unpoliced root is this repository's known blind
       # spot, and tests/test_toolchain.py runs THIS line, so one edit covers CI and local.
       - run: uv run --frozen ruff check src tests tools --select=E9,F63,F7,F82,F401,F811 --line-length=120 | tee /tmp/ruff.log
       - run: uv run --frozen python -m compileall -q src tests tools | tee /tmp/compileall.log
-      - run: uv run --frozen pytest -q | tee /tmp/pytest.log
+      # No `-q`. Suppressing it suppressed the entire platform record: with `-q` the log starts at
+      # the progress dots, so two runs on two libms were indistinguishable in the artefact -- which
+      # is exactly the question the two red runs were asking and none of them could answer. The
+      # header line (`platform linux -- Python 3.12.x, pytest-9.1.1, pluggy-...`) also names every
+      # plugin pytest loaded, which is where a random-order seed would appear if this project ever
+      # had one. `-rA` would add a per-test summary for all ~600 tests; the header is the part that
+      # was missing, so the log stays the same size.
+      - run: uv run --frozen pytest | tee /tmp/pytest.log
       - run: uv run --frozen autorate verify | tee /tmp/verify.log
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ci-logs
+          path: /tmp/*.log
+          if-no-files-found: ignore
+
+  # The claim `autorate verify` makes is cross-platform reproducibility, and until now CI sampled
+  # exactly one libc (ubuntu-latest, glibc) -- so "the commit reproduces" had one sample per run
+  # and was being read as two. This job takes the second sample on the runner that is NOT glibc,
+  # Apple libm on macos-latest, and asks the one question R-121 could not get answered: does the
+  # published number re-derive identically on a different math library?
+  #
+  # It runs `verify` and nothing else. Every input `verify` re-derives from is committed
+  # (`data/records_feishu.jsonl`, `data/cert_*.json`, `data/inventory.md.json`, `docs/`), so the
+  # lane costs one sync and one command per OS, and the vendored corpus is not reachable from a
+  # GitHub checkout on either arm -- both arms take the corpus-absent denominator (47 values),
+  # which is the same claim on two machines rather than two different claims.
+  cross-libc-verify:
+    needs: offline
+    strategy:
+      # A red on one libc must not hide the other arm's evidence, and the two arms together ARE the
+      # finding. `fail-fast: true` would cancel the surviving run mid-diagnosis.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with: { python-version: "3.12" }
+      - run: uv sync --frozen --extra dev
+      # Before `verify`, so a mismatch is read against the probe rather than reconstructed after it.
+      - run: uv run --frozen python3 tools/float_probe.py | tee /tmp/float-probe-${{ matrix.os }}.log
+      - run: uv run --frozen autorate verify | tee /tmp/verify-${{ matrix.os }}.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-libc-logs-${{ matrix.os }}
           path: /tmp/*.log
           if-no-files-found: ignore
