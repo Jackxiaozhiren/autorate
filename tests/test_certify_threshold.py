@@ -1,14 +1,17 @@
 """The threshold gate, and the case arithmetic both certifiers share."""
 import dataclasses
+import importlib
+import json
 import math
 
 import pytest
 
 from autorate.case_count import count_outcome
-from autorate.certificate import Reason
+from autorate.certificate import CANONICALISED_BOUND_FIELDS, Certificate, Reason, canonicalise_bound
 from autorate.certify_choice import certify_choice
 from autorate.certify_threshold import certify_threshold, sweep_thresholds
 from autorate.records import Record
+from autorate.tails import bound_width, clopper_pearson_upper
 
 # The score field the committed archive's choice rows actually carry. `confidence` is not one of them
 # (the rows carry `act_probability` and `reported_confidence`), so every corpus-present threshold
@@ -585,6 +588,13 @@ def test_the_selection_budget_is_tested_at_the_case_denominator_it_publishes():
     # Item 4: one unit for one budget. Selection used to test the RECORD-level bound while every
     # figure the certificate publishes is at the CASE level, so a lambda could satisfy beta on a
     # unit the certificate never names and be refused two lines later on the unit it does.
+    #
+    # The bound comparisons below are against `canonicalise_bound(raw)`, not against `raw`: since
+    # R-121 the gate publishes the canonical ceiling of the inversion, and the selector decides on
+    # that same number, so the expectation is restated at the precision the artefact stores. That is
+    # not a widened comparison -- each is still a single exact `==`, and
+    # `test_the_threshold_gate_publishes_only_bounds_another_libc_can_write` pins the difference
+    # between the two forms, so a producer that stopped canonicalising cannot pass here quietly.
     from autorate.certify_choice import split_cal
     from autorate.certify_threshold import _rule, _select_lambda
     from autorate.tails import clopper_pearson_upper
@@ -599,22 +609,25 @@ def test_the_selection_budget_is_tested_at_the_case_denominator_it_publishes():
                                               strict["automated_cases"], 0.05)
     chosen = _select_lambda(cal, "confidence", [0.90, 0.95], 0.38, 0.05)
     assert chosen[0] == 0.95, "selection still tests the budget on records: %r" % (chosen[0],)
-    assert chosen[2] == strict_case_bound, (chosen[2], strict_case_bound)
+    assert chosen[2] == canonicalise_bound(strict_case_bound), (chosen[2], strict_case_bound)
 
     cert = certify_threshold(_unit_mix(), score_field="confidence", alpha=0.05, beta=0.38,
                              seed=3, grid=(0.90, 0.95))
     assert cert.feasible is True, cert.summary()
     assert cert.meta["lambda"] == 0.95, cert.meta["lambda"]
-    assert cert.meta["cal_conditional_error_bound"] == strict_case_bound, cert.meta
-    assert cert.conditional_error_bound == clopper_pearson_upper(
-        cert.meta["erroneous_cases"], cert.meta["automated_cases"], 0.05)
+    assert cert.meta["cal_conditional_error_bound"] == canonicalise_bound(
+        strict_case_bound), cert.meta
+    assert cert.conditional_error_bound == canonicalise_bound(clopper_pearson_upper(
+        cert.meta["erroneous_cases"], cert.meta["automated_cases"], 0.05))
 
 
 def test_a_threshold_diagnostic_row_names_the_unit_of_every_bound_it_carries():
     # Item 4's other half: inside this module `conditional_error_bound` means the CASE-level bound
     # -- the set gate's record-level `closest_attempt` is ledger #37 and Task 6's regeneration, and
     # is deliberately not touched here. The record-level bound stays where it is worth keeping, and
-    # it is named for what it is.
+    # it is named for what it is. Both are read at the published precision (R-121): the row carries
+    # TWO transcendentals, and a sweep by field name is what rounds both while leaving the two
+    # quotient columns alone.
     from autorate.certify_choice import split_cal
     from autorate.certify_threshold import _rule
     from autorate.tails import clopper_pearson_upper
@@ -626,10 +639,10 @@ def test_a_threshold_diagnostic_row_names_the_unit_of_every_bound_it_carries():
     _cal, ev, _d = split_cal(recs, 3)
     row = cert.meta["closest_attempt"]
     obs = count_outcome(ev, _rule("confidence", row["lambda"]))
-    assert row["conditional_error_bound"] == clopper_pearson_upper(
-        obs["erroneous_cases"], obs["automated_cases"], 0.05), row
-    assert row["record_conditional_error_bound"] == clopper_pearson_upper(
-        obs["errors"], obs["automated"], 0.05), row
+    assert row["conditional_error_bound"] == canonicalise_bound(clopper_pearson_upper(
+        obs["erroneous_cases"], obs["automated_cases"], 0.05)), row
+    assert row["record_conditional_error_bound"] == canonicalise_bound(clopper_pearson_upper(
+        obs["errors"], obs["automated"], 0.05)), row
     assert cert.meta["diagnostic_curve"], cert.meta
     assert set(cert.meta["diagnostic_curve"][0]) >= {
         "conditional_error_bound", "record_conditional_error_bound"}, cert.meta["diagnostic_curve"][0]
@@ -855,3 +868,273 @@ def test_the_archive_error_criterion_is_the_label_the_singleton_delivers():
             assert o["multi_label"] == sum(1 for C in delivered if len(C) > 1), (backend, a)
             assert o["empties"] == sum(1 for C in delivered if not C), (backend, a)
     assert rederived == 10, rederived
+
+
+# --- R-121 at THIS gate's producers: the precision a published bound is stored at --------------
+#
+# `float-canonical-b` fixed the choice gate and reported, as its concern 3, that three modules still
+# wrote raw transcendentals into published numbers. Two of them are this file's module and
+# `tests/test_audit.py`; the third is another lane's fence. The exposure is the same one the runner
+# printed twice: `clopper_pearson_upper` inverts a binomial tail through ~80 `math.log`/`math.exp`
+# comparisons and `bound_width` is one `math.log`, and the last bits of those are not the same
+# between Apple libm and glibc (~4e-16 at 0.79, ~9000 ULPs wide there).
+#
+# No threshold certificate is committed under `data/` yet and `cli.cmd_verify` re-derives only the
+# set gate's two artefacts, so there is no shipped `verify` arm to point the guard pair at. The
+# comparison used instead is `verify`'s OWN: the same `CERT_COMPARE_FIELDS` list, the same exact
+# `==`, the same `recomputed %r, published %r` message shape -- applied to the certificate this
+# module derives, taken across a JSON round trip so the two sides are stored-versus-re-derived and
+# not one value compared with itself. That is the claim that actually matters here, because it is
+# the claim a foreign libc breaks: the number a Mac wrote is the number Linux re-derives.
+
+
+def _stored(cert):
+    """The certificate as an artefact holds it: serialised, then read back."""
+    return Certificate.from_dict(json.loads(cert.to_json()))
+
+
+def _published_diff(stored, fresh) -> list:
+    """Every field `verify` compares that the two sides disagree on, named the way it names them."""
+    from autorate.cli import CERT_COMPARE_FIELDS
+
+    failures = []
+    for field in CERT_COMPARE_FIELDS:
+        got, published = getattr(fresh, field), getattr(stored, field)
+        if got != published:
+            failures.append("cert threshold.%s: recomputed %r, published %r"
+                            % (field, got, published))
+    if fresh.summary() != stored.summary():
+        failures.append("cert threshold.summary: recomputed %r, published %r"
+                        % (fresh.summary(), stored.summary()))
+    return failures
+
+
+def _drift_the_transcendentals(monkeypatch, move):
+    """Make this gate's bound producers answer as the other C library did, and record the calls.
+
+    Both producers move, because both are published: `clopper_pearson_upper` feeds the two headline
+    bounds, the calibration bound and every curve row, and `bound_width` feeds the half-width that
+    sets `autorate_ci`. The module object is fetched by name -- `importlib.import_module` -- so the
+    patch lands on the module the certifier reads rather than on a re-exported function.
+    """
+    calls = []
+
+    def drifting_cp(k, n, delta):
+        raw = clopper_pearson_upper(k, n, delta)
+        moved = move(raw)
+        calls.append(("clopper_pearson_upper", k, n, raw, moved))
+        return moved
+
+    def drifting_width(n, alpha=0.05):
+        raw = bound_width(n, alpha)
+        moved = move(raw)
+        calls.append(("bound_width", n, None, raw, moved))
+        return moved
+
+    module = importlib.import_module("autorate.certify_threshold")
+    monkeypatch.setattr(module, "clopper_pearson_upper", drifting_cp)
+    monkeypatch.setattr(module, "bound_width", drifting_width)
+    return calls
+
+
+def _one_ulp(raw, direction):
+    """One unit in the last place up or down -- the size of the drift R-121 measured.
+
+    A bound of exactly 1.0 is left alone: the bisection brackets [0, 1], so 1.0 is the bracket's own
+    endpoint and not an answer `math.exp` produced, and no two libms disagree about it.
+    """
+    return raw if raw >= 1.0 else math.nextafter(raw, direction)
+
+
+def _gate_certificates():
+    """One feasible certificate and one refusal, so both publishing paths are under the drift.
+
+    The refusal is the half that matters most and the one a comparison-only fix would miss: its
+    `meta.diagnostic_curve` and `closest_attempt` carry TWO bounds per row -- case-level and
+    record-level -- and its `detail` sentence quotes a bound, so a raw double anywhere in that dict
+    is a published number the other platform cannot write.
+    """
+    feasible = certify_threshold(_unit_mix(), score_field="confidence", alpha=0.05, beta=0.38,
+                                 seed=3, grid=(0.90, 0.95))
+    refusal = certify_threshold(_unit_mix(), score_field="confidence", alpha=0.05, beta=0.05,
+                                seed=3, grid=(0.90, 0.95))
+    assert feasible.feasible is True, feasible.summary()
+    assert refusal.feasible is False, refusal.summary()
+    assert refusal.meta["diagnostic_curve"], "the refusal publishes no sweep to drift"
+    return feasible, refusal
+
+
+def test_the_threshold_gate_publishes_only_bounds_another_libc_can_write():
+    """Content guard: every bound-named published number is its own canonical value.
+
+    This is the artefact-side half of the fix, stated where the fix was applied. It walks the
+    serialised certificate -- the bytes a machine would commit -- and asks of every value stored
+    under one of `_BOUND_FIELDS` that `canonicalise_bound(value) == value`, which is the property a
+    raw transcendental does not have. It then asks the opposite question of the row's NON-bound
+    floats, because R-121's fix is a sweep by field name and not a pass over floats: if this gate
+    had rounded `observed_conditional_error` too, the gate would have become the blanket tolerance
+    the report forbids, and this is the assertion that would notice.
+    """
+    from autorate.certify_threshold import _BOUND_FIELDS
+
+    assert CANONICALISED_BOUND_FIELDS == ("conditional_error_bound", "marginal_error_bound")
+    assert set(CANONICALISED_BOUND_FIELDS) < set(_BOUND_FIELDS), _BOUND_FIELDS
+    bounds = quotients = 0
+    for cert in _gate_certificates():
+        doc = json.loads(cert.to_json())
+        stack = [doc]
+        seen = []
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key in _BOUND_FIELDS:
+                        seen.append((key, value))
+                    else:
+                        stack.append(value)
+            elif isinstance(node, list):
+                stack.extend(node)
+        named = [(k, v) for k, v in seen if v is not None]
+        assert [c for c in CANONICALISED_BOUND_FIELDS if any(k == c for k, _ in named)], named
+        for key, value in named:
+            assert canonicalise_bound(value) == value, (key, repr(value))
+            assert len(repr(value).split(".")[-1]) <= 12, (key, repr(value))
+            bounds += 1
+        ratios = [(k, v) for k, v in (doc["meta"].get("diagnostic_curve") or [{}])[0].items()
+                  if isinstance(v, float) and k not in _BOUND_FIELDS]
+        if not doc["feasible"]:
+            # Only a refusal sweeps, so only a refusal carries the curve rows and their ratios.
+            assert {k for k, _ in ratios} >= {
+                "observed_automation_rate", "observed_conditional_error"}, ratios
+        quotients += len(ratios)
+    assert bounds >= 6, "the two certificates no longer publish this many bounds: %d" % bounds
+    # Three non-bound floats on the surface this guard walks: the row's `lambda` (a record value,
+    # not a computed one) and the two ratio columns. Fewer would mean the refusal stopped sweeping.
+    assert quotients >= 3, quotients
+
+
+def test_a_rederivation_of_a_threshold_certificate_absorbs_a_last_bit_libm_drift(monkeypatch):
+    """Guard pair (a): a platform difference in the 16th decimal is not drift, both directions.
+
+    The assertions after the comparison are what keep the green honest, and they are the same three
+    the choice lane's pair makes: the instrument must have been reached, the move must really be one
+    ULP, and every drifted value must canonicalise back to the number it was canonicalised from.
+    Without them the gate would be green because nothing arrived.
+    """
+    feasible, refusal = _gate_certificates()
+    stored = (_stored(feasible), _stored(refusal))
+    # The control: the same comparison over the undrifted re-derivation is already clean.
+    for published, side in zip(stored, _gate_certificates()):
+        assert _published_diff(published, side) == []
+
+    for direction in (math.inf, 0.0):
+        calls = _drift_the_transcendentals(monkeypatch,
+                                           lambda raw, d=direction: _one_ulp(raw, d))
+        drifted = (_published_diff(published, fresh)
+                   for published, fresh in zip(stored, _gate_certificates()))
+        diffs = [list(d) for d in drifted]
+        assert calls, "the producers were never asked for a bound or a width"
+        assert [c for c in calls if c[0] == "bound_width"], "the interval width was never derived"
+        moved_apart = [(raw, moved) for _, _, _, raw, moved in calls if moved != raw]
+        assert moved_apart, "a one-ULP drift moved nothing: the instrument is blind"
+        assert all(abs(moved - raw) < 1e-15 for raw, moved in moved_apart), moved_apart[:3]
+        assert all(canonicalise_bound(moved) == canonicalise_bound(raw)
+                   for _, _, _, raw, moved in calls), \
+            [repr((raw, moved)) for raw, moved in moved_apart
+             if canonicalise_bound(moved) != canonicalise_bound(raw)][:3]
+        assert diffs == [[], []], (direction, diffs)
+        monkeypatch.undo()
+
+
+def test_a_threshold_bound_that_moves_in_the_tenth_decimal_reds_naming_the_field(monkeypatch):
+    """Guard pair (b): a bound that actually MOVED is still drift, and is named by field.
+
+    Same instrument, same fields, same exact comparison as the green guard two orders of magnitude
+    further along the number, so the pair differs only in the size of the move -- which is precisely
+    the claim `PUBLISHED_DECIMALS` makes. Absorbing 4e-16 is a fix and not a blinder only if 1e-10
+    still turns this red.
+    """
+    feasible, refusal = _gate_certificates()
+    stored = (_stored(feasible), _stored(refusal))
+    calls = _drift_the_transcendentals(monkeypatch, lambda raw: raw + 1e-10)
+    diffs = [_published_diff(published, fresh)
+             for published, fresh in zip(stored, _gate_certificates())]
+    assert calls and all(moved != raw for _, _, _, raw, moved in calls)
+    headline, sweep = diffs
+    assert headline, "a 1e-10 move on the feasible certificate re-derives the same number"
+    assert any(f.startswith("cert threshold.conditional_error_bound:") for f in headline), headline
+    assert any(f.startswith("cert threshold.meta:") for f in headline), headline
+    assert any(f.startswith("cert threshold.marginal_error_bound:") for f in headline), headline
+    assert sweep, "a 1e-10 move on the refusal's sweep re-derives the same dict"
+    assert any(f.startswith("cert threshold.meta:") for f in sweep), sweep
+    # both numbers of the disagreement are printed, at the digits that differ
+    text = "\n".join(headline + sweep)
+    assert "recomputed" in text and "published" in text, text[:400]
+    assert repr(feasible.conditional_error_bound) in text, text[:400]
+    moved = canonicalise_bound(feasible.conditional_error_bound + 1e-10)
+    assert moved != feasible.conditional_error_bound, "the planted drift did not take"
+    assert repr(moved) in text, text[:400]
+
+
+def test_a_foreign_libm_writes_the_same_bytes_for_the_same_threshold_certificate(monkeypatch):
+    """The artefact surface stops being platform-dependent, not merely the comparison.
+
+    Re-derive both certificates with the bound producers answering up to four ULPs away -- more
+    than the 4e-16 actually measured -- and the serialised certificate must be the bytes this
+    machine wrote, character for character. A tolerance in a comparison layer cannot make that
+    claim: it would still let two machines write two different files, which is the state R-121
+    was reported in.
+    """
+    for raw_offset in (1, 2, 4):
+        def drifting(raw, offset=raw_offset):
+            if raw >= 1.0:
+                return raw
+            moved = raw
+            for _ in range(offset):
+                moved = math.nextafter(moved, math.inf)
+            assert moved - raw < 1e-15, (raw, moved)
+            return moved
+
+        calls = _drift_the_transcendentals(monkeypatch, drifting)
+        for cert in _gate_certificates():
+            written = cert.to_json()
+            assert written == _stored(cert).to_json()
+        assert calls and any(moved != raw for _, _, _, raw, moved in calls), \
+            "the drift was planted and moved nothing"
+        monkeypatch.undo()
+
+
+def test_the_threshold_gate_leaves_the_quotients_it_publishes_alone():
+    """`autorate`, the two `observed_*` ratios and `mean_score` keep the double the records give.
+
+    R-121's argument is that IEEE 754 requires + - * / and sqrt to be correctly rounded, so a
+    quotient of two integers is already platform-exact and rounding it would buy nothing while
+    costing the gate its ability to see a genuinely changed automation rate. Measured on this
+    gate's own feasible certificate and on a refusal's swept row: each of those published floats is
+    taken as the records determine it, and the ones the 12-decimal grid does not already hold are
+    asserted to still be off-grid -- so a blanket sweep would have changed them, and changed none.
+    """
+    cert, refusal = _gate_certificates()
+    doc = json.loads(cert.to_json())
+    curve = (json.loads(refusal.to_json())["meta"].get("diagnostic_curve") or [{}])[0]
+    raw_non_bounds = [cert.autorate, cert.mean_set_size, cert.refusal_rate,
+                      cert.autorate_ci[0], cert.autorate_ci[1],
+                      curve.get("observed_automation_rate"),
+                      curve.get("observed_conditional_error")]
+    untouched = [v for v in raw_non_bounds if isinstance(v, float)]
+    assert len(untouched) == 7, untouched
+    assert any(v != canonicalise_bound(v) for v in untouched), untouched
+    assert cert.autorate == cert.meta["automated_cases"] / cert.meta["n_eval_cases"], cert.meta
+    assert curve, "the refusal row this guard reads no longer exists"
+    # The two ratio columns are re-derived here as the plain divisions they are, and compared
+    # exactly: a sweep over "every float in the row" would have put them on the 12-decimal grid,
+    # and this is the assertion that would then disagree.
+    from autorate.certify_choice import split_cal
+    from autorate.certify_threshold import _rule
+
+    _cal, ev, _d = split_cal(_unit_mix(), 3)
+    obs = count_outcome(ev, _rule("confidence", curve["lambda"]))
+    assert curve["observed_automation_rate"] == obs["automated"] / len(ev), curve
+    assert curve["observed_conditional_error"] == obs["errors"] / obs["automated"], curve
+    for key in ("observed_automation_rate", "observed_conditional_error"):
+        assert isinstance(curve[key], float), key

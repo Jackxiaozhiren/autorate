@@ -34,13 +34,31 @@ callable, which names the label the rule submits and the score it measures (R-66
 figure has one owner: the shared counter returns `mean_measure`, and `mean_score` is THIS gate's
 name for it -- the mean of the field's values over the evaluated records that carry one, with
 `missing_score` named beside it.
+
+Published precision, and why this module has any business with it (R-121). Every bound this gate
+emits -- the headline `conditional_error_bound` and `marginal_error_bound`, the calibration bound
+`meta.cal_conditional_error_bound` the selection budget was decided on, and both bounds on every
+row of a refusal's diagnostic curve -- is the output of `clopper_pearson_upper` inverting a binomial
+tail through `math.log`/`math.exp`, or of `bound_width` through `math.log`. The last bits of those
+transcendentals are not identical between Apple libm and glibc, so a full-precision double taken
+from one C library is not a number the other can re-derive: an exact re-derivation gate would then
+red on the machine that did not write the artefact, which is the incident R-121 records on the set
+gate. The same fix applies here and it is the SAME helper, at the same place -- the producer: every
+bound-valued output is passed through `certificate.canonicalise_bound`, which ceils it onto the
+12-decimal grid, is idempotent (so the stored number canonicalises to itself) and monotone (so
+`marginal <= conditional` survives the trip). The quotients of integers stay raw and unrounded:
+`autorate`, `observed_automation_rate`, `observed_conditional_error` and `mean_score` are divisions
+and sums, and IEEE 754 requires those to be correctly rounded, so they already agree bit for bit
+everywhere -- rounding them would be the blanket tolerance R-121 forbids, absorbing a genuinely
+changed automation rate as cheerfully as it absorbs a libm difference.
 """
 from __future__ import annotations
 
 from typing import Optional, Sequence
 
 from .case_count import AUTO, Verdict, case_key, count_outcome
-from .certificate import N_CLAIMS, Certificate, Reason
+from .certificate import (CANONICALISED_BOUND_FIELDS, N_CLAIMS, Certificate, Reason,
+                          canonicalise_bound)
 from .certify_choice import split_cal
 from .tails import bound_width, clopper_pearson_upper
 
@@ -51,6 +69,17 @@ METHOD = "threshold"
 # this rule produces no set, so writing its refusals into `empties` would put a false
 # statement on a certificate (R-53).
 _REFUSE = "refuse"
+
+# The bound-valued fields THIS gate publishes, as one list. `CANONICALISED_BOUND_FIELDS` is the
+# certificate shape's own two headline attributes and is owned by `certificate.py`; a threshold
+# refusal's diagnostic rows carry a third bound -- the record-denominator one, named for its unit
+# so a reader cannot mistake it for the case-level figure (ledger #37 is the same confusion on the
+# set gate). It is the same transcendental with the same last-ULP exposure (R-121), and it is NOT
+# added to that shared tuple: a guard test outside this fence pins that tuple to the shape's
+# attributes, and widening it to reach a row that is not a shape attribute would be one lane
+# editing another's guard. So the extra name is declared here, and the helper below walks the
+# union of the two lists rather than a second list of "floats that look like bounds".
+_BOUND_FIELDS = CANONICALISED_BOUND_FIELDS + ("record_conditional_error_bound",)
 
 
 def _values_of(records: Sequence, score_field: str) -> list:
@@ -155,6 +184,13 @@ def _select_lambda(cal: Sequence, score_field: str, points: Sequence[float],
     verdict the record bound is strictly looser, because an exact Clopper-Pearson upper bound
     tightens with n (measured: 0.361174 on 180 records against 0.411737 on the same 60 cases).
 
+    The bound is canonicalised at the call that makes it, which is also the call that compares it
+    with `beta`: `meta.cal_conditional_error_bound` publishes this exact number, so the operating
+    point is decided on the figure the certificate states, and neither half of that depends on
+    which C library ran `math.exp` (R-121). The ceiling moves a bound by at most 1e-12, and it
+    moves it UP, so a lambda this test accepts is never accepted on a rounding -- the grid can only
+    make the budget harder to meet, never easier.
+
     Ties go to the HIGHER lambda: two points that automate the same number of cases are the
     same promise, and the stricter rule is the one that also automates the fewer marginal
     records, so it is the smaller claim. Nothing on this line reads the evaluation half --
@@ -167,7 +203,8 @@ def _select_lambda(cal: Sequence, score_field: str, points: Sequence[float],
             # A point that automates no case makes no case-level claim at all: `beta` bounds the
             # error rate of the cases that run unattended, and there are none to bound.
             continue
-        bound = clopper_pearson_upper(obs["erroneous_cases"], obs["automated_cases"], delta)
+        bound = canonicalise_bound(
+            clopper_pearson_upper(obs["erroneous_cases"], obs["automated_cases"], delta))
         if bound > beta:
             continue
         # R-62, as the docstring above states it: the promise is the number of CASES automated, so
@@ -178,6 +215,19 @@ def _select_lambda(cal: Sequence, score_field: str, points: Sequence[float],
         if best is None or key > best[0]:
             best = (key, lam, obs, bound)
     return None if best is None else best[1:]
+
+
+def _canonicalised(row: dict) -> dict:
+    """Round the bound-named fields of one published row, and only those (R-121).
+
+    `_BOUND_FIELDS` drives the walk, exactly as `certify_choice._canonicalised` is driven by the
+    shape's own list: the two bounds a curve row carries, and the `closest_attempt` copy taken from
+    one of them, all publish the identical canonical number, while the counts and the two ratio
+    columns of the same row keep the exact double the records determine. The sweep is by field NAME,
+    not by "this looks like a float" -- a blanket pass over floats is the tolerance this replaces.
+    """
+    return {key: (canonicalise_bound(value) if key in _BOUND_FIELDS else value)
+            for key, value in row.items()}
 
 
 def _diagnostic(points, ev, score_field, delta: float) -> dict:
@@ -195,23 +245,27 @@ def _diagnostic(points, ev, score_field, delta: float) -> dict:
     `conditional_error_bound` -- the CASE-level bound, the one unit this module's
     `conditional_error_bound` ever means -- the record-level bound is published under the name
     that says so, `record_conditional_error_bound`. A row of one unit with another unit's name on
-    it is the defect ledger #37 tracks on the set gate; this gate does not repeat it.
+    it is the defect ledger #37 tracks on the set gate; this gate does not repeat it. Both bounds
+    go through `_canonicalised`, so a curve a Mac wrote is the curve a Linux runner re-derives
+    (R-121), and the `closest_attempt` selection below ranks on the canonical numbers -- the ones
+    it publishes -- not on bits only one platform can produce.
     """
     curve = []
     for lam in points:
         obs = count_outcome(ev, _rule(score_field, lam))
         if obs["automated"] == 0:
             continue
-        curve.append({"lambda": lam, "automated": obs["automated"], "errors": obs["errors"],
-                      "automated_cases": obs["automated_cases"],
-                      "erroneous_cases": obs["erroneous_cases"],
-                      "n_cases": obs["n_cases"],
-                      "observed_automation_rate": obs["automated"] / len(ev),
-                      "observed_conditional_error": obs["errors"] / obs["automated"],
-                      "conditional_error_bound": clopper_pearson_upper(
-                          obs["erroneous_cases"], obs["automated_cases"], delta),
-                      "record_conditional_error_bound": clopper_pearson_upper(
-                          obs["errors"], obs["automated"], delta)})
+        curve.append(_canonicalised({
+            "lambda": lam, "automated": obs["automated"], "errors": obs["errors"],
+            "automated_cases": obs["automated_cases"],
+            "erroneous_cases": obs["erroneous_cases"],
+            "n_cases": obs["n_cases"],
+            "observed_automation_rate": obs["automated"] / len(ev),
+            "observed_conditional_error": obs["errors"] / obs["automated"],
+            "conditional_error_bound": clopper_pearson_upper(
+                obs["erroneous_cases"], obs["automated_cases"], delta),
+            "record_conditional_error_bound": clopper_pearson_upper(
+                obs["errors"], obs["automated"], delta)}))
     if not curve:
         return {"closest_attempt": None, "diagnostic_curve": []}
     best = min(curve, key=lambda c: (c["conditional_error_bound"],
@@ -324,10 +378,13 @@ def certify_threshold(records: Sequence, score_field: str = "confidence",
                    "evaluation case (%d of the %d records handed in carried a value for %r)"
                    % (lam, beta, carriers, len(cal) + n_ev, score_field),
             meta={**meta, **_diagnostic(points, ev, score_field, delta)})
-    cond_hi = clopper_pearson_upper(err_case, auto_case, delta)
-    marg_hi = clopper_pearson_upper(err_case, n_case, delta)
+    cond_hi = canonicalise_bound(clopper_pearson_upper(err_case, auto_case, delta))
+    marg_hi = canonicalise_bound(clopper_pearson_upper(err_case, n_case, delta))
     rate = auto_case / n_case
-    half_width = bound_width(n_case, delta) / 2.0
+    # `bound_width` is `math.log`'s output, so the width is canonicalised rather than the two
+    # endpoints it feeds: with a canonical width and a canonical rate, each endpoint is a
+    # correctly-rounded subtraction, which every platform reproduces bit for bit.
+    half_width = canonicalise_bound(bound_width(n_case, delta)) / 2.0
     envelope = (
         "rule: automate iff %s has a value and that value is >= %.6f -- a record carrying no "
         "value is refused, never read as a low one; this is the threshold gate of spec 6.4, not "

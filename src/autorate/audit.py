@@ -35,7 +35,14 @@ Three things about the corpus decide the shape of the output (all measured again
    interval is therefore published BESIDE the point estimate, and `multiple` is never printed
    alone. Both ends come from `tails.clopper_pearson_upper`, which owns that arithmetic; the
    two-sided upper endpoint is the same owner called at `delta / 2` (the standard CP inversion),
-   never a reimplemented bisection. No numeric figure from the plan's prose is quoted here: R-72
+   never a reimplemented bisection. Both are ceiled onto the 12-decimal grid
+   `certificate.canonicalise_bound` owns before this module publishes them (ledger R-121): that
+   call is a transcendental, its last bits differ between Apple libm and glibc, and the bound is
+   the figure `informative` -- and so rc 0 versus rc 3 -- is decided against, so a bound only one
+   C library can write would let the same records buy a different exit code on a different
+   machine. Every other figure here is a quotient, sum or difference over values the records
+   already carry, and IEEE 754 requires + - * / to be correctly rounded, so those agree bit for
+   bit everywhere and are left exactly as computed. No numeric figure from the plan's prose is quoted here: R-72
    corrected the sketch's "at n=2 the bound is ~0.92" to this module's 0.9747, and 0.923 is
    reproducible from `tails` at neither `delta` nor `delta / 2` -- `binom_cdf(1, 2, 0.923)` is
    0.148, so a bound there would be a number this tool never computes.
@@ -58,6 +65,7 @@ from __future__ import annotations
 from typing import Callable, Optional, Sequence
 
 from .case_count import Verdict, case_key, count_outcome
+from .certificate import canonicalise_bound
 from .records import max_confidence
 from .scales import scale_attribution
 from .tails import clopper_pearson_upper
@@ -265,15 +273,28 @@ def _rate(numerator: Optional[int], denominator: Optional[int]) -> Optional[floa
 
 
 def _bound(k: Optional[int], n: Optional[int], delta: float, two_sided: bool = False):
-    """The exact upper endpoint, from `tails` and nowhere else.
+    """The exact upper endpoint, from `tails` and nowhere else, at the published precision.
 
     `two_sided` is the standard Clopper-Pearson inversion of the upper endpoint of a two-sided
     `1 - delta` interval: the same owner called at `delta / 2`. It is not a second implementation
     and it is not the plan's 0.923.
+
+    This is the one site in the module that turns a transcendental into a published number -- the
+    CP columns of every row, the same two on the curve, and the `informative` flag that chooses rc
+    0 over rc 3 are all downstream of it -- so it is the one site that carries R-121's canonical
+    ceiling. `clopper_pearson_upper` inverts a binomial tail through `math.log`/`math.exp`, whose
+    last bits are not identical between Apple libm and glibc; a full-precision double taken from
+    one of them is not a number the other re-derives. Ceilling onto `certificate`'s 12-decimal
+    grid here means every bound this module publishes, and every comparison made against one, is
+    the same double on any C library. It is idempotent, so the stored and re-derived value agree,
+    and monotone, so `bound_two_sided >= bound` and `bound >= measured_error` both survive the
+    trip. Nothing else here is rounded: `measured_error`, `multiple`, `coverage`, `mean_value` and
+    `implied_error` are quotients, sums and differences of integers, and IEEE 754 requires those to
+    be correctly rounded, so they already agree bit for bit everywhere.
     """
     if not n:
         return None
-    return clopper_pearson_upper(k or 0, n, delta / 2 if two_sided else delta)
+    return canonicalise_bound(clopper_pearson_upper(k or 0, n, delta / 2 if two_sided else delta))
 
 
 def audit_fields(records: Sequence, gate: float = DEFAULT_GATE,

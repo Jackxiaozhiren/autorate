@@ -15,7 +15,9 @@ the same owners `audit.py` calls (`case_count.count_outcome`, `tails.clopper_pea
 on a hand-typed multiple.
 """
 import copy
+import importlib
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -25,6 +27,7 @@ from autorate.audit import (COLLAPSES, DEFAULT_DELTA, DEFAULT_GATE, DEFAULT_GRID
                             NO_GOLD, AuditDriftError, audit_fields, check_audit, frontier,
                             render_audit)
 from autorate.case_count import Verdict, case_key, count_outcome
+from autorate.certificate import CANONICALISED_BOUND_FIELDS, canonicalise_bound
 from autorate.cli import EXIT_CERTIFIED, EXIT_NOT_CERTIFIABLE, EXIT_USAGE, main
 from autorate.records import max_confidence
 from autorate.report import load_records
@@ -32,6 +35,9 @@ from autorate.scales import scale_attribution
 from autorate.tails import clopper_pearson_upper
 
 COMMITTED = Path(__file__).resolve().parents[1] / "data" / "records_feishu.jsonl"
+# The artefact `autorate audit` writes and this suite holds against the renderer. It is read here
+# only to prove the ceiling moves no rendered figure; nothing in this file writes it.
+AUDIT_MD = Path(__file__).resolve().parents[1] / "docs" / "AUDIT.md"
 
 
 @pytest.fixture(scope="module")
@@ -536,3 +542,204 @@ def test_the_artefact_is_re_derivable_and_carries_no_timestamp(tmp_path, by_back
     assert written == first, "the file is the renderer's output, not a transcription of it"
     for token in ("/Users/", "/home/", "T00:00", "UTC"):
         assert token not in written, token
+
+
+# --- R-121 at this module's producer: the precision a published bound is stored at -------------
+#
+# `float-canonical-b` fixed the choice gate and reported, as its concern 3, that this module was
+# equally exposed: `clopper_pearson_upper` inverts a binomial tail through `math.log`/`math.exp` and
+# its last bits are not the same between Apple libm and glibc (~4e-16 at 0.79, ~9000 ULPs wide
+# there), so a full-precision bound written on one C library is not a number the other re-derives.
+# Here the bound is not only printed: `informative` is `bound <= implied_error`, and `cmd_audit`
+# chooses rc 0 or rc 3 from `informative`. An unreproducible transcendental therefore decided an
+# exit code.
+#
+# The audit publishes no JSON artefact, so the gate the pair below drives is the one this module
+# already runs against its own numbers: `check_audit` re-derives every figure the table prints and
+# raises `AuditDriftError` (rc 4) when a published figure is not the one the row's own counts
+# produce, and the committed `docs/AUDIT.md` is the stored side a re-render is compared with. The
+# per-figure `==` diff below is `verify`'s comparison shape applied to that re-derivation, so a red
+# names the field that moved and prints both numbers.
+
+# The bound-valued columns of a published row. `CANONICALISED_BOUND_FIELDS` names the certificate
+# shape's two headline attributes and is deliberately NOT reused as this module's key list -- the
+# audit's bounds are keyed `bound` and `bound_two_sided`, and on the curve `bound` -- but they are
+# produced by the same call, so the guard sweeps by these names.
+_BOUND_KEYS = ("bound", "bound_two_sided")
+
+
+def _scalar_leaves(node, prefix=""):
+    """Every published number in a row, with the path that names it, so a diff can say which field."""
+    if isinstance(node, dict):
+        for key in sorted(node):
+            yield from _scalar_leaves(node[key], "%s.%s" % (prefix, key))
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            yield from _scalar_leaves(item, "%s[%d]" % (prefix, index))
+    elif isinstance(node, bool):
+        return
+    elif isinstance(node, (int, float)):
+        yield prefix, node
+
+
+def _published_diff(published, fresh) -> list:
+    """`verify`'s exact comparison, over every figure the two audit tables publish."""
+    failures = []
+    for backend in sorted(published):
+        for field in sorted(published[backend]):
+            left = dict(_scalar_leaves(published[backend][field], "%s/%s" % (backend, field)))
+            right = dict(_scalar_leaves(fresh[backend][field], "%s/%s" % (backend, field)))
+            assert set(left) == set(right), (sorted(set(left) ^ set(right)))
+            for label in sorted(left):
+                if left[label] != right[label]:
+                    failures.append("%s: recomputed %r, published %r"
+                                    % (label, right[label], left[label]))
+    return failures
+
+
+def _drift_the_bound_producer(monkeypatch, move):
+    """Make the audit's one bound producer answer as a different C library, recording every call.
+
+    `audit._bound` is the single site that turns a transcendental into a published figure, and it
+    reads the name this module imported, so patching `autorate.audit.clopper_pearson_upper` makes
+    the producer answer the way the other C library answered -- and moves every bound in the table
+    and on the curve at once, exactly as a different libc would. The calls are recorded so a test
+    can prove the instrument was reached rather than quietly never wired.
+    """
+    calls = []
+
+    def drifting(k, n, delta):
+        raw = clopper_pearson_upper(k, n, delta)
+        moved = move(raw)
+        calls.append((k, n, delta, raw, moved))
+        return moved
+
+    monkeypatch.setattr(importlib.import_module("autorate.audit"),
+                        "clopper_pearson_upper", drifting)
+    return calls
+
+
+def _one_ulp(raw, direction):
+    """One unit in the last place up or down: the size of the drift R-121 measured.
+
+    A bound of exactly 1.0 is left alone -- the bisection brackets [0, 1], so 1.0 is the bracket's
+    own endpoint rather than an answer `math.exp` produced, and no two libms disagree about it.
+    """
+    return raw if raw >= 1.0 else math.nextafter(raw, direction)
+
+
+def _tables(by_backend):
+    return {b: audit_fields(rs, gate=DEFAULT_GATE) for b, rs in sorted(by_backend.items())}
+
+
+def test_the_audit_publishes_only_bounds_another_libc_can_write(by_backend):
+    """Content guard: every bound the audit table carries is its own canonical value.
+
+    Walks the committed corpus's rows and curve points and asks of every value stored under a bound
+    key that `canonicalise_bound(value) == value` -- the property a raw inversion does not have --
+    then asks the OPPOSITE of the row's quotient columns, because R-121's fix is a sweep by field
+    name and not a pass over floats. `CANONICALISED_BOUND_FIELDS` is asserted to stay the
+    certificate's own two names: the audit shares the ceiling, not the shape's field list.
+    """
+    assert CANONICALISED_BOUND_FIELDS == ("conditional_error_bound", "marginal_error_bound")
+    assert set(_BOUND_KEYS).isdisjoint(CANONICALISED_BOUND_FIELDS), _BOUND_KEYS
+    rows = _tables(by_backend)
+    bounds = quotients = empty_arms = 0
+    for backend, table in rows.items():
+        for field, row in table.items():
+            leaves = dict(_scalar_leaves(row, "%s/%s" % (backend, field)))
+            named = {k: v for k, v in leaves.items()
+                     if k.split(".")[-1].split("[")[0] in _BOUND_KEYS}
+            if row["bound"] is None:
+                # The empty-denominator arm: `jev` carries no `act_probability` on any row, so this
+                # row publishes no bound, and `check_audit` requires that it publish none. A guard
+                # that demanded a canonical bound here would be demanding an invented number --
+                # the very failure mode this module's notes exist to refuse.
+                assert not named and row["informative"] is None, (backend, field)
+                empty_arms += 1
+                continue
+            assert named, "row %s/%s publishes no bound at all" % (backend, field)
+            for label, value in named.items():
+                assert canonicalise_bound(value) == value, (label, repr(value))
+                assert len(repr(value).split(".")[-1]) <= 12, (label, repr(value))
+                bounds += 1
+            for label, value in leaves.items():
+                tail = label.split(".")[-1].split("[")[0]
+                if tail in ("measured_error", "multiple", "implied_error", "mean_value",
+                            "measured_error_rows", "multiple_rows", "coverage"):
+                    quotients += 1
+                    assert isinstance(value, float), label
+    assert empty_arms == 1, empty_arms
+    assert bounds >= 20, "the audit no longer publishes this many bounds: %d" % bounds
+    assert quotients >= 10, quotients
+    # and the artefact the reader actually gets renders them at four decimals: the ceiling is
+    # invisible in prose and load-bearing in the machine-readable row, where it decides rc 0 vs 3.
+    assert "0.974679434481" not in AUDIT_MD.read_text()
+    assert "0.9747" in AUDIT_MD.read_text()
+
+
+def test_the_audit_absorbs_a_last_bit_libm_drift_and_stays_green(tmp_path, by_backend,
+                                                                 monkeypatch, capsys):
+    """Guard pair (a): a platform difference in the 16th decimal moves nothing, both directions.
+
+    Three separate surfaces must not move: the exact per-figure re-derivation, `check_audit` (which
+    is this module's own drift gate and raises rc 4), and the rendered `docs/AUDIT.md` bytes. The
+    assertions after the drift is planted keep the green honest -- the instrument must have fired,
+    the move must really be one ULP, and every drifted value must canonicalise back to the stored
+    number -- otherwise the gate would be green because nothing reached it.
+    """
+    published = _tables(by_backend)
+    rendered = render_audit(published)
+    assert rendered == AUDIT_MD.read_text(), "the committed artefact is not what this machine writes"
+    rc_control = _cli([], tmp_path)
+    capsys.readouterr()
+    assert _published_diff(published, _tables(by_backend)) == []   # the control, undrifted
+
+    for direction in (math.inf, 0.0):
+        calls = _drift_the_bound_producer(monkeypatch,
+                                          lambda raw, d=direction: _one_ulp(raw, d))
+        drifted = _tables(by_backend)
+        assert calls, "the producer was never asked for a bound"
+        moved_apart = [(raw, moved) for _, _, _, raw, moved in calls if moved != raw]
+        assert moved_apart, "a one-ULP drift moved nothing: the instrument is blind"
+        assert all(abs(moved - raw) < 1e-15 for raw, moved in moved_apart), moved_apart[:3]
+        assert all(canonicalise_bound(moved) == canonicalise_bound(raw)
+                   for _, _, _, raw, moved in calls), \
+            [repr((raw, moved)) for raw, moved in moved_apart
+             if canonicalise_bound(moved) != canonicalise_bound(raw)][:3]
+        assert _published_diff(published, drifted) == [], direction
+        check_audit(drifted)                          # must not raise AuditDriftError
+        assert render_audit(drifted) == rendered, direction
+        rc = _cli([], tmp_path)
+        assert rc == rc_control, (rc, rc_control)
+        assert "DRIFT" not in capsys.readouterr().err, direction
+        monkeypatch.undo()
+
+
+def test_the_audit_reds_when_a_bound_moves_in_the_tenth_decimal(tmp_path, by_backend,
+                                                               monkeypatch, capsys):
+    """Guard pair (b): a bound that actually MOVED is still drift, and is named by row and column.
+
+    Same producer, same fields, same gate, two orders of magnitude further along the number, so the
+    pair differs only in size -- which is the claim `PUBLISHED_DECIMALS` makes. Absorbing 4e-16 is a
+    fix and not a blinder only if 1e-10 still turns this red, and red with the field named is the
+    difference between a diagnosis and a dict repr.
+    """
+    published = _tables(by_backend)
+    stored = published["laya"]["confidence"]["bound"]
+    assert canonicalise_bound(stored + 1e-10) != stored, "the planted drift would not take"
+
+    calls = _drift_the_bound_producer(monkeypatch, lambda raw: raw + 1e-10)
+    failures = _published_diff(published, _tables(by_backend))
+    assert calls and all(moved != raw for _, _, _, raw, moved in calls)
+    assert failures, "a bound that moved by 1e-10 re-derived the published table"
+    labels = [f.split(":")[0] for f in failures]
+    assert any(l.endswith(".bound") and l.startswith("laya/confidence") for l in labels), labels
+    assert any(l.endswith(".bound_two_sided") for l in labels), labels
+    assert any(".curve[" in l and l.endswith("].bound") for l in labels), labels
+    text = "\n".join(failures)
+    assert "recomputed" in text and "published" in text, text[:400]
+    assert repr(stored) in text, text[:400]
+    assert repr(canonicalise_bound(stored + 1e-10)) in text, text[:400]
+    # and only bound columns object: the quotient columns of the same rows are not blamed
+    assert not [l for l in labels if l.split(".")[-1].split("[")[0] not in _BOUND_KEYS], labels
