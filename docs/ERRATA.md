@@ -301,6 +301,43 @@ check fails. Converting would therefore let a formatting decision pose as a solv
 exactly the fragility a published table must not acquire. The ruling is unchanged and the guard still
 compares floats; only the strength of the sentence describing it is corrected here.
 
+2026-10-07 note (round 5, R-91): the note above corrected one sentence of this entry -- "differ only on
+exact midpoints" -- and left standing the two sentences that state the same error more strongly. That is
+not a retirement, so both are quoted here and refuted by name. Neither line above is edited; this file
+records what was published.
+
+- From the round-3 note of the 2026-10-01 entry "an entropy-confidence figure was wrong in both value and
+  direction": *"comparing renderings instead would have let a cell drift by up to half the last published
+  digit and still match, which is a **weaker** gate than the numbers here warrant"*. **Retired.** The
+  string form is never looser than the float form anywhere the two were probed: over 60 probes at the two
+  rounding-basin edges of the ten published cells every disagreement is float-passes-and-string-fails and
+  there are zero in the other direction, so the string form is *contained in* the float form and calling
+  it weaker had the relation backwards. Its magnitude was right -- half the last published digit of a
+  4-decimal cell is the same `5e-5` the float check compares at, which is exactly why the two agree away
+  from a midpoint -- and it is only the direction that is withdrawn.
+- From this entry, two paragraphs above that note: *"the 2.2% "headroom" is therefore not fragility
+  relative to a stricter form -- no stricter form exists at this precision"*. **Retired.** A stricter form
+  does exist at this precision: it is the string comparison, and it is stricter at nine of the sixty
+  probes. The 2.2% figure itself stands and was never the fragility of a tolerance running out -- it is
+  `5e-5 - 4.8875446e-05 = 1.1245539e-06`, 2.2491% of the ceiling, the distance the binding cell
+  (`tau=0.50, k=10`, published `0.7379`) happens to sit from a rounding boundary.
+
+2026-10-07 note (round 5, R-87): the figures the 2026-10-05 note states in the present tense -- `60
+probes`, `9 disagreements`, `zero in the other direction`, `0` mismatches across the ten cells, the nine
+named edges, `4.887545e-05`, `97.75%`, `tau=0.50, k=10`, `1.125e-6`, `0.889972135562`,
+`f"{0.96095:.4f}"` rendering `0.9609`, and the `0.89` republishing argument -- had no producer when they
+were written. The only code beside them was the guard's `<= 5e-5`, which cannot see a single one: no
+basin-edge probe, no min or max disagreement, no string form at all. They have a producer now, in the
+repository and in the suite: `tests/test_records.py::test_the_string_form_is_strictly_stricter_at_the_ten_basin_edges`
+reads this table's cells through the same reader the guard uses, sweeps each cell's two rounding-basin
+edges at the edge itself plus one representable double either side, and asserts every value listed above;
+the guard's own docstring points here instead of at a run. Option (a) of the ruling rather than (b): these
+values carry a published claim about the guard's own drift sensitivity, so they are recomputed rather than
+demoted to a dated record. `5e-5` is now one constant, `tests/test_records.py::HALF_STEP`, shared by the
+comparison and by the edges it justifies -- previously a literal in one place and a magic number in the
+other. The sweep also produced the recipe this entry left as a parenthetical: an edge is `quoted +/-
+5e-5` computed in doubles, and the nine named edges are what those values render at five decimals.
+
 ## 2026-10-05 — the MASSIVE rows' count basis moved from three files opened to all fifty-one
 
 The entry above that ends "the file-opened upgrade to '51 of 51 opened and hashed' belongs to the
