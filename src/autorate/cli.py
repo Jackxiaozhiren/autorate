@@ -85,6 +85,14 @@ def _records_from(path: Path, backend=None, mode=None) -> list:
     return out
 
 
+# One owner for the third resolution path's shape: `_default_corpus` globs it, `_root` names it as a
+# source, and the refusal quotes it, so a message can never describe a search the resolver did not do.
+SIBLING_GLOB = "laya*/research/benchmarks/feishu_zh"
+SIBLING_SOURCE = "the sibling `%s` default" % SIBLING_GLOB
+ROOT_HELP = ("corpus root; AUTORATE_FEISHU_ROOT overrides it, then this flag, then a sibling "
+             "`%s` checkout" % SIBLING_GLOB)
+
+
 def _default_corpus() -> Path:
     """Find the vendored corpus as a SIBLING of this repo, with no absolute literal.
 
@@ -94,28 +102,58 @@ def _default_corpus() -> Path:
     refuses to hardcode its interpreter for the same reason; this was the last literal left.
     """
     checkout = Path(__file__).resolve().parents[2].parent
-    candidates = sorted(checkout.glob("laya*/research/benchmarks/feishu_zh"))
+    candidates = sorted(checkout.glob(SIBLING_GLOB))
     return candidates[0] if candidates else None
 
 
-def _root(args) -> Path:
+def _root(args) -> tuple:
+    """Resolve the corpus root AND the source that won it, as one value -- never one alone.
+
+    Precedence is environment -> flag -> sibling, and that order is this repository's own harness
+    contract: the corpus-absent lane (the tests, the export lane, the README's reproduction
+    section) is *defined* by exporting `AUTORATE_FEISHU_ROOT=/nonexistent` for a whole process, and
+    `tests/test_inventory.py` pins env-over-flag as the shape a lane may rely on. R-131's defect was
+    therefore never the order: it was that the order was invisible. `_require_root` had only a path
+    to go on, so it instructed the operator to `pass --root` when they had just done exactly that and
+    claimed a sibling search it had not performed -- a refusal with the right exit code and the wrong
+    diagnosis. Carrying the source with the path is what makes the two impossible to separate again.
+    """
     import os
 
     env = os.environ.get("AUTORATE_FEISHU_ROOT")
     if env:
-        return Path(env)
+        return Path(env), "AUTORATE_FEISHU_ROOT"
     if getattr(args, "root", None):
-        return Path(args.root)
-    return _default_corpus()
+        return Path(args.root), "--root"
+    return _default_corpus(), SIBLING_SOURCE
+
+
+def _no_corpus(root, source, flag) -> UsageError:
+    """The refusal, naming the source that answered and the path it actually tried.
+
+    Three shapes, because the advice differs and the operator's next action differs:
+    the environment outvoted an explicit flag (say it was overridden, and how to stop it), a source
+    was given and simply is not a corpus (say which one and where), or nothing was given at all
+    (only then is "pass --root" honest, and only then was the sibling default even consulted).
+    """
+    if source == SIBLING_SOURCE:
+        return UsageError(
+            "no corpus found: neither --root nor AUTORATE_FEISHU_ROOT was given, and the sibling "
+            "default `%s` matched nothing beside this checkout" % SIBLING_GLOB)
+    if source == "AUTORATE_FEISHU_ROOT" and flag:
+        return UsageError(
+            "no corpus found: AUTORATE_FEISHU_ROOT points at %s, which has no data/manifest.json, "
+            "and the --root you passed (%s) was overridden by it -- unset AUTORATE_FEISHU_ROOT to "
+            "use the flag" % (root, Path(flag)))
+    return UsageError("no corpus found: %s points at %s, which has no data/manifest.json"
+                      % (source, root))
 
 
 def _require_root(args) -> Path:
-    root = _root(args)
-    if root is None or not (root / "data" / "manifest.json").exists():
-        raise UsageError(
-            "no corpus found: pass --root or set AUTORATE_FEISHU_ROOT (looked for a "
-            "sibling `laya*/research/benchmarks/feishu_zh`)")
-    return root
+    root, source = _root(args)
+    if root is not None and (root / "data" / "manifest.json").exists():
+        return root
+    raise _no_corpus(root, source, getattr(args, "root", None))
 
 
 def cmd_export_feishu(args) -> int:
@@ -231,7 +269,7 @@ def _inventory() -> tuple:
     byte-identical either way, and it tells `verify` which of its checks are real
     re-derivations rather than transcriptions of the committed snapshot.
     """
-    root = _root(argparse.Namespace())
+    root, _ = _root(argparse.Namespace())
     if root is not None and (root / "data" / "manifest.json").exists():
         return inventory(root), FROM_CORPUS
     cached = Path(INVENTORY_JSON)
@@ -422,12 +460,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     n = sub.add_parser("snapshot", help="corpus -> committed data/inventory.md(.json)")
-    n.add_argument("--root", help="corpus root; default: env or a sibling laya*/ checkout")
+    n.add_argument("--root", help=ROOT_HELP)
     n.add_argument("--out", default=str(INVENTORY_MD))
     n.set_defaults(fn=cmd_snapshot)
 
     e = sub.add_parser("export-feishu", help="archive responses -> records")
-    e.add_argument("--root", help="corpus root; default: env or a sibling laya*/ checkout")
+    e.add_argument("--root", help=ROOT_HELP)
     e.add_argument("--out", required=True)
     e.add_argument("--backend")
     e.add_argument("--mode")

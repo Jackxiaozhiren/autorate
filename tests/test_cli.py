@@ -345,6 +345,134 @@ def test_no_corpus_is_a_usage_error_not_rc_one(tmp_path):
         assert "no corpus found" in r.stderr, (cmd, r.stderr)
 
 
+# ---------------------------------------------------------------------------
+# R-131 / obligation #63: which root won has to be visible in what the tool prints.
+# ---------------------------------------------------------------------------
+
+_UNSET = object()          # sentinel: this arm runs with the variable NOT in the environment
+
+
+def _corpus_stub(tmp: Path) -> Path:
+    """The smallest root `snapshot` accepts, built where the test runs -- no absolute literal.
+
+    A refusal cannot show which path was read unless a success is available to compare with, and
+    the success needs a real corpus shape: manifest, cases, one archived response per backend, and
+    an audit that exits 0. Same shape `tests/test_inventory.py::_tiny_corpus` uses, so both CI
+    lanes can build it.
+    """
+    (tmp / "data").mkdir(parents=True, exist_ok=True)
+    (tmp / "data" / "manifest.json").write_text(json.dumps(
+        {"asks": {"a1": "question?"}, "labels": {"a": 1}, "families": ["f"],
+         "provenance": "test-fixture"}))
+    (tmp / "data" / "cases.jsonl").write_text(json.dumps({"id": "c0", "expected": "a"}) + "\n")
+    row = json.dumps({"id": "c0", "mode": "choice", "repeat": 0, "status": "ok", "expected": "a",
+                      "response": {"model": "m", "answers": {"category": {
+                          "type": "choice", "choice": "a",
+                          "probabilities": {"a": 0.5, "b": 0.5}}}}})
+    for backend in ("laya", "jev"):
+        d = tmp / "results" / "v1" / backend
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "raw.jsonl").write_text(row + "\n")
+    (tmp / "audit.py").write_text("import sys\nsys.exit(0)\n")
+    return tmp
+
+
+def _cli_root(args, env_root=_UNSET, cwd=REPO):
+    """Run the shipped CLI with the corpus variable set to `env_root`, or removed when _UNSET.
+
+    `run()` above can only ever SET the variable, so it cannot express the flag-alone and
+    neither-source arms -- and this suite is routinely run with `AUTORATE_FEISHU_ROOT` exported for
+    the whole process, which would otherwise leak into both.
+    """
+    import os
+
+    env = dict(os.environ)
+    if env_root is _UNSET:
+        env.pop("AUTORATE_FEISHU_ROOT", None)
+    else:
+        env["AUTORATE_FEISHU_ROOT"] = str(env_root)
+    return subprocess.run([sys.executable, "-m", "autorate.cli", *args],
+                          capture_output=True, text=True, cwd=str(cwd), env=env)
+
+
+def test_the_root_that_wins_is_the_root_the_tool_names(tmp_path):
+    """R-131 / obligation #63: a discarded `--root` must be a LOUD discard.
+
+    `_root()` resolves environment -> flag -> sibling, so `AUTORATE_FEISHU_ROOT` outranks the
+    argument the operator typed. That order is this repository's own harness contract (the
+    corpus-absent lane is *defined* by exporting the variable to a nonexistent path for a whole
+    process, and `tests/test_inventory.py:1367` pins env-over-flag), so the defect R-131 records
+    is not the precedence: it is that the resolution was silent AND the refusal then contradicted
+    itself -- "pass --root" to a user who just did, and "looked for a sibling" about the third
+    path, neither of which is the source that answered. A refusal that is correctly classified and
+    wrongly explained still misattributes the tool's own failure.
+
+    So the contract asserted here is the shape, in both directions, at the real entry point and on
+    the user-visible surface only (exit code plus printed text):
+
+    1. both present -> exactly one is used, and every message names THAT one, including the path
+       it tried and the source it came from, and says the flag was overridden;
+    2. env alone -> uses it;
+    3. flag alone (variable absent from the environment) -> uses it;
+    4. neither -> the sibling default, unchanged.
+
+    Nothing here may pass by naming both paths ambiguously: 1a is the arm that reddens if the
+    precedence is flipped to flag-wins without the harness being updated, and 1b reddens today.
+    """
+    cli = __import__("autorate.cli", fromlist=["_default_corpus"])
+    stub = _corpus_stub(tmp_path / "stubRoot")
+    bogus = tmp_path / "bogusRoot"           # never created: no manifest, no archive, nothing
+    out = str(tmp_path / "inv" / "inventory.md")
+
+    # 1a. The ambient variable wins, and the run says which root it read: the successful snapshot
+    #     names the env root and never mentions the --root it threw away.
+    won = _cli_root(["snapshot", "--root", str(bogus), "--out", out], env_root=stub)
+    assert won.returncode == 0, won.stdout + won.stderr
+    assert "stubRoot" in won.stdout, won.stdout
+    assert "bogusRoot" not in won.stdout, won.stdout
+
+    # 1b. The mirror arm, and the defect's own surface: same precedence, but this time the winner
+    #     is not a corpus, so the refusal is what the operator reads.
+    refused = _cli_root(["snapshot", "--root", str(stub), "--out", out], env_root=bogus)
+    err = refused.stderr
+    assert refused.returncode == 2, (refused.returncode, refused.stdout, err)
+    assert "Traceback" not in err, err
+    assert "no corpus found" in err, err                      # the committed prefix contract
+    assert str(bogus) in err, err                             # the root it ACTUALLY tried
+    assert "AUTORATE_FEISHU_ROOT" in err, err                  # and the source that answered
+    assert "overridden" in err, err                           # what happened to the flag
+    assert str(stub) in err, err                              # the overridden path, named too
+    assert "pass --root" not in err, err                      # never instructs the done thing
+    assert "sibling" not in err, err                          # never claims the third path
+
+    # 2. env alone: the corpus-absent lane's shape, inverted to a corpus that is actually there.
+    by_env = _cli_root(["snapshot", "--out", out], env_root=stub)
+    assert by_env.returncode == 0, by_env.stdout + by_env.stderr
+    assert "stubRoot" in by_env.stdout, by_env.stdout
+
+    # 3. flag alone, with the variable removed from the environment entirely -- the only arm on
+    #    this machine that can tell a working `--root` from an ambient override.
+    by_flag = _cli_root(["snapshot", "--root", str(stub), "--out", out], env_root=_UNSET)
+    assert by_flag.returncode == 0, by_flag.stdout + by_flag.stderr
+    assert "stubRoot" in by_flag.stdout, by_flag.stdout
+
+    # 4. neither: the sibling default, and it must still be a real last resort rather than a lie.
+    #    The branch reads the shipped resolver only to pick WHICH observable can be seen here (a
+    #    machine with the checkout beside it proves the default works; a machine without it proves
+    #    the refusal says so); every assertion below is on rc and on printed text.
+    default = cli._default_corpus()
+    sibling_present = default is not None and (default / "data" / "manifest.json").exists()
+    if sibling_present:
+        fell = _cli_root(["export-feishu", "--out", str(tmp_path / "rec.jsonl")], env_root=_UNSET)
+        assert fell.returncode == 0, fell.stdout + fell.stderr
+        assert "exported " in fell.stdout, fell.stdout
+    else:
+        fell = _cli_root(["snapshot", "--out", out], env_root=_UNSET)
+        assert fell.returncode == 2, (fell.returncode, fell.stdout, fell.stderr)
+        assert "no corpus found" in fell.stderr, fell.stderr
+        assert "sibling" in fell.stderr, fell.stderr
+
+
 def test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error(tmp_path):
     work = tmp_path / "no_data"
     (work / "data").mkdir(parents=True)
