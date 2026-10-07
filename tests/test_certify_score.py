@@ -180,7 +180,11 @@ def test_the_split_is_the_choice_gate_s_rule_with_a_different_subject():
     cases separates the two balance rules by 200 units of `half`, and reversal makes `list(groups)`
     a permutation of `sorted(groups)` rather than a copy of it. The pin stays green against the
     pristine copy -- the mirror really is correct; a pin that could not be satisfied by any two
-    agreeing implementations would only prove the assertion is a tautology.
+    agreeing implementations would only prove the assertion is a tautology. GREEN-ON-ARRIVAL
+    against the unmutated `certify_choice.split_cal`, and the changes that redden it are named:
+    either choice-side drift (balance the half by case count, or drop the `sorted()` -- both
+    measured red in the fix report's P-F2a/P-F2b lanes) and the score-side drift the original
+    report measured as P6.
     """
     from autorate.certify_choice import split_cal as choice_split_cal
 
@@ -394,6 +398,14 @@ def test_the_bounds_use_the_case_denominator_and_not_the_row_count():
     # holding its gold level, and a flat twin under the same `case_id`, whose set is four levels.
     # The case is not automated (one of its records refused), while one of its rows was: the unit
     # the per-case rule exists for, which no identical-repeat fixture can reach.
+    #
+    # GREEN-ON-ARRIVAL against the shipped `rate = auto_case / n_case` -- the shipped arithmetic
+    # was never wrong; what was wrong is that nothing here could notice a gate that published the
+    # row-count rate. The change that reddens the equality is exactly that drift: `rate = autom
+    # / n_ev` (plant P-F1 in the fix report) makes it false. The disagreement assertion before it
+    # is the fixture's own anti-inertness guard: it reddens the day the arm stops carrying a case
+    # whose repeats part ways -- which is the change that would silently return this row to the
+    # 0.470000 == 0.470000 comparison it was before.
     armed = recs + _disagreeing_cases(30)
     arm_cert = certify_score(armed, alpha=ALPHA, beta=BETA, delta=DELTA, seed=7)
     assert arm_cert.feasible is True, arm_cert.summary()
@@ -457,11 +469,12 @@ def test_an_unmapped_set_outcome_is_a_value_error_naming_the_outcome_not_a_keyer
     unknown outcome and the keys it does know; the counter's guard stays as the backstop for a rule
     that submits a name this map should never have translated at all.
 
-    Red against the shipped subscript, the way the review measured it: with `"empty"` removed from
-    the map the old line escaped `KeyError: 'empty'` and `pytest.raises(ValueError)` let it through
-    as an error, not a pass. The missing key is manufactured by monkeypatch here, not by editing
-    `_SET_KINDS` in `src/`, because the finding is about what the guard does when the map and the
-    family disagree -- a state a future `classify_set` can create on its own.
+    GREEN-ON-ARRIVAL against this round's guard. Red against the subscript it replaces, the way
+    the review measured it: with `"empty"` removed from the map the old line escaped
+    `KeyError: 'empty'`, which `pytest.raises(ValueError)` lets through as an error, not a pass.
+    The missing key is manufactured by monkeypatch here, not by editing `_SET_KINDS` in `src/`,
+    because the finding is about what the guard does when the map and the family disagree -- a
+    state a future `classify_set` can create on its own.
     """
     import autorate.certify_score as score_gate
 
@@ -943,7 +956,12 @@ def test_passing_alpha_where_qhat_belongs_automates_everything_and_no_coverage_s
     # The witness the corrected claim needs, measured through the whole gate rather than argued in
     # prose: re-wire the production call the way R-92a found it (`interval_set` handed `alpha` where
     # the quantile belongs -- the monkeypatch emulates the plant so the assertion runs against
-    # shipped code) and read both budgets off the result.
+    # shipped code) and read both budgets off the result. GREEN-ON-ARRIVAL by construction -- the
+    # plant is emulated inside this row, so what reddens it is a drift in what the witness claims:
+    # an error budget that stops gating on the case unit would let the tight arm publish, and a
+    # gate that checks the sets against the threshold used (the fix R-92a asks nobody for here)
+    # would refuse the loose one. Both arms reproduce against the real P-F1 production plant,
+    # which reddens this row outright -- see the fix report's lane.
     import autorate.certify_score as score_gate
 
     real_interval_set = score_gate.interval_set
