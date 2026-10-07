@@ -14,6 +14,60 @@ QTYPES = ("choice", "score", "noul")
 SUM_TOL = 5e-3  # served probabilities are rounded to 4 decimals
 NOUL_SLOTS = ("false", "true")
 
+# The fields a stored record has to state, because `Record.from_dict` reads them blind. Named here
+# rather than left implicit in the constructor call, so the guard, its message and its test all read
+# one list.
+REQUIRED_FIELDS = ("id", "qtype", "backend", "repeat", "options", "probs")
+# The fields whose absence is a shape under test or legal history rather than a defect: `gold`
+# absent is a record that may be gated and never calibrated, `case_id` absent is an artefact stored
+# before the field existed, and the rest carry a dataclass default. `u` landing on 0.0 when absent
+# is the one entry here worth a second look -- the constructor calls the draw the certified set is
+# reproducible only with -- and it is recorded, not changed, by this guard.
+OPTIONAL_FIELDS = ("gold", "predicted", "case_id", "slices", "scores", "seed", "u", "meta")
+
+
+class MissingRecordField(ValueError):
+    """A stored record does not state a field this contract reads blind.
+
+    Raised at the raising site -- `Record.from_dict` is the one place that holds both the row and
+    the field list -- rather than by giving `cli.main` a `KeyError` arm. That is ledger R-115's
+    ruling on the identical escape (`groups.py`'s `UndeclaredGroupKey(ValueError)`): `KeyError` is
+    ordinary dict access everywhere in this codebase, so catching it centrally would turn unrelated
+    bugs into a usage exit carrying a helpful-looking message.
+
+    The class chosen is a `ValueError` subclass, and the two neighbouring candidates were rejected
+    on purpose. It is not a bare `ValueError` because a dedicated name stays greppable and is
+    separately testable -- any other `ValueError` from the constructor (a probability that does not
+    close, a `gold` off the ballot) already exits 2 on this path, and a refusal an operator cannot
+    tell them apart from is a refusal with no owner. It is not a `ReaderContractError` because that
+    class names something else: a reader refusing a corpus *condition* (R-14), deliberately a
+    `RuntimeError` so it escapes `read_archive`'s per-line `ValueError` quarantine instead of
+    being filed under `malformed_line` and ending a run at rc 0 on a corpus it refused. A row that
+    is not a record is not a policy refusal -- it is exactly the unreadable input the quarantine
+    bucket is for, and the CLI's existing `ValueError` arm maps it to `EXIT_USAGE` (2). Both kinds
+    therefore exit 2, neither escapes as rc 1, and the two failure kinds stay distinguishable by
+    name.
+
+    It is never a success path: no field is defaulted here, no row is skipped, and nothing on the
+    load path (`report.load_records`, `cli._records_from`) catches it.
+    """
+
+
+def _missing_field_message(d: dict, missing: Sequence[str]) -> str:
+    """The refusal in the two things an operator needs: which row, which field.
+
+    The id is quoted only when the row states one: putting an id in a refusal about a row that
+    states none is how a message starts asserting facts the input does not carry.
+    """
+    who = "record %r" % (d["id"],) if "id" in d else "a row with no 'id' field"
+    return ("%s is missing %s. A stored record must state %s; only %s may be absent, and there the "
+            "constructor's own default applies. The loader reads the first set blind, so an "
+            "absent one is refused here rather than invented -- and not a `KeyError` handed to the "
+            "operator as a traceback."
+            % (who, ", ".join(repr(key) for key in missing),
+               ", ".join(repr(key) for key in REQUIRED_FIELDS),
+               ", ".join(repr(key) for key in OPTIONAL_FIELDS)))
+
 
 def _finite_probs(probs: Iterable[float]) -> list:
     """A scale is only meaningful over a finite, non-empty distribution."""
@@ -165,6 +219,15 @@ class Record:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Record":
+        """Rebuild a record from one stored line, refusing a row that states too little.
+
+        The six names in `REQUIRED_FIELDS` are read blind, and this is where a row missing one used
+        to raise `KeyError` -- rc 1, outside the 0/2/3/4 contract, for `audit`, `certify` and `gate`
+        alike. See `MissingRecordField` for why the refusal is a `ValueError` of its own class.
+        """
+        missing = [key for key in REQUIRED_FIELDS if key not in d]
+        if missing:
+            raise MissingRecordField(_missing_field_message(d, missing))
         return cls(
             id=d["id"], qtype=d["qtype"], backend=d["backend"], repeat=int(d["repeat"]),
             options=tuple(d["options"]), probs=tuple(float(x) for x in d["probs"]),

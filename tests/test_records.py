@@ -12,7 +12,10 @@ import pytest
 
 from _thresholds import p_max_for_entropy
 from autorate.records import (
+    OPTIONAL_FIELDS,
     QTYPES,
+    REQUIRED_FIELDS,
+    MissingRecordField,
     Record,
     entropy_confidence,
     is_hashable_key,
@@ -273,6 +276,124 @@ def test_case_id_survives_both_round_trips_because_it_is_the_bound_denominator()
     # `d["case_id"]`: a missing key is legal history, a KeyError would be a regression.
     predating = {k: v for k, v in d.items() if k != "case_id"}
     assert Record.from_dict(predating).case_id is None
+
+
+def test_a_stored_record_missing_a_required_field_is_refused_by_name_not_by_keyerror():
+    """Review MAJ-4: `{"options" missing}` reached the operator as a `KeyError` traceback and rc 1.
+
+    Measured on the route the reviewer measured -- `autorate audit --records <file of one row with
+    "options" deleted>` -- the escape was `KeyError: 'options'` at `records.py:170` through
+    `report.load_records`, and `cli.main` has no `KeyError` arm, so it left the documented 0/2/3/4
+    contract as 1 while `cli.py`'s own docstring stated in the imperative that no such path exists.
+    The fix is at the raising site (ledger R-115, the ruling that made `groups.py` raise
+    `UndeclaredGroupKey(ValueError)` for the same shape of escape), so this asserts the loader
+    boundary: the refusal is the dedicated class, and it names both the row and the field.
+    """
+    d = _rec(id="lifecycle-05").to_dict()
+    del d["options"]
+    with pytest.raises(MissingRecordField) as caught:
+        Record.from_dict(d)
+    message = str(caught.value)
+    assert "record 'lifecycle-05'" in message, message
+    assert "'options'" in message, message
+
+
+def test_the_loader_refusal_is_a_valueerror_so_the_existing_cli_arm_maps_it_to_2():
+    """Which class was chosen, and why the two neighbouring candidates were not.
+
+    `KeyError` is what the code did, and it is ordinary dict access everywhere in this codebase: a
+    central `main` arm for it would convert unrelated bugs into exit 2 with a helpful-looking
+    message (R-115's reason for refusing that). `ReaderContractError` already maps to 2 through its
+    own arm, but it is a `RuntimeError` because a reader POLICY refusal must escape
+    `read_archive`'s per-line `ValueError` quarantine; a row that is not a record is not a policy
+    refusal, so reusing it would collapse two distinguishable failures into one name. Being a
+    `ValueError` subclass is what makes the existing arm catch it; being its own class is what makes
+    it greppable and separately testable -- asserted here rather than in a docstring.
+    """
+    from autorate.readers.feishu_zh import ReaderContractError
+
+    assert issubclass(MissingRecordField, ValueError)
+    assert not issubclass(MissingRecordField, KeyError)
+    assert not issubclass(MissingRecordField, RuntimeError)
+    assert not issubclass(MissingRecordField, ReaderContractError)
+    assert not issubclass(ReaderContractError, MissingRecordField)
+
+
+def test_every_field_the_loader_indexes_blind_is_refused_by_name_not_defaulted():
+    """The neighbouring shape, checked while the raising site was open (review MAJ-4).
+
+    `repeat`, `qtype`, `backend`, `probs` and `id` were indexed exactly as blindly as `options`, so
+    fixing only the reported key would have left five identical rc 1 escapes. Each is asserted
+    individually -- and the `KeyError` below is the point: a plain `d[key]` that no longer fires is
+    what the guard replaced, so this test reddens if the guard is narrowed back to one field.
+    """
+    assert REQUIRED_FIELDS == ("id", "qtype", "backend", "repeat", "options", "probs")
+    for key in REQUIRED_FIELDS:
+        d = _rec(id="row-under-test").to_dict()
+        del d[key]
+        with pytest.raises(MissingRecordField, match=re.escape("'%s'" % key)) as caught:
+            Record.from_dict(d)
+        # The row is named by its id whenever it still has one. `id` is the exception by design --
+        # the anonymous case below is what pins what the refusal says when it cannot -- so this
+        # states the rule as an equivalence rather than accepting either rendering.
+        message = str(caught.value)
+        assert ("row-under-test" in message) == (key != "id"), (key, message)
+    # A row that states no identity is named by what it lacks, not by an id it does not have.
+    anonymous = _rec(id="row-under-test").to_dict()
+    del anonymous["id"]
+    with pytest.raises(MissingRecordField) as caught:
+        Record.from_dict(anonymous)
+    assert "no 'id'" in str(caught.value), str(caught.value)
+    assert "row-under-test" not in str(caught.value), str(caught.value)
+
+
+def test_the_fields_the_contract_declares_optional_still_load_with_the_constructors_default():
+    """The other half of the guard, so the fix cannot become a strictness regression.
+
+    `gold` absent is not a defect but a shape under test (a record that is gatable and never
+    calibratable), `case_id` absent is legal history for an artefact stored before the field existed
+    (`test_case_id_survives_both_round_trips...`), and the rest carry dataclass defaults. This is
+    also the census of what absence is currently DEFAULTED rather than raised: `u` lands on 0.0,
+    which the constructor's own message calls the draw a certified set is reproducible only with --
+    reported as a latent question, deliberately not changed by this fix, which is about the fields
+    the loader reads blind.
+    """
+    assert OPTIONAL_FIELDS == ("gold", "predicted", "case_id", "slices", "scores", "seed", "u",
+                               "meta")
+    d = _rec(id="lifecycle-05", case_id="abc", slices={"family": "lifecycle"},
+             scores={"reported_confidence": 0.1}, seed=13, u=0.25).to_dict()
+    for key in OPTIONAL_FIELDS:
+        del d[key]
+    r = Record.from_dict(d)
+    assert r.gold is None and r.predicted is None and r.case_id is None
+    assert r.slices == {} and r.scores == {} and r.meta == {}
+    assert r.seed == 0 and r.u == 0.0
+
+
+def test_the_load_path_propagates_the_refusal_undefaulted_and_uncollected(tmp_path):
+    """No `except Exception` on the route: the row is refused, not skipped and not repaired.
+
+    The honest completion of MAJ-4 is the CLI assertion -- `autorate audit --records <bad file>`
+    exits 2, not 1 -- and `tests/test_cli.py` is another lane's file, so it is recorded as the
+    follow-up rather than made here. This is the layer below it: the refusal reaches the command
+    intact, so whichever arm fires is `main`'s existing `ValueError` one, and `load_records` returns
+    nothing at all (an audit over the rows that DID load would be the success path this defect
+    must not become).
+    """
+    from autorate.report import load_records
+
+    d = _rec(id="lifecycle-05").to_dict()
+    del d["options"]
+    path = tmp_path / "records.jsonl"
+    path.write_text(json.dumps(d) + "\n")
+    with pytest.raises(MissingRecordField) as caught:
+        load_records(path)
+    assert type(caught.value) is MissingRecordField, type(caught.value)
+    # A good row beside the bad one is not silently published as a partial population.
+    good = _rec(id="lifecycle-06").to_dict()
+    path.write_text(json.dumps(good) + "\n" + json.dumps(d) + "\n")
+    with pytest.raises(MissingRecordField):
+        load_records(path)
 
 
 COMMITTED = Path(__file__).resolve().parents[1] / "data" / "records_feishu.jsonl"
