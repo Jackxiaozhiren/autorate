@@ -272,8 +272,16 @@ def aci_threshold(scores, alpha, gamma, lam0=0.5) -> Iterator:
 
     `lam_{t+1} = clip(lam_t + gamma * (err_t - alpha), 0, 1)` with `err_t = 1[score_t > lam_t]`, the
     ascent step whose fixed point is the target miscoverage rate: an error raises the threshold,
-    which lowers the error rate. `lam0` is recorded, not inferred -- the analysis admits any start
-    in [0,1] and this module declines to make the first threshold look like evidence.
+    which lowers the error rate. The published ACI update is written `a_{t+1} = a_t + gamma *
+    (alpha - err_t)` because there the iterate is the nominal MISCOVERAGE LEVEL, not a threshold on
+    the score -- and a larger level buys a larger set, so the sign that is stable in that
+    parametrisation is the mirror of the one that is stable here. Do not "correct" this line toward
+    the paper's sign without changing the parametrisation too: with `lam` as a score threshold and
+    `err = 1[score > lam]`, `gamma * (alpha - err)` is the unstable direction (measured: lam
+    collapses to its lower bound and the realised error rate to 0.99 on stationary scores, and the
+    plant is in tests/test_drift.py's report). `lam0` is recorded, not inferred -- the analysis
+    admits any start in [0,1] and this module declines to make the first threshold look like
+    evidence.
 
     Every argument is validated BEFORE the iterator is returned, because a usage error raised from
     inside a generator surfaces at the consumer's first `next()`, far from the call that caused it.
