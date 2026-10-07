@@ -562,3 +562,43 @@ re-derives **47 /47** without. The counts are not typed here either:
 `tests/test_cli.py::test_verify_runs_and_agrees_where_the_corpus_does_not_exist` derives the 47 from
 `CERT_COMPARE_FIELDS` and `autorate.cli.PIN_DERIVED_KEYS`, which is the list the gate itself
 iterates, so a column the arm stops comparing has to widen a test before it can narrow the gate.
+
+## 2026-10-07 — README credited `verify` with re-deriving the two bound columns the pin arm did not reach
+
+`README.md:86` says `docs/RESULTS.md` is emitted by `autorate report` and that "`autorate verify`
+re-derives every value in it". That sentence is true of this commit. It was not true when the pin arm
+was added, and this is the third member of the family the 2026-10-06 row "the 2026-10-05 row credited
+`verify` with a check it did not perform" names: prose crediting the gate with a comparison it never
+made, while every figure it did quote stayed correct.
+
+The window, read out of the commits rather than remembered:
+
+- `106f4f0` (2026-10-06 11:03) added the pin arm: `verify` began re-deriving each MASSIVE row's
+  `n_rows`, `n_independent`, `n_shards` and `basis` from `data/massive_provenance.json`. It stopped at
+  the inputs. The same published rows also carry `bound width at alpha=0.05` and `feasible at 0.10`, and
+  `corpus_options` computes both FROM those inputs -- `tails.bound_width(n)` and `tails.n_feasible(n)` at
+  `src/autorate/inventory.py:640-644` -- so a pin with intact counts and mis-transcribed bound columns
+  left the corpus-less gate at rc 0 with every comparison it does make satisfied. The README sentence
+  covered those columns in the present tense and nothing did.
+- `d3e66ca` (2026-10-06 11:55) widened the arm to those columns through `PIN_DERIVED_KEYS`, which is the
+  list the gate iterates. From that commit the README sentence is true of the whole published table.
+
+Measured further back than the ruling's window, and recorded because it is the same defect and a narrower
+one would have been a courtesy to nobody: those two columns entered the generated document at `6aed7ae`
+(2026-10-01), the same commit that wrote the README sentence, and `verify` consulted the pin not at all
+until `106f4f0`. So the over-claim runs from 2026-10-01 to `d3e66ca` -- not merely the fifty-two minutes
+between the two 2026-10-06 commits. What `106f4f0` changed is that re-deriving them became possible at
+all; the columns had been unowned for five days.
+
+Confirmed rather than assumed. `uv run --frozen pytest -p no:randomly -q
+tests/test_cli.py::test_verify_reds_when_a_transcribed_bound_column_is_wrong`, run in a `git archive`
+export of this lane's `2494301` -- a committed tree, so no other lane's uncommitted work was in it --
+exits 0. The test carries both arms itself: the tampered copy -- both MASSIVE rows' bound width
+set to `0.01` against a true `0.0498`, `feasible at 0.10` set false -- must exit 4 naming both columns
+and must NOT be caught by a byte comparison, and the same tree re-rendered through the repository's own
+writers with the true numbers restored must exit 0. Without the second arm the first would only prove
+the markdown disagrees with itself.
+
+The README sentence was not hedged and no hedge belongs in it: the gate re-derives those values today,
+and a claim qualified for a defect that no longer exists is its own inaccuracy. The disclosure lives
+here, in the file that records what was published rather than what is currently true.
