@@ -165,7 +165,17 @@ def _score_rule(qhat):
     """
     def decide(r):
         C = interval_set(r.probs, qhat)
-        outcome = _SET_KINDS[classify_set(C)]
+        kind = classify_set(C)
+        outcome = _SET_KINDS.get(kind)
+        if outcome is None:
+            # This gate's own guard, deliberately ahead of `count_outcome`'s: the counter raises a
+            # `ValueError` for an unknown outcome too, but it can only name the buckets IT knows, and
+            # a raw `_SET_KINDS[...]` here would raise `KeyError` instead -- which `cli.py` does not
+            # map to any exit code, so an unmapped set outcome would break the documented 0/2/3/4
+            # contract at rc 1. Naming the unknown outcome and the keys this map knows keeps the
+            # failure a usage error (rc 2) and points the reader at the translation, not the counter.
+            raise ValueError("the chain-set rule produced an outcome %r this gate does not name; "
+                             "_SET_KINDS knows %s" % (kind, sorted(_SET_KINDS)))
         return Verdict(outcome, r.options[C[0]] if outcome == "auto" else None, len(C))
 
     return decide

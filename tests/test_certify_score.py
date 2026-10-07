@@ -35,7 +35,7 @@ from autorate.certify_score import (
     certify_score,
     split_cal,
 )
-from autorate.conformal import METHODS, split_quantile
+from autorate.conformal import METHODS, classify_set, split_quantile
 from autorate.nonconformity import aps_score
 from autorate.ordinal import interval_set, is_contiguous
 from autorate.records import Record
@@ -102,6 +102,35 @@ def build_ordinal(n=1200, seed=1, k=K, shift=0.0, error_rate=0.0, temp=1.4, jitt
     return out
 
 
+def _disagreeing_cases(count):
+    """`count` two-record cases whose repeats DISAGREE about automating: a peaked record, a flat twin.
+
+    The peaked ballot's modal level carries 0.80 and both neighbours 0.06, so its chain interval is
+    the singleton `[2]` for any threshold in `[0.80, 0.86)` -- which is where this file's certified
+    qhat sits (measured 0.8094 on the armed population) -- while its gold is that same level, so the
+    record automates AND is correct. The flat twin certifies four levels: it refuses. Same `case_id`,
+    so the CASE is not automated even though one of its rows was: the case rate and the record rate
+    part company, which is the only shape that can tell the two denominators apart. `build_ordinal`
+    cannot produce it -- a case's repeats are byte-identical there, on purpose, because that is what
+    the committed archive looks like.
+
+    Built as raw `Record`s (not via `build_ordinal`) and with the file's `synthetic-ordinal` backend,
+    so adding them neither splits a backend nor asks the generator for a shape it will not emit.
+    """
+    options = tuple(str(j) for j in range(K))
+    peaked = (0.02, 0.06, 0.80, 0.06, 0.06)
+    flat = tuple(round(1.0 / K, 4) for _ in range(K))
+    out = []
+    for i in range(count):
+        cid = "dis%04d" % i
+        for rep, probs in enumerate((peaked, flat)):
+            out.append(Record(id="%s.r%d" % (cid, rep), qtype="score",
+                              backend="synthetic-ordinal", repeat=rep, options=options,
+                              probs=probs, gold="2", predicted="2", case_id=cid, seed=4,
+                              u=0.05 * rep + 0.01))
+    return out
+
+
 def test_the_generator_actually_moves_the_peak_off_gold_when_asked():
     """Guards the vacuity of every error assertion below, exactly as D12 does for the choice gate."""
     clean = build_ordinal(n=600, shift=0.0, repeats=1)
@@ -140,10 +169,22 @@ def test_the_split_is_the_choice_gate_s_rule_with_a_different_subject():
     partitions line by line; no gate runs on them. Without this pin, "shares the split" is a comment,
     and the day one copy drifts the two gates stop describing the same held-out cases while every test
     in each file stays green.
+
+    The population is the one that makes that promise true, and it is not the obvious one. At
+    `repeats=1` with ids generated in sorted order, `len(recs) == len(groups)` and insertion order
+    equals `sorted` order, so BOTH choice-side drifts this pin exists to watch -- balancing the
+    calibration half by CASE count (`len(recs)//2` -> `len(groups)//2`) instead of by record count,
+    and dropping the `sorted()` before the seeded shuffle -- left the pin green; that was measured,
+    and it is why the R-123 deferral of the `split_cal` merge to B3 Task 2 could not rest on this row.
+    `repeats=3` over a REVERSED list makes each drift a different partition: 1200 records over 400
+    cases separates the two balance rules by 200 units of `half`, and reversal makes `list(groups)`
+    a permutation of `sorted(groups)` rather than a copy of it. The pin stays green against the
+    pristine copy -- the mirror really is correct; a pin that could not be satisfied by any two
+    agreeing implementations would only prove the assertion is a tautology.
     """
     from autorate.certify_choice import split_cal as choice_split_cal
 
-    recs = build_ordinal(n=1201, repeats=1, seed=4)
+    recs = build_ordinal(n=1200, repeats=3, seed=4)[::-1]
     twins = [dataclasses.replace(r, qtype="choice") for r in recs]
     mine_cal, mine_ev, dropped = split_cal(recs, 9)
     their_cal, their_ev, _ = choice_split_cal(twins, 9)
@@ -340,6 +381,39 @@ def test_the_bounds_use_the_case_denominator_and_not_the_row_count():
     assert lo == max(0.0, cert.autorate - half) and hi == min(1.0, cert.autorate + half)
     assert bound_width(cert.n_eval, DELTA) / 2.0 < half
 
+    # The arm above cannot fail on the POINT estimate: every `build_ordinal` case gives its repeats
+    # byte-identical records -- that is the archive's shape, and it is deliberate -- so all of a
+    # case's records automate together and `automated / n_eval == automated_cases / n_cases` EXACTLY
+    # (measured on this population: 282/600 == 94/200 == 0.470000). A published rate computed from
+    # the row count instead of the case count therefore passes everything above. The precedent for
+    # the discriminating shape is `tests/test_certify_threshold.py`: `_ties()` ("two operating points
+    # that automate the SAME cases and DIFFERENT numbers of records") and the archive sweep's
+    # `per_case_rule_bites == 28`, which is the same fact read off the committed corpus.
+    #
+    # So: cases whose repeats DISAGREE. One peaked ballot, whose certified set is the singleton
+    # holding its gold level, and a flat twin under the same `case_id`, whose set is four levels.
+    # The case is not automated (one of its records refused), while one of its rows was: the unit
+    # the per-case rule exists for, which no identical-repeat fixture can reach.
+    armed = recs + _disagreeing_cases(30)
+    arm_cert = certify_score(armed, alpha=ALPHA, beta=BETA, delta=DELTA, seed=7)
+    assert arm_cert.feasible is True, arm_cert.summary()
+    arm_ev = split_cal(armed, 7)[1]
+    arm_obs = count_outcome(arm_ev, _score_rule(arm_cert.qhat))
+    outcomes_by_case = {}
+    for r in arm_ev:
+        if r.case_id.startswith("dis"):
+            outcomes_by_case.setdefault(r.case_id, set()).add(
+                _score_rule(arm_cert.qhat)(r).outcome)
+    assert len(outcomes_by_case) > 0, "the arm's cases never reached the evaluation half"
+    disagreeing = [cid for cid, kinds in outcomes_by_case.items()
+                   if ("auto" in kinds and kinds - {"auto"})]
+    assert disagreeing, ("no case's repeats disagree: the arm is inert and the two rates below "
+                         "coincide by construction again")
+    # Both directions, so the row names the unit it protects instead of trusting the fixture.
+    assert arm_cert.autorate == arm_obs["automated_cases"] / arm_obs["n_cases"], arm_cert.autorate
+    assert arm_cert.autorate != arm_obs["automated"] / len(arm_ev), (
+        arm_cert.autorate, arm_obs["automated"] / len(arm_ev))
+
 
 def test_the_refusal_decomposition_is_exhaustive_over_the_kinds_the_shared_counter_knows():
     """R-92b: this gate's buckets are `case_count.KINDS`, and it needs no new published reason.
@@ -370,6 +444,36 @@ def test_the_refusal_decomposition_is_exhaustive_over_the_kinds_the_shared_count
     assert cert.meta["multi_label"] == obs["multi_label"]
     assert cert.meta["automated"] == obs["automated"]
     assert cert.meta["errors_among_automated"] == obs["errors"]
+
+
+def test_an_unmapped_set_outcome_is_a_value_error_naming_the_outcome_not_a_keyerror(monkeypatch):
+    """MIN-3: this gate's own translation guard must speak before the counter's guard can be reached.
+
+    `classify_set`'s names are translated through `_SET_KINDS`, and the raw subscript used to run
+    ahead of the shared counter's deliberate guard (`case_count.count_outcome` raises `ValueError`
+    for an outcome it does not know). A missing key escaped as `KeyError` -- which `cli.py` maps to
+    NO exit code at all, so rc 1, outside the published 0/2/3/4 contract -- while the counter's
+    `ValueError` (rc 2) was never reached. The rule now raises the usage error itself, naming the
+    unknown outcome and the keys it does know; the counter's guard stays as the backstop for a rule
+    that submits a name this map should never have translated at all.
+
+    Red against the shipped subscript, the way the review measured it: with `"empty"` removed from
+    the map the old line escaped `KeyError: 'empty'` and `pytest.raises(ValueError)` let it through
+    as an error, not a pass. The missing key is manufactured by monkeypatch here, not by editing
+    `_SET_KINDS` in `src/`, because the finding is about what the guard does when the map and the
+    family disagree -- a state a future `classify_set` can create on its own.
+    """
+    import autorate.certify_score as score_gate
+
+    rec = build_ordinal(n=1, repeats=1, seed=1)[0]
+    assert interval_set(rec.probs, 0.01) == [], "the set stopped being empty: re-read this row"
+    assert classify_set(interval_set(rec.probs, 0.01)) == "empty"
+    monkeypatch.setattr(score_gate, "_SET_KINDS", {"auto": "auto", "escalate": "multi"})
+    with pytest.raises(ValueError, match="'empty'") as excinfo:
+        _outcome([rec], 0.01)
+    message = str(excinfo.value)
+    assert "empty" in message and "auto" in message and "escalate" in message, message
+    assert _outcome([rec], 1.0)["multi_label"] == 1, "the map is patched wider than the finding"
 
 
 def test_refusal_rate_is_one_minus_autorate_and_is_not_stored():
@@ -657,7 +761,10 @@ def test_the_envelope_names_the_rule_and_the_level_its_claims_are_tested_at():
 #     at threshold `alpha` the mean certified length is 0.00 levels against 2.25-3.41, empirical
 #     coverage is 0.0 against the claimed 0.95, and 200 of 200 resplits trip their own band. The
 #     deterministic row after the sweep shows the nastier shape: on a wide near-flat ballot the wrong
-#     call automates EVERY record at 0.3067 coverage -- a green run, not a red one.
+#     call automates EVERY record at 0.3067 coverage, and NO COVERAGE STATEMENT NOTICES -- the
+#     certificate's own error budget refuses that population only because 69% of its automated
+#     cases are wrong (an accident of this shape, not a property of the gate), and the row's witness
+#     measures the release: the same planted rule publishes `autorate 1.000` at `beta=0.80`.
 #   * A one-order-statistic error in the quantile is NOT reliably detected. Measured: the pooled miss
 #     rate moves by +0.0046 to +0.0050, under the 0.00679 pooled band; the per-resplit arm trips 0 or
 #     1 times out of 200, and since the band is a 1 - delta width, delta of them may trip for the
@@ -793,18 +900,24 @@ def test_the_coverage_claim_is_about_the_number_the_certificate_publishes():
     assert arm["auto"] == cert.meta["automated"]
 
 
-def test_passing_alpha_where_qhat_belongs_automates_everything_and_would_have_been_green_about_it():
-    """R-92a, deterministic, and worse than the sweep shows: the wrong call is not an obvious red.
+def test_passing_alpha_where_qhat_belongs_automates_everything_and_no_coverage_statement_notices(
+        monkeypatch):
+    """R-92a, deterministic: the wrong call is invisible to anything that speaks about coverage.
 
     On a wide near-flat ballot (25 levels, modal mass 0.0436 < alpha) the alpha-thresholded set is a
-    NON-EMPTY singleton for every record: a gate that passed `alpha` into `interval_set` would have
-    reported an automation rate of 1.000 under a heading reading "at coverage 0.950", while the
-    empirical coverage of those same sets is 0.3067. The correct threshold (qhat=0.176) gives coverage
-    0.9667 and automates NOTHING, so this gate's real output for the population is a refusal.
+    NON-EMPTY singleton for every record: a gate that passed `alpha` into `interval_set` publishes an
+    automation rate of 1.000 under a heading reading "at coverage 0.950", while the empirical
+    coverage of those same sets is 0.3067. The correct threshold (qhat=0.176) gives coverage 0.9667
+    and automates NOTHING, so this gate's real output for the population is a refusal.
 
-    So the failure mode the old parameter name invited is a green run publishing a number with no
-    content, not a traceback -- and what makes it detectable is that the two families disagree about
-    both coverage and size, which is asserted here rather than argued.
+    An earlier version of this row called that failure "a green run", and measured against this
+    row's own beta that is false: the planted rule automates 600 cases, 416 of them wrong, the exact
+    case-level upper bound is 0.724, and the ERROR budget refuses it. The true statement is weaker
+    in one direction and stronger in the other: nothing on the certificate ever compares the sets
+    with the threshold they were actually built at -- the catch here is an accident of this
+    population's 69% error rate, not a property of the gate. The witness below measures both halves
+    of that claim on the planted call: at `beta=0.05` the error budget refuses, at `beta=0.80` the
+    same rule publishes `autorate 1.000` under the same coverage heading.
     """
     recs = build_ordinal(n=1200, seed=7, k=25, temp=0.01, jitter=0.1, repeats=1)
     assert max(recs[0].probs) < ALPHA, "the shape stopped demonstrating the point"
@@ -826,3 +939,23 @@ def test_passing_alpha_where_qhat_belongs_automates_everything_and_would_have_be
     # than the certified one but not empty, so a partial agreement is possible and still wrong.
     middle = (ALPHA + qhat) / 2.0
     assert set(interval_set(recs[0].probs, middle)) < set(interval_set(recs[0].probs, qhat))
+
+    # The witness the corrected claim needs, measured through the whole gate rather than argued in
+    # prose: re-wire the production call the way R-92a found it (`interval_set` handed `alpha` where
+    # the quantile belongs -- the monkeypatch emulates the plant so the assertion runs against
+    # shipped code) and read both budgets off the result.
+    import autorate.certify_score as score_gate
+
+    real_interval_set = score_gate.interval_set
+    monkeypatch.setattr(score_gate, "interval_set",
+                        lambda probs, threshold, u=0.0: real_interval_set(probs, ALPHA))
+    planted_tight = certify_score(recs, alpha=ALPHA, beta=BETA, seed=7)
+    assert planted_tight.feasible is False, planted_tight.summary()
+    assert planted_tight.reason == Reason.EMPTY_FEASIBLE_SET.value, planted_tight.summary()
+    assert "exceeds the budget" in planted_tight.meta["detail"], planted_tight.meta["detail"]
+    planted_loose = certify_score(recs, alpha=ALPHA, beta=0.80, seed=7)
+    assert planted_loose.feasible is True, planted_loose.summary()
+    assert planted_loose.autorate == 1.0 and "coverage 0.950" in planted_loose.summary(), \
+        planted_loose.summary()
+    monkeypatch.undo()
+    assert score_gate.interval_set is real_interval_set, "the plant leaked past this row"
