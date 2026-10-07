@@ -1,7 +1,24 @@
 """Score a pinned corpus offline and write Records. Not on the test path, never on CI.
 
     uv run --frozen python tools/build_records.py --cache <massive-cache> \
-        --out data/records_massive.jsonl --langs en,de,sw
+        --out data/records_massive.jsonl --langs en,de,sw --chunk-size 150
+
+One scoring pass, two artefacts, two temperature regimes. `--out` carries the **clamped** regime
+and is the certified artefact; the sibling `<out stem>_unclamped_parity<suffix>` (or
+`--out-parity`) carries the **unclamped** regime and is the parity control that reproduces
+upstream's published row. Which regime a file holds is never something a reader has to remember:
+it is in the filename, in the run summary's `artefacts` block, and in every record's
+`slices.regime`, `meta.regime` and `meta.calibration_status` -- because a row that could be either
+regime, with nothing saying which, is how a saturated `mean_confidence 0.9989` gets published as if
+it were calibrated.
+
+`--chunk-size` (R-117) is orthogonal to `--per-lang`: the first sizes the collated forward pass,
+the second sizes the artefact. One collated 2,974-case batch projects to ~48.9 GB against a 16 GB
+machine, so the suite is scored in batches and the batches are concatenated in the suite's own case
+order -- a claim the driver does not assume, because `tests/test_build_records.py` scores a prefix
+of a pinned shard at several layouts and asserts the distributions come out bit-identical. Every
+artefact records the layout it was scored in (`chunk_size` and `chunks` in the run summary, per
+stage), so the equivalence test is a statement about the shape this file actually used.
 
 Two halves in one file, split by which interpreter runs them:
 
@@ -30,7 +47,11 @@ itself reported -- upstream's own `summarise` over the checkpoint's unrounded so
 the vendored interpreter. One target, two sides, both must equal it: gating only this build's
 conversion would let a rounding step that moved one prediction relative to upstream's own argmax
 pass while the published row about the same logits said otherwise. The probe's cases must also be
-present in the artefact, so the proof travels inside the file it certifies.
+present in both artefacts, so the proof travels inside the files it certifies. The gate is stated
+under the unclamped regime and is applied to that regime's numbers only: `check_parity` refuses a
+clamped report on identity grounds, which is what keeps the certified side from being "adjusted"
+until it matches a row it is not the same quantity as. The certified side inherits the proof rather
+than needing its own -- same cases, same forward pass, same recorded `u`, one different temperature.
 
 Exceptions, and the exit code each one gets. rc 1 is unreachable by construction: every failure
 this tool can name has a class, and every class has a clause.
@@ -47,28 +68,39 @@ this tool can name has a class, and every class has a clause.
                           stage answered for another language, or its arrays -- or the values inside
                           them -- do not line up. The payload is JSON from another interpreter, so
                           its value *types* are data here and not assumptions: a logit, temperature,
-                          gold index or `probs_probe` entry that is not a real number, a gold index
-                          outside its ballot, a one-option ballot published as `choice`, a `timing`
-                          that is not a mapping, a shard line that parses as JSON but is not an
-                          object, and a stage that scored a question type other than `choice` are
-                          all refusals, not `TypeError`s -> 4.
+                          chunk size, gold index or `probs_probe` entry that is not a real number, a
+                          gold index outside its ballot, a one-option ballot published as `choice`,
+                          a `timing` that is not a mapping, a shard line that parses as JSON but is
+                          not an object, a stage that scored a question type other than `choice`, a
+                          stage whose declared chunk layout could not have produced its own case
+                          count, a regime block that is missing or calls its own confidence something
+                          other than what the regime and the checkpoint's warnings say -- all of those
+                          are refusals, not `TypeError`s -> 4.
     IncompleteBuildError  the build could not run: no upstream tree, no interpreter, no numpy,
                           the stage crashed or was killed, the payload is not JSON, the out path
                           is not writable -> 4, the code the CLI gives a tool that cannot
                           reproduce its own inputs.
     BuildError            the base of the two above. `ParityError` is NOT built on it.
-    UsageRefusal          the operator's input is wrong: a language that is not pinned, a regime
-                          or option count the published row is not stated under, a `--per-lang`
-                          the shard cannot fill -> 2. argparse's own errors are 2 as well.
+    UsageRefusal          the operator's input is wrong: a language that is not pinned, an option
+                          count or `--seed` the published row is not stated under, a `--per-lang`
+                          the shard cannot fill, a `--chunk-size` below one, or the two artefacts
+                          pointed at the same path -> 2. argparse's own errors are 2 as well, which
+                          is what `--regime` now is: the regime is a property of the artefact, not
+                          something the operator types.
     UStreamExhausted      the `u` stream ran out; a missing draw would land on 0.0 and quietly
                           tie-break -> a `BuildError`, so 4, and never a zero fill.
 
 Exit codes are exactly 0 (records written, parity held) / 2 (usage) / 3 (not certifiable) /
 4 (drift or could not complete).
 
-Regime: `unclamped` only, because that is what `PARITY` is stated under and what
-`research/results/cpu_51_language_sweep.json` was produced with; the clamped regime is a real and
-different number (spec 7.2's clamp), so asking for it while quoting the unclamped row is refused.
+Regime: both, out of one forward pass, because `score_cases` deliberately applies no temperature
+"so the caller can score under more than one regime from one pass" (R-118). `unclamped` is the
+regime `PARITY` and `research/results/cpu_51_language_sweep.json` were produced at, so it is the
+parity control and nothing else; `clamped` -- spec 7.2's clamp, the temperature upstream's own code
+applies -- is the certified headline. The gate is stated under the unclamped row and `check_parity`
+refuses the clamped report on identity grounds, so neither side can be adjusted into matching the
+other. `CERTIFIED_REGIME` is a constant rather than a flag: the near-saturated column upstream
+declines to treat as calibrated is not selectable as the headline by typing a word.
 """
 import argparse
 import gzip
@@ -121,12 +153,35 @@ STAGE_SIDE = "upstream's own row from the model stage"
 BUILT_SIDE = "this build's written conversion"
 PROBE_PROBS_CASES = 8
 SOFTMAX_TOL = 1e-9
-WORKER_STAGES = ("probe", "full")
+WORKER_STAGES = ("probe", "full", "equivalence")
+# The two temperature regimes, scored out of ONE forward pass: `score_cases` applies no temperature
+# on purpose ("so the caller can score under more than one regime from one pass"), and a second run
+# of the model to obtain the other column would double the cost of the thing this build is gated on.
+REGIMES = ("unclamped", "clamped")
+# R-118: the certified number is the clamped one -- the temperature upstream's own code applies --
+# and the unclamped run survives only as the parity control that proves the scoring path. This is a
+# constant rather than a flag on purpose: an operator must not be able to ask for the saturated,
+# upstream-rejected column as the headline by typing a word.
+CERTIFIED_REGIME = "clamped"
+PARITY_REGIME = PARITY["regime"]
+# What a confidence column in a record means, in the record itself. Sentences rather than codes,
+# because the reader this is for is `jq` and a human, not a lookup table in a document nobody opens.
+CALIBRATION_CLAMPED = "clamped by upstream to [0.5, 5]"
+CALIBRATION_REJECTED = "uncalibrated: upstream rejects this temperature (outside [0.5, 5])"
+CALIBRATION_IN_RANGE = "upstream applied no clamp: raw temperature was already in range"
+# R-117: one collated batch of a whole 2,974-case shard projects to ~48.9 GB against a 16 GB
+# machine. 150 cases per batch is ~2.5 GiB of activations plus ~1.16 GiB fixed, i.e. ~3.6 GiB,
+# which leaves the other lanes in this tree their memory. Orthogonal to `--per-lang`, which sizes
+# the artefact and not the batch.
+DEFAULT_CHUNK_SIZE = 150
+# Every regime-block key `check_payload` and the conversion index without a `.get()`, so a stage
+# that answers partially is a stage that did not run.
+REQUIRED_REGIME_KEYS = ("temperatures", "probs_probe", "upstream_report", "calibration_status")
 # A stage that answers partially is a stage that did not run. Every one of these is indexed later,
 # so an absent key would surface as a `KeyError` -- rc 1, outside this tool's contract.
-REQUIRED_PAYLOAD_KEYS = ("lang", "stage", "n_cases", "item_ids", "gold", "option_keys", "logits",
-                         "temperatures", "texts", "probs_probe", "timing", "upstream_report",
-                         "qtype", "regime", "n_opts", "seed")
+REQUIRED_PAYLOAD_KEYS = ("lang", "stage", "n_cases", "n_opts", "seed", "item_ids", "gold",
+                         "option_keys", "logits", "texts", "timing", "qtype", "regimes",
+                         "chunk_size", "chunks", "warnings")
 
 
 class BuildError(RuntimeError):
@@ -204,6 +259,74 @@ def softmax_t(z, temperature: float = 1.0) -> list:
 def answer_confidence(probs) -> float:
     """`laya`'s `answer_confidence`: mass on the reported answer (mirrors `autorate.records`)."""
     return max(float(x) for x in probs)
+
+
+def chunk_sizes(n: int, chunk_size: int) -> list:
+    """How many cases each collated batch of a `n`-case suite holds, in scoring order.
+
+    One owner for the shape, so the stage that scores and the build layer that audits the score
+    cannot disagree about what "chunked at 150" was supposed to look like.
+    """
+    n, chunk_size = int(n), int(chunk_size)
+    if n < 0 or chunk_size < 1:
+        raise DriftError("cannot lay out %r cases in batches of %r" % (n, chunk_size))
+    sizes = [chunk_size] * (n // chunk_size)
+    if n % chunk_size:
+        sizes.append(n % chunk_size)
+    return sizes
+
+
+def score_cases_in_chunks(score_fn, cases, chunk_size: int):
+    """Score a suite in batches of at most `chunk_size` cases: (concatenated logits, sizes).
+
+    This is the whole of R-117's memory answer -- upstream's `score_cases` builds one collated
+    batch, and a collated batch of 2,974 cases projects to ~48.9 GB against a 16 GB machine -- and
+    it is a *function* rather than a line inside the worker so that the two properties it has to
+    have are testable without a model: the batches are contiguous, in order, and cover the suite
+    exactly once (so the concatenation is the suite's own case order), and a batch that answers for
+    the wrong number of cases is a refusal instead of a silent off-by-one against `gold`.
+
+    Whether the *checkpoint* gives the same probabilities at two batch sizes is not testable here
+    and is not assumed: that claim is asserted, bit-for-bit, against the real model in
+    `tests/test_build_records.py`.
+    """
+    cases = list(cases)
+    chunk_size = int(chunk_size)
+    if chunk_size < 1:
+        raise DriftError("a chunk size of %d would score nothing at all" % chunk_size)
+    out, sizes = [], chunk_sizes(len(cases), chunk_size)
+    start = 0
+    for position, size in enumerate(sizes):
+        part = cases[start:start + size]
+        got = list(score_fn(part))
+        if len(got) != size:
+            raise DriftError("chunk %d of %d was asked for %d cases and answered with %d: a batch "
+                             "that returns the wrong count would put every later case's logits "
+                             "against the wrong gold label"
+                             % (position + 1, len(sizes), size, len(got)))
+        out.extend(got)
+        start += size
+    if start != len(cases):
+        raise DriftError("the chunk layout covered %d of %d cases" % (start, len(cases)))
+    return out, sizes
+
+
+def calibration_status(regime: str, warning_emitted: bool = True) -> str:
+    """What a reader may conclude about a confidence column, before they read anything else.
+
+    R-118's whole point: the regime is a property of the numbers, and the *library's* verdict -- not
+    this tool's name for the regime -- is what says whether that confidence is calibrated. Every
+    load of this checkpoint warns that `choice:11+ = 0.10058` sits outside the range upstream will
+    apply, so the unclamped column is published as rejected-by-upstream and the clamped one as what
+    upstream itself scores with. A checkpoint whose raw temperatures were already inside the range
+    gets the third value, which says so instead of borrowing a warning it never triggered.
+    """
+    if regime not in REGIMES:
+        raise DriftError("%r is not a regime this tool names (%s), so it cannot say what its "
+                         "confidence means" % (regime, " or ".join(REGIMES)))
+    if regime == "clamped":
+        return CALIBRATION_CLAMPED
+    return CALIBRATION_REJECTED if warning_emitted else CALIBRATION_IN_RANGE
 
 
 def entropy_confidence(probs) -> float:
@@ -287,6 +410,7 @@ def case_id_for(lang: str, item_id: str) -> str:
 def records_from_logits(logits, gold, option_keys, lang, u_stream, item_ids=None,
                         temperature: float = 1.0, temperatures=None, texts=None, *,
                         backend: str = BACKEND, regime: str = "unclamped",
+                        calibration: str | None = None,
                         suite_seed: int = PARITY["seed"], u_seed: int = PARITY["seed"],
                         dataset: str | None = None, revision: str | None = None,
                         license_id: str | None = None, checkpoint: str | None = None,
@@ -300,8 +424,17 @@ def records_from_logits(logits, gold, option_keys, lang, u_stream, item_ids=None
     are option keys, never indices (spec 4), and `case_id` is the dataset item id qualified by the
     language -- the 51 shards share one 2,974-id set, so a bare id would be the same case in all
     of them (R-36, R-44).
+
+    `meta.calibration_status` states, in words, what the confidence column on this row means and
+    who says so (R-118). It is derived from the regime by `calibration_status` and the build layer
+    overrides the derivation with the warning the library actually emitted, so a row can never be
+    read as calibrated because a reader forgot which of the two files it came from.
     """
     n = len(logits)
+    # Checked once here, before any row is built, so an unknown regime cannot ride in on a record
+    # that supplied its own `calibration` string: the regime is the thing a reader trusts that
+    # string to describe.
+    derived_calibration = calibration_status(regime)
     if len(gold) != n or len(option_keys) != n:
         raise DriftError("%s: %d logits but %d gold and %d option sets; the conversion refuses to "
                          "guess which case is which" % (lang, n, len(gold), len(option_keys)))
@@ -361,6 +494,7 @@ def records_from_logits(logits, gold, option_keys, lang, u_stream, item_ids=None
         case_id = (str(item_ids[i]) if item_ids is not None
                    else "massive/%s/row-%05d" % (lang, i))
         meta = {"probability_precision": PROB_DECIMALS, "regime": regime, "temperature": t,
+                "calibration_status": calibration or derived_calibration,
                 "u_seed": int(u_seed), "u_index": i, "u_source": "recorded_draw",
                 "suite_seed": int(suite_seed), "source": "tools/build_records.py",
                 "instructions": INSTRUCTIONS,
@@ -403,7 +537,9 @@ def report_from_records(records, summarise) -> dict:
 
     The identity fields (`lang`, `n_opts`, `seed`, `regime`) are taken from the records too,
     because "the same four figures" is not the same *row* without them. `n_opts` is None when the
-    suite mixed option counts, which the gate then refuses rather than averaging.
+    suite mixed option counts, which the gate then refuses rather than averaging. `calibration_status`
+    travels with the row for the same reason the regime does: four figures whose confidence column
+    upstream declines to treat as calibrated are not interchangeable with four that are not.
     """
     confs, corrects, golds, preds = [], [], [], []
     for rec in records:
@@ -424,10 +560,12 @@ def report_from_records(records, summarise) -> dict:
     regimes = {rec["slices"]["regime"] for rec in records}
     seeds = {rec["meta"]["suite_seed"] for rec in records}
     counts = {rec["slices"]["option_count"] for rec in records}
+    calibrations = {rec["meta"]["calibration_status"] for rec in records}
     report["lang"] = langs.pop() if len(langs) == 1 else None
     report["regime"] = regimes.pop() if len(regimes) == 1 else None
     report["seed"] = seeds.pop() if len(seeds) == 1 else None
     report["n_opts"] = counts.pop() if len(counts) == 1 else None
+    report["calibration_status"] = calibrations.pop() if len(calibrations) == 1 else None
     return report
 
 
@@ -470,22 +608,73 @@ def check_parity(report, target=PARITY_TARGET, side: str = BUILT_SIDE) -> dict:
     return got
 
 
-def stage_report(payload: dict) -> dict:
-    """The model stage's own row: upstream's `summarise`, on the checkpoint's unrounded softmax.
+def regime_block(payload: dict, regime: str) -> dict:
+    """One regime's slice of a stage payload, refused rather than assumed if it is not there.
+
+    The payload is JSON from another interpreter and it now carries a column per regime, so "which
+    numbers go with which temperature" is a lookup this tool performs on somebody else's data. A
+    payload missing one of the two is a stage that answered partially.
+    """
+    if regime not in REGIMES:
+        raise DriftError("%r is not a regime this tool names (%s), so the build cannot say which "
+                         "temperature produced these numbers"
+                         % (regime, " or ".join(REGIMES)))
+    regimes = payload.get("regimes")
+    if not isinstance(regimes, dict):
+        raise DriftError("the %s/%s payload's `regimes` is a %s, not an object; both temperature "
+                         "regimes come out of one forward pass and each has to say so separately"
+                         % (payload.get("lang"), payload.get("stage"), type(regimes).__name__))
+    if regime not in regimes:
+        raise DriftError("the %s/%s payload carries no block for regime %r (it has: %s); a run that "
+                         "scored one regime cannot fill an artefact for the other"
+                         % (payload.get("lang"), payload.get("stage"), regime,
+                            ", ".join(sorted(regimes)) or "nothing"))
+    block = regimes[regime]
+    if not isinstance(block, dict):
+        raise DriftError("the %s/%s payload's block for regime %r is a %s, not an object"
+                         % (payload.get("lang"), payload.get("stage"), regime,
+                            type(block).__name__))
+    absent = [key for key in REQUIRED_REGIME_KEYS if key not in block]
+    if absent:
+        raise DriftError("the %s/%s payload's block for regime %r carries no %s: the temperatures "
+                         "are what turn these logits into the published probabilities, so a regime "
+                         "that does not name them cannot be written at all"
+                         % (payload.get("lang"), payload.get("stage"), regime,
+                            ", ".join(absent)))
+    return block
+
+
+def payload_warnings(payload: dict) -> list:
+    """What the checkpoint stack warned about while this stage ran, as data rather than as stderr.
+
+    Upstream's clamp warning is the fact R-118 turns into a publication policy, and the build layer
+    runs the stage with its stderr captured -- so a warning that only lived on the child's stderr
+    reached the build log as the last 400 characters of a tail, if that. The stage now records it.
+    """
+    seen = payload.get("warnings")
+    return seen if isinstance(seen, list) else []
+
+
+def stage_report(payload: dict, regime: str) -> dict:
+    """The model stage's own row for one regime: upstream's `summarise`, on the checkpoint's output.
 
     This is the side of the parity comparison that is *not* this build: computed in the vendored
     interpreter, from the probabilities the checkpoint produced, with upstream's argmax rather than
     the argmax of the 6-decimal vector we write. The published figures alone are not the published
-    row, so the identity travels with it from the same payload.
+    row, so the identity travels with it from the same payload -- including which of the two regimes
+    scored out of the one forward pass these numbers belong to.
     """
-    if not isinstance(payload["upstream_report"], dict):
-        raise DriftError("%s/%s: the payload's upstream_report is a %s, not a mapping; the parity "
+    block = regime_block(payload, regime)
+    if not isinstance(block["upstream_report"], dict):
+        raise DriftError("%s/%s/%s: the payload's upstream_report is a %s, not a mapping; the parity "
                          "gate compares upstream's own arithmetic, so it has to be able to read it"
-                         % (payload.get("lang"), payload.get("stage"),
-                            type(payload["upstream_report"]).__name__))
-    report = dict(payload["upstream_report"])
-    for key in ("lang", "n_opts", "seed", "regime"):
+                         % (payload.get("lang"), payload.get("stage"), regime,
+                            type(block["upstream_report"]).__name__))
+    report = dict(block["upstream_report"])
+    for key in ("lang", "n_opts", "seed"):
         report[key] = payload[key]
+    report["regime"] = regime
+    report["calibration_status"] = block["calibration_status"]
     return report
 
 
@@ -540,7 +729,8 @@ def upstream_python(upstream: Path) -> str:
     `torch` both disappear from an environment that has them. The venv is found from the path it was
     invoked by, so the symlink has to stay.
     """
-    override = os.environ.get("AUTORATE_UPSTREAM_PYTHON") or os.environ.get("AUTORATE_AUDIT_PYTHON")
+    override = (os.environ.get("LAYA_INFER_PYTHON") or os.environ.get("AUTORATE_UPSTREAM_PYTHON")
+                or os.environ.get("AUTORATE_AUDIT_PYTHON"))
     if override:
         return override
     venv = Path(upstream) / ".venv" / "bin" / "python"
@@ -684,6 +874,20 @@ def payload_path_for(directory: Path, lang: str, stage: str) -> Path:
     return Path(directory) / ("payload-%s-%s.json" % (stage, lang))
 
 
+def artefact_paths(out, out_parity=None) -> tuple:
+    """The two files one scoring pass writes: the certified artefact and its parity control.
+
+    The control's default name is derived from `--out` rather than left to the operator, because a
+    control nobody can predict the location of is a control nobody finds -- and the filename is one
+    of the three places R-118 requires the regime to be recorded (the others being the summary's
+    `artefacts` block and every row's `slices.regime` / `meta.calibration_status`).
+    """
+    out = Path(out)
+    if out_parity:
+        return out, Path(out_parity)
+    return out, out.parent / ("%s_%s_parity%s" % (out.stem, PARITY_REGIME, out.suffix))
+
+
 def run_model_stage(args, upstream: Path, lang: str, stage: str, per_lang: int,
                     payload_dir: Path) -> dict:
     """Score one language in the vendored interpreter and read its payload back.
@@ -697,8 +901,9 @@ def run_model_stage(args, upstream: Path, lang: str, stage: str, per_lang: int,
     cmd = [args.python, str(Path(__file__).resolve()), "--worker",
            "--lang", lang, "--stage", stage, "--payload", str(payload),
            "--cache", str(args.cache), "--pin", str(args.pin), "--upstream", str(upstream),
-           "--model", args.model, "--device", args.device or "", "--regime", args.regime,
-           "--per-lang", str(per_lang), "--n-opts", str(args.n_opts), "--seed", str(args.seed)]
+           "--model", args.model, "--device", args.device or "",
+           "--per-lang", str(per_lang), "--n-opts", str(args.n_opts), "--seed", str(args.seed),
+           "--chunk-size", str(args.chunk_size)]
     if args.subfolder:
         cmd += ["--subfolder", args.subfolder]
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
@@ -729,12 +934,21 @@ def run_model_stage(args, upstream: Path, lang: str, stage: str, per_lang: int,
 
 
 def check_payload(payload: dict, lang: str, stage: str, per_lang: int,
-                  upstream_module) -> list:
+                  upstream_module, asked_chunk_size: int | None = None) -> dict:
     """A model stage answers for itself: right language, right size, arrays that line up.
 
-    `probs_probe` is upstream's own `softmax_t` on the first cases; the build layer recomputes it
-    with `softmax_t` above and refuses the batch if the two diverge, because that is the one place
-    here where a re-implementation could silently change every probability.
+    `probs_probe` is upstream's own `softmax_t` on the first cases, per regime; the build layer
+    recomputes it with `softmax_t` above and refuses the batch if the two diverge, because that is
+    the one place here where a re-implementation could silently change every probability. Each
+    regime is checked against *its own* temperatures, which is what makes the two columns separate
+    facts about one forward pass rather than one number with two labels.
+
+    The chunk layout is checked twice (R-117): against the case count the stage served, so a declared
+    layout that could not have produced its own suite is refused, and against the `--chunk-size` the
+    operator asked for, so the memory claim in the artefact is the claim that was actually honoured.
+    Without the second one, `--chunk-size 150` would be a word typed into a command line rather than
+    a property of the file, and the equivalence test in `tests/test_build_records.py` would be a
+    statement about a shape this artefact did not use.
     """
     if not isinstance(payload, dict):
         raise DriftError("the %s/%s payload is a %s, not an object"
@@ -745,6 +959,12 @@ def check_payload(payload: dict, lang: str, stage: str, per_lang: int,
                          "stage that did not run, and the missing key would surface as a KeyError "
                          "with exit code 1 -- outside this tool's contract"
                          % (lang, stage, ", ".join(absent)))
+    reported = payload["regimes"]
+    extra = sorted(set(reported) - set(REGIMES)) if isinstance(reported, dict) else []
+    if extra:
+        raise DriftError("the %s/%s payload reports regime(s) %s, which this tool does not name or "
+                         "score: a column nobody can say the temperature of cannot be published"
+                         % (lang, stage, ", ".join(repr(e) for e in extra)))
     if payload.get("lang") != lang:
         raise DriftError("the %s/%s payload answers for language %r: the stages must not be "
                          "confused for one another" % (lang, stage, payload.get("lang")))
@@ -762,24 +982,48 @@ def check_payload(payload: dict, lang: str, stage: str, per_lang: int,
                          "the log line with exit code 1 -- absent telemetry is a gap, a non-mapping "
                          "is a payload that does not know its own shape"
                          % (lang, stage, type(payload["timing"]).__name__))
-    arrays = ("item_ids", "gold", "option_keys", "logits", "temperatures", "texts")
-    not_lists = [key for key in arrays + ("probs_probe",) if not isinstance(payload.get(key), list)]
+    arrays = ("item_ids", "gold", "option_keys", "logits", "texts")
+    not_lists = [key for key in arrays if not isinstance(payload.get(key), list)]
     if not_lists:
         raise DriftError("the %s/%s payload's %s %s not a list"
                          % (lang, stage, ", ".join(not_lists),
                             "are" if len(not_lists) > 1 else "is"))
-    lengths = {key: len(payload[key]) for key in arrays}
     n_cases = payload.get("n_cases")
     if n_cases != per_lang:
         raise DriftError("the %s/%s stage returned %s cases for a run of %d: a suite that came "
                          "back short would publish fewer cases than the artefact claims"
                          % (lang, stage, n_cases, per_lang))
-    uneven = {key: lengths[key] for key in arrays if lengths[key] != per_lang}
+    uneven = {key: len(payload[key]) for key in arrays if len(payload[key]) != per_lang}
     if uneven:
         raise DriftError("the %s/%s payload does not line up: %s (expected %d each); refusing to "
                          "guess which case is which" % (lang, stage,
                                                         ", ".join("%s=%d" % kv for kv in uneven.items()),
                                                         per_lang))
+    chunk_size = _number(payload["chunk_size"], "%s/%s" % (lang, stage), 0, "chunk size",
+                         integer=True)
+    if chunk_size < 1:
+        raise DriftError("the %s/%s payload reports a chunk size of %r: a batch of nothing scores "
+                         "nothing, and every case would arrive with no probability at all"
+                         % (lang, stage, payload["chunk_size"]))
+    chunks = payload["chunks"]
+    if not isinstance(chunks, list) or not chunks:
+        raise DriftError("the %s/%s payload's chunks is %r, not a non-empty list of batch sizes: "
+                         "the chunk layout is the only record of how this suite was collated, and "
+                         "without it the chunking-equivalence claim has no subject"
+                         % (lang, stage, chunks))
+    sizes = [int(_number(c, "%s/%s" % (lang, stage), i, "chunk size %d" % i, integer=True))
+             for i, c in enumerate(chunks)]
+    if asked_chunk_size is not None and int(chunk_size) != int(asked_chunk_size):
+        raise DriftError("the %s/%s stage scored in batches of %d after being asked for %d: the "
+                         "chunk size is this artefact's memory claim, so a stage that ran a "
+                         "different layout has to say so rather than be believed"
+                         % (lang, stage, int(chunk_size), int(asked_chunk_size)))
+    want_sizes = chunk_sizes(per_lang, int(chunk_size))
+    if sizes != want_sizes:
+        raise DriftError("the %s/%s payload says it scored %d cases in batches of %s (%d batches), "
+                         "which is not %s -- a stage whose declared layout could not have produced "
+                         "its own case count cannot be the evidence for a claim about layouts"
+                         % (lang, stage, per_lang, sizes, len(sizes), want_sizes))
     value_sets = []
     for i, (z, keys) in enumerate(zip(payload["logits"], payload["option_keys"])):
         if len(z) != len(keys):
@@ -793,37 +1037,67 @@ def check_payload(payload: dict, lang: str, stage: str, per_lang: int,
         # value the stage serialized oddly would otherwise be averaged into the distribution.
         value_sets.append([_number(v, "%s/%s" % (lang, stage), i, "logit %d" % j)
                            for j, v in enumerate(z)])
-        _number(payload["temperatures"][i], "%s/%s" % (lang, stage), i, "temperature")
-    probe = payload.get("probs_probe")
-    if not isinstance(probe, list) or not probe:
-        raise DriftError("the %s/%s payload carried no probs_probe: the build layer checks its own "
-                         "softmax against upstream's, and an empty probe would check nothing"
-                         % (lang, stage))
-    limit = min(len(probe), PROBE_PROBS_CASES)
-    probes = [[_number(v, "%s/%s" % (lang, stage), i, "probs_probe entry %d" % j)
-               for j, v in enumerate(payload["probs_probe"][i])] for i in range(limit)]
-    for i in range(limit):
-        want = probes[i]
-        got = softmax_t(value_sets[i], payload["temperatures"][i])
-        if len(want) != len(got):
-            raise DriftError("%s/%s case %d: probs_probe has %d entries for %d options"
-                             % (lang, stage, i, len(want), len(got)))
-        worst = max(abs(a - b) for a, b in zip(want, got))
-        if worst > SOFTMAX_TOL:
-            raise DriftError("%s/%s: this build's softmax_t differs from upstream's by %.3g on "
-                             "case %d, which is more than %.1e; every probability in the artefact "
-                             "would be ours rather than the harness's"
-                             % (lang, stage, worst, i, SOFTMAX_TOL))
-    if upstream_module is not None:
+    probes = {}
+    warnings_list = payload["warnings"]
+    if not isinstance(warnings_list, list) or any(not isinstance(w, dict) for w in warnings_list):
+        raise DriftError("the %s/%s payload's warnings is %s rather than a list of objects; the "
+                         "clamp warning is the fact R-118 turns into a publication policy, so it "
+                         "travels as data and not as a line of captured stderr"
+                         % (lang, stage, type(warnings_list).__name__))
+    for regime in REGIMES:
+        block = regime_block(payload, regime)
+        temps = block["temperatures"]
+        if not isinstance(temps, list):
+            raise DriftError("the %s/%s payload's temperatures for regime %r is not a list"
+                             % (lang, stage, regime))
+        if len(temps) != per_lang:
+            raise DriftError("the %s/%s payload does not line up: temperatures=%d for regime %r "
+                             "(expected %d); refusing to guess which case is which"
+                             % (lang, stage, len(temps), regime, per_lang))
+        for i in range(per_lang):
+            _number(temps[i], "%s/%s" % (lang, stage), i, "temperature")
+        # The stage says what its own confidence means; this layer says so again, from the regime
+        # name and the warnings the checkpoint stack actually emitted. Two interpreters, one fact,
+        # and a disagreement is a refusal -- a column that could be read as calibrated because the
+        # side that wrote it was feeling generous is exactly the defect R-118 exists to prevent.
+        stated = block["calibration_status"]
+        expected = calibration_status(regime, warning_emitted=bool(warnings_list))
+        if stated != expected:
+            raise DriftError("the %s/%s payload's block for regime %r calls its confidence %r, but "
+                             "this build derives %r from the regime and the %d upstream warning(s); "
+                             "the calibration status of a published number is not a label each side "
+                             "may choose" % (lang, stage, regime, stated, expected,
+                                             len(warnings_list)))
+        probe = block["probs_probe"]
+        if not isinstance(probe, list) or not probe:
+            raise DriftError("the %s/%s payload carried no probs_probe for regime %r: the build "
+                             "layer checks its own softmax against upstream's, and an empty probe "
+                             "would check nothing" % (lang, stage, regime))
+        limit = min(len(probe), PROBE_PROBS_CASES)
+        rows = [[_number(v, "%s/%s/%s" % (lang, stage, regime), i, "probs_probe entry %d" % j)
+                 for j, v in enumerate(probe[i])] for i in range(limit)]
         for i in range(limit):
-            theirs = [float(x) for x in upstream_module.softmax_t(value_sets[i],
-                                                                  payload["temperatures"][i])]
-            worst = max(abs(a - b) for a, b in zip(theirs, probes[i]))
+            want = rows[i]
+            got = softmax_t(value_sets[i], temps[i])
+            if len(want) != len(got):
+                raise DriftError("%s/%s/%s case %d: probs_probe has %d entries for %d options"
+                                 % (lang, stage, regime, i, len(want), len(got)))
+            worst = max(abs(a - b) for a, b in zip(want, got))
             if worst > SOFTMAX_TOL:
-                raise DriftError("%s/%s: the payload's probs_probe is not what upstream's "
-                                 "softmax_t returns here (max diff %.3g); the stage and the tree "
-                                 "disagree" % (lang, stage, worst))
-    return probe
+                raise DriftError("%s/%s regime=%s: this build's softmax_t differs from upstream's by "
+                                 "%.3g on case %d, which is more than %.1e; every probability in "
+                                 "the artefact would be ours rather than the harness's"
+                                 % (lang, stage, regime, worst, i, SOFTMAX_TOL))
+        if upstream_module is not None:
+            for i in range(limit):
+                theirs = [float(x) for x in upstream_module.softmax_t(value_sets[i], temps[i])]
+                worst = max(abs(a - b) for a, b in zip(theirs, rows[i]))
+                if worst > SOFTMAX_TOL:
+                    raise DriftError("%s/%s regime=%s: the payload's probs_probe is not what "
+                                     "upstream's softmax_t returns here (max diff %.3g); the stage "
+                                     "and the tree disagree" % (lang, stage, regime, worst))
+        probes[regime] = probe
+    return probes
 
 
 def check_artefact_covers_probe(records: list, probe_records: list, lang: str) -> int:
@@ -858,17 +1132,97 @@ def record_line(rec: dict) -> str:
 
 
 # --------------------------------------------------------------------------- the model stage
-def _score_batch(laya, le, np, QTYPES, args, rows, unclamped):
+def warning_dict(w) -> dict:
+    """One warning the checkpoint stack emitted, as payload data rather than as a line of stderr.
+
+    R-118 turns this library's clamp warning into a publication policy, and a policy needs the fact
+    it rests on: which bucket was rejected, what was applied instead, and which code said so. The
+    build layer runs the stage with stderr captured and only ever tails it, so a warning that lived
+    only there would reach the artefact as nothing at all.
+    """
+    return {"category": getattr(w.category, "__name__", str(w.category)),
+            "message": str(w.message),
+            "where": "%s:%s" % (Path(str(w.filename)).name, w.lineno)}
+
+
+def _load_agent(laya, args):
+    """`laya.load`, with everything it warns about kept.
+
+    The warning is emitted once per Agent construction, at `laya/agent.py`, and Python's default
+    filter would show it once per location for the life of the process -- so `record=True` plus
+    `simplefilter("always")` is what makes "did this load reject a bucket?" an answerable question
+    instead of a guess about stderr ordering.
+    """
+    import warnings
+
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        agent = laya.load(args.model, device=args.device or None,
+                          subfolder=args.subfolder or None)
+    agent.model.eval()
+    return agent, [warning_dict(w) for w in seen]
+
+
+def peak_rss_mib():
+    """The stage's own peak resident set in MiB, or None where the platform reports no such thing.
+
+    `--chunk-size` is a claim about bytes, so the run that produces the artefact records what it
+    actually used; `ru_maxrss` is bytes on darwin and kilobytes on linux, which is why the divisor
+    is chosen by platform rather than assumed. Measured through `resource` and not by wrapping the
+    driver in `/usr/bin/time -l`, because the grandchild's peak does not propagate through an
+    interpreter hand-off and the number that arrives then is the parent's (8.4 MB, measured).
+    """
+    try:
+        import resource
+    except ImportError:
+        return None
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+    return round(float(peak) / divisor, 3)
+
+
+def regime_column(le, QTYPES, np, agent, logits, gold, regime, seen_warnings):
+    """One regime's numbers, from logits that are already in hand -- no second forward pass.
+
+    `temperature_for(..., unclamped=…)` is the whole difference between the two columns: the same
+    logits read at the checkpoint's raw bucket temperature, or at the value upstream clamps it to.
+    Upstream's own `summarise` runs per regime so each side of the parity gate is stated under the
+    temperature it was actually computed at, and the calibration status is the library's verdict
+    (`calibration_status`), not this tool's name for the column.
+    """
+    unclamped = regime == "unclamped"
+    temperatures = [float(le.temperature_for(agent, QTYPES["choice"], len(z), unclamped))
+                    for z in logits]
+    confs, cors, preds = [], [], []
+    for z, t, g in zip(logits, temperatures, gold):
+        p = le.softmax_t(z, t)
+        confs.append(float(p.max()))
+        preds.append(int(np.argmax(p)))
+        cors.append(float(int(preds[-1] == int(g))))
+    upstream_report = le.summarise(confs, cors, gold, preds)
+    return {
+        "temperatures": temperatures,
+        "probs_probe": [[float(x) for x in le.softmax_t(z, t)]
+                        for z, t in list(zip(logits, temperatures))[:PROBE_PROBS_CASES]],
+        "upstream_report": {k: round(float(v), 6) if isinstance(v, (int, float)) else v
+                            for k, v in upstream_report.items()},
+        "calibration_status": calibration_status(regime, warning_emitted=bool(seen_warnings)),
+    }
+
+
+def _score_batch(laya, le, np, QTYPES, args, rows):
     """Every call into the checkpoint stack, in one place, so one clause can name what they raise.
 
     Upstream's own `build_suite` is what orders the sampling -- "that is what made the parity row
     reproduce" -- and the label pool is every label in the shard, exactly as upstream's
     `run_language` builds it. Slicing the shard before computing the pool is the one way to change
     every ballot, and the parity gate is what would notice.
+
+    The suite is then scored in chunks (R-117) and both regimes are read off the one set of logits
+    (R-118), so the cost of the second artefact is a second softmax over numbers already in memory.
     """
     started = time.time()
-    agent = laya.load(args.model, device=args.device or None, subfolder=args.subfolder or None)
-    agent.model.eval()
+    agent, seen_warnings = _load_agent(laya, args)
     load_s = time.time() - started
     cases, gold, option_keys = le.build_suite(
         rows, sorted({r["label_text"] for r in rows}), args.per_lang, args.n_opts, args.seed)
@@ -888,45 +1242,153 @@ def _score_batch(laya, le, np, QTYPES, args, rows, unclamped):
                          "with the wrong qtype and scored at the wrong bucket"
                          % (", ".join(repr(q) for q in qtypes), QTYPE, QTYPE))
     scored = time.time()
-    logits = le.score_cases(agent, cases)
+    logits, chunks = score_cases_in_chunks(lambda part: le.score_cases(agent, part),
+                                           cases, args.chunk_size)
     score_s = time.time() - scored
-    temperatures = [float(le.temperature_for(agent, QTYPES["choice"], len(z), unclamped))
-                    for z in logits]
-    confs, cors, preds = [], [], []
-    for z, t, g in zip(logits, temperatures, gold):
-        p = le.softmax_t(z, t)
-        confs.append(float(p.max()))
-        preds.append(int(np.argmax(p)))
-        cors.append(float(int(preds[-1] == int(g))))
-    upstream_report = le.summarise(confs, cors, gold, preds)
-    probs_probe = [[float(x) for x in le.softmax_t(z, t)]
-                   for z, t in list(zip(logits, temperatures))[:PROBE_PROBS_CASES]]
+    regimes = {regime: regime_column(le, QTYPES, np, agent, logits, gold, regime, seen_warnings)
+               for regime in REGIMES}
     import torch
     return {
         "lang": args.lang, "stage": args.stage, "n_cases": len(cases), "n_opts": args.n_opts,
-        "seed": args.seed, "regime": args.regime, "qtype": qtypes[0],
+        "seed": args.seed, "qtype": qtypes[0],
         "item_ids": [r["id"] for r in rows[:len(cases)]],
         "texts": [r["text"] for r in rows[:len(cases)]],
         "gold": [int(g) for g in gold],
         "option_keys": [list(k) for k in option_keys],
         "logits": [[float(x) for x in z] for z in logits],
-        "temperatures": temperatures,
-        "probs_probe": probs_probe,
-        "upstream_report": {k: round(float(v), 6) if isinstance(v, (int, float)) else v
-                            for k, v in upstream_report.items()},
+        "regimes": regimes,
+        "chunk_size": int(args.chunk_size), "chunks": [int(c) for c in chunks],
+        "warnings": seen_warnings,
         "timing": {"load_s": round(load_s, 3), "score_s": round(score_s, 3),
                    "cases_per_s": round(len(cases) / score_s, 4) if score_s > 0 else None,
+                   "chunks": len(chunks), "chunk_size": int(args.chunk_size),
+                   "peak_rss_mib": peak_rss_mib(),
                    "device": str(agent.device),
                    "torch": getattr(torch, "__version__", "unknown"),
                    "laya": getattr(laya, "__version__", "unknown")},
     }
 
 
-def worker_main(args) -> int:
-    """One language, one batch, raw logits out. Runs ONLY in the vendored interpreter.
+def compare_layouts(samples: dict) -> float:
+    """Worst difference between chunk layouts, and a refusal when there is any at all.
 
-    Nothing in this function reaches the checkpoint stack except through `_score_batch`, and that
-    call is the single place in the repository where an exception we do not own is caught broadly.
+    R-117's safety claim is that cutting the suite into batches moves nothing: the same cases, in the
+    same order, collated differently, must come back with the same logits and the same probabilities.
+    `float32` marker logits have no room for a tolerance argument -- if a batch had moved a number it
+    would have moved it by far more than an ulp, and a "small" difference would be the beginning of
+    every certificate downstream quoting a different probability than the one this file holds. So the
+    comparison is bit-for-bit, in both directions: the exact value, and the maximum absolute
+    difference, which is 0.0 or a refusal naming the case, the option and the layout that disagreed.
+
+    The samples are `{label: {"logits": [...], "chunk_size": int, "chunks": [...], "regimes":
+    {regime: {"probs": [...]}}}}`. Only the first sample's shapes are trusted; a layout that answered
+    with a different count is the same off-by-one the chunker itself refuses.
+    """
+    labels = list(samples)
+    if len(labels) < 2:
+        raise DriftError("chunk equivalence needs at least two layouts to compare and was given %s: "
+                         "one layout compared with itself proves nothing about chunking"
+                         % (", ".join(labels) or "nothing"))
+    worst = 0.0
+    first = samples[labels[0]]
+    for label in labels[1:]:
+        other = samples[label]
+        if len(other["logits"]) != len(first["logits"]):
+            raise DriftError("layout %r scored %d cases and layout %r scored %d: the equivalence "
+                             "claim would be about two different suites"
+                             % (label, len(other["logits"]), labels[0], len(first["logits"])))
+        for i, (a, b) in enumerate(zip(first["logits"], other["logits"])):
+            if len(a) != len(b):
+                raise DriftError("layout %r case %d has %d options against layout %r's %d"
+                                 % (label, i, len(b), labels[0], len(a)))
+            for j, (x, y) in enumerate(zip(a, b)):
+                if x != y:
+                    raise DriftError("chunking is not free: layout %r case %d option %d returned %r "
+                                     "where layout %r returned %r (difference %.3g). Every "
+                                     "probability in the artefact would depend on how the suite was "
+                                     "batched, so the equivalence claim fails and nothing is "
+                                     "published" % (label, i, j, y, labels[0], x, abs(x - y)))
+                worst = max(worst, abs(x - y))
+        for regime in sorted(first["regimes"]):
+            if regime not in other["regimes"]:
+                raise DriftError("layout %r scored regime %r and layout %r did not: both regimes come "
+                                 "out of the one forward pass, in every layout"
+                                 % (labels[0], regime, label))
+            mine = first["regimes"][regime]["probs"]
+            theirs = other["regimes"][regime]["probs"]
+            if len(mine) != len(theirs):
+                raise DriftError("layout %r regime %r scored %d distributions against %d"
+                                 % (label, regime, len(theirs), len(mine)))
+            for i, (a, b) in enumerate(zip(mine, theirs)):
+                if a != b:
+                    raise DriftError("chunking is not free: layout %r regime %r case %d returns a "
+                                     "different distribution from layout %r (%r against %r). A "
+                                     "certificate built on either file would be certifying a batch "
+                                     "shape, not a model"
+                                     % (label, regime, i, labels[0], b, a))
+                worst = max(worst, max(abs(x - y) for x, y in zip(a, b)))
+    return worst
+
+
+def _equivalence_batch(laya, le, np, QTYPES, args, rows):
+    """One load, several chunk layouts, the same cases: R-117's claim as a command.
+
+    The build scores every stage in one layout, so this is the only place the driver ever cuts the
+    same suite two ways -- which is why the equivalence test drives it through `--worker` rather than
+    through a script written by the test: the claim has to be about the call shape the artefact was
+    produced with, in the interpreter that produced it.
+    """
+    started = time.time()
+    agent, seen_warnings = _load_agent(laya, args)
+    cases, gold, option_keys = le.build_suite(
+        rows, sorted({r["label_text"] for r in rows}), args.per_lang, args.n_opts, args.seed)
+    layouts = [int(x) for x in str(args.layouts).split(",") if x.strip()]
+    if len(set(layouts)) < 2:
+        raise UsageRefusal("--layouts %r needs at least two distinct chunk sizes to compare"
+                           % args.layouts)
+    samples = {}
+    for size in layouts:
+        logits, chunks = score_cases_in_chunks(lambda part: le.score_cases(agent, part),
+                                               cases, size)
+        regimes = {}
+        for regime in REGIMES:
+            temperatures = [float(le.temperature_for(agent, QTYPES["choice"], len(z),
+                                                    regime == "unclamped")) for z in logits]
+            regimes[regime] = {
+                "temperatures": temperatures,
+                "probs": [[float(x) for x in le.softmax_t(z, t)]
+                          for z, t in zip(logits, temperatures)],
+                "rounded_probs": [rounded_probs(softmax_t([float(v) for v in z], t))
+                                  for z, t in zip(logits, temperatures)]}
+        samples[str(size)] = {"chunk_size": int(size), "chunks": [int(c) for c in chunks],
+                              "logits": [[float(x) for x in z] for z in logits],
+                              "regimes": regimes}
+    worst = compare_layouts(samples)
+    import torch
+    return {
+        "lang": args.lang, "stage": args.stage, "n_cases": len(cases), "n_opts": args.n_opts,
+        "seed": args.seed, "qtype": QTYPE,
+        "item_ids": [r["id"] for r in rows[:len(cases)]],
+        "gold": [int(g) for g in gold],
+        "option_keys": [list(k) for k in option_keys],
+        "layouts": [str(s) for s in layouts], "samples": samples,
+        "max_abs_difference": worst,
+        "bit_identical": worst == 0.0,
+        "warnings": seen_warnings,
+        "chunk_size": int(layouts[0]), "chunks": samples[str(layouts[0])]["chunks"],
+        "timing": {"load_s": round(time.time() - started, 3), "device": str(agent.device),
+                   "peak_rss_mib": peak_rss_mib(), "prefix": sys.prefix,
+                   "torch": getattr(torch, "__version__", "unknown"),
+                   "laya": getattr(laya, "__version__", "unknown")},
+    }
+
+
+def worker_main(args) -> int:
+    """One language, one chunked forward pass, both regimes' logits and temperatures out.
+
+    Runs ONLY in the vendored interpreter. Nothing in this function reaches the checkpoint stack
+    except through `_score_batch`, and that call is the single place in the repository where an
+    exception we do not own is caught broadly.
     """
     sys.path.insert(0, str(Path(args.upstream)))
     sys.path.insert(0, str(Path(args.upstream) / "research" / "eval"))
@@ -945,21 +1407,63 @@ def worker_main(args) -> int:
     if len(rows) < args.per_lang:
         raise DriftError("shard %s holds %d rows, the run asked for %d"
                          % (args.lang, len(rows), args.per_lang))
-    if args.regime not in ("unclamped", "clamped"):
-        raise UsageRefusal("--regime must be unclamped or clamped, not %r" % args.regime)
+    if args.chunk_size < 1:
+        raise UsageRefusal("--chunk-size must be at least 1 case, not %d: a batch of nothing scores "
+                           "nothing, and every case would arrive with no probability at all"
+                           % args.chunk_size)
+
+    if args.stage == "equivalence":
+        try:
+            payload = _equivalence_batch(laya, le, np, QTYPES, args, rows)
+        except (BuildError, ParityError, UsageRefusal):
+            raise
+        except Exception as exc:
+            raise UpstreamStageError("the equivalence stage for %s failed inside the checkpoint "
+                                     "stack: %s: %s" % (args.lang, type(exc).__name__, exc)) from exc
+        Path(args.payload).write_text(json.dumps(payload))
+        print("worker %s/%s n=%d layouts=%s max_abs_difference=%r bit_identical=%s prefix=%s"
+              % (args.lang, args.stage, payload["n_cases"], ",".join(payload["layouts"]),
+                 payload["max_abs_difference"], payload["bit_identical"],
+                 payload["timing"]["prefix"]), file=sys.stderr)
+        return EXIT_OK
 
     try:
-        payload = _score_batch(laya, le, np, QTYPES, args, rows, args.regime == "unclamped")
+        payload = _score_batch(laya, le, np, QTYPES, args, rows)
     except (BuildError, ParityError, UsageRefusal):
         raise
     except Exception as exc:
         raise UpstreamStageError("the model stage for %s/%s failed inside the checkpoint stack: "
                                  "%s: %s" % (args.lang, args.stage, type(exc).__name__, exc)) from exc
     Path(args.payload).write_text(json.dumps(payload))
-    print("worker %s/%s n=%d score_s=%.1f device=%s"
-          % (args.lang, args.stage, payload["n_cases"], payload["timing"]["score_s"],
-             payload["timing"]["device"]), file=sys.stderr)
+    print("worker %s/%s n=%d chunks=%d score_s=%.1f device=%s regimes=%s"
+          % (args.lang, args.stage, payload["n_cases"], payload["timing"]["chunks"],
+             payload["timing"]["score_s"], payload["timing"]["device"], ",".join(REGIMES)),
+          file=sys.stderr)
     return EXIT_OK
+
+
+def records_for_regime(payload: dict, regime: str, lang: str, u_seed: int,
+                        pin: dict, args) -> list:
+    """One regime's Records from one stage payload: same cases, same `u`, different temperature.
+
+    The block's own `calibration_status` is handed over rather than re-derived here, because
+    `check_payload` has already refused the payload when what it states and what the regime plus the
+    checkpoint's warnings imply are not the same sentence. Two interpreters agreeing on one fact is
+    the only thing that lets a reader take a row's word for what its confidence means.
+
+    Both regimes draw from the same seed, so the recorded `u` of a case is identical in the certified
+    file and in the parity control: the two artefacts differ in one temperature and in nothing else
+    that a certificate depends on.
+    """
+    block = regime_block(payload, regime)
+    return records_from_logits(
+        payload["logits"], payload["gold"], payload["option_keys"], lang,
+        draw_u(seed=u_seed, n=payload["n_cases"]),
+        item_ids=[case_id_for(lang, i) for i in payload["item_ids"]],
+        temperatures=block["temperatures"], texts=payload["texts"],
+        backend=args.backend, regime=regime, calibration=block["calibration_status"],
+        suite_seed=args.seed, u_seed=u_seed, dataset=pin["dataset"], revision=pin["revision"],
+        license_id=pin["license"], checkpoint=args.model, device=stage_device(payload))
 
 
 # ---------------------------------------------------------------------------- the build layer
@@ -981,10 +1485,10 @@ def build(args) -> int:
         raise ParityError("--langs %r does not include %r, the language the published parity row "
                           "is stated for: the gate could not be a claim about this artefact"
                           % (languages, PARITY["lang"]))
-    if args.regime != PARITY["regime"]:
-        raise UsageRefusal("--regime %r is not the regime PARITY is stated under (%r); the "
-                           "clamped figures are a different published number, not a looser gate"
-                           % (args.regime, PARITY["regime"]))
+    if args.chunk_size < 1:
+        raise UsageRefusal("--chunk-size %d is not a batch size: at least one case per collated "
+                           "forward pass, or nothing is scored and every case arrives with no "
+                           "probability at all" % args.chunk_size)
     if args.n_opts != PARITY["n_opts"]:
         raise UsageRefusal("--n-opts %d is not the option count PARITY is stated under (%d)"
                            % (args.n_opts, PARITY["n_opts"]))
@@ -1000,13 +1504,23 @@ def build(args) -> int:
     upstream = Path(upstream)
     args.cache, args.pin = Path(args.cache), Path(args.pin)
     args.python = args.python or upstream_python(upstream)
+    out, out_parity = artefact_paths(args.out, args.out_parity)
+    if out == out_parity:
+        raise UsageRefusal("--out and --out-parity name the same path (%s): one pass produces two "
+                           "different numbers, and a file that holds whichever regime was written "
+                           "last holds neither" % out)
     summary = {"started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                "pin": {"path": str(args.pin), "revision": pin["revision"], "dataset": pin["dataset"],
                        "n_files": pin["n_files"], "rows_total": pin["rows_total"],
                        "license": pin["license"]},
-               "cache": str(args.cache), "out": str(args.out), "langs": list(dict.fromkeys(langs)),
+               "cache": str(args.cache), "out": str(out), "langs": list(dict.fromkeys(langs)),
                "per_lang": args.per_lang, "n_opts": args.n_opts, "suite_seed": args.seed,
-               "u_seed": args.u_seed, "regime": args.regime, "backend": args.backend,
+               "u_seed": args.u_seed, "backend": args.backend,
+               # The regime is not an input to this build: one pass answers both, and which column
+               # each artefact holds is stated here and in the file names and in every row (R-118).
+               "regimes": list(REGIMES), "certified_regime": CERTIFIED_REGIME,
+               "parity_regime": PARITY_REGIME,
+               "chunk_size": int(args.chunk_size),
                "model": args.model, "subfolder": args.subfolder, "python": args.python,
                "upstream": str(upstream), "probability_decimals": PROB_DECIMALS,
                "parity_target": {k: PARITY[k] for k in PROBE_FIGURES},
@@ -1014,108 +1528,166 @@ def build(args) -> int:
                "interpreter": {"executable": sys.executable, "version": sys.version.split()[0]}}
 
     # The corpus before the checkpoint: a cache that is not the pinned bytes would make every
-    # figure downstream unattributable, and loading a 90-second model to find that out is the
-    # wrong order.
+    # figure downstream unattributable, and loading the model to find that out is the wrong order.
     report = check_cache(args.cache, pin, languages, max(args.per_lang, PARITY["per_lang"]))
     le = load_upstream_eval(upstream)
     summary.update({"cache_check": {"checked": report["checked"], "ok": report["ok"],
                                     "missing": len(report["missing"]),
                                     "mismatched": len(report["mismatched"])}})
-    out = Path(args.out)
-    if not out.parent.is_dir():
-        raise IncompleteBuildError("--out %s: its directory does not exist; nothing was created "
-                                   "and nothing was written" % out)
+    # Both destinations are checked before either is written, and neither directory is created:
+    # a build that half-lands because the second path was typoed is a build with two artefacts and
+    # no statement of which one it meant to have.
+    destinations = {CERTIFIED_REGIME: out, PARITY_REGIME: out_parity}
+    for regime, path in destinations.items():
+        if not path.parent.is_dir():
+            raise IncompleteBuildError("--out%s %s (regime %s): its directory does not exist; "
+                                       "nothing was created and nothing was written"
+                                       % ("" if regime == CERTIFIED_REGIME else "-parity",
+                                          path, regime))
     started = time.time()
-    tmp = out.parent / (out.name + ".tmp")
+    tmp_paths = {regime: (path.parent / (path.name + ".tmp"))
+                 for regime, path in destinations.items()}
     positions = {lang: i for i, lang in enumerate(languages)}
     probe_u_seed = args.u_seed + positions.get(PARITY["lang"], 0)
     written: dict = {}
+    overlaps: dict = {}
     try:
         with tempfile.TemporaryDirectory(prefix="planC-payloads-") as payload_dir:
             payloads = Path(payload_dir)
 
             # 1. the gate. The published row, on the published conditions, through this tool's own
-            # conversion -- not through a side path that could pass while the artefact fails.
+            # conversion -- not through a side path that could pass while the artefact fails. It is
+            # stated under `PARITY_REGIME` and applied to that regime's numbers only: the certified
+            # column is a different quantity and must never be nudged until it matches this row.
             probe_payload = run_model_stage(args, upstream, PARITY["lang"], "probe",
                                             PARITY["per_lang"], payloads)
-            check_payload(probe_payload, PARITY["lang"], "probe", PARITY["per_lang"], le)
-            probe_records = records_from_logits(
-                probe_payload["logits"], probe_payload["gold"], probe_payload["option_keys"],
-                PARITY["lang"], draw_u(seed=probe_u_seed, n=probe_payload["n_cases"]),
-                item_ids=[case_id_for(PARITY["lang"], i) for i in probe_payload["item_ids"]],
-                temperatures=probe_payload["temperatures"],
-                texts=probe_payload["texts"], backend=args.backend, regime=args.regime,
-                suite_seed=args.seed, u_seed=probe_u_seed, dataset=pin["dataset"],
-                revision=pin["revision"], license_id=pin["license"], checkpoint=args.model,
-                device=stage_device(probe_payload))
-            probe_report = summarise_with(le, probe_records)
+            check_payload(probe_payload, PARITY["lang"], "probe", PARITY["per_lang"], le,
+                                asked_chunk_size=args.chunk_size)
+            probe_records = {regime: records_for_regime(
+                probe_payload, regime, PARITY["lang"], probe_u_seed, pin, args)
+                for regime in REGIMES}
+            probe_reports = {regime: summarise_with(le, probe_records[regime])
+                             for regime in REGIMES}
             # Two sides of one claim, both against the published row. The stage's own report is
             # upstream's arithmetic on the checkpoint's unrounded softmax in the vendored
-            # interpreter; `probe_report` is this build's 6-decimal vector and the argmax of that
+            # interpreter; `probe_reports` is this build's 6-decimal vector and the argmax of that
             # vector, i.e. the numbers the records actually carry. Gating only the second would let
             # a conversion that moved one prediction relative to upstream's own choice pass while
             # the row upstream published about the same logits said otherwise.
-            check_parity(stage_report(probe_payload), PARITY, side=STAGE_SIDE)
-            got = check_parity(probe_report, PARITY, side=BUILT_SIDE)
+            check_parity(stage_report(probe_payload, PARITY_REGIME), PARITY, side=STAGE_SIDE)
+            got = check_parity(probe_reports[PARITY_REGIME], PARITY, side=BUILT_SIDE)
             print("parity ok: probe lang=%s n=%s n_opts=%s seed=%s regime=%s %s"
                   % (PARITY["lang"], PARITY["per_lang"], PARITY["n_opts"], PARITY["seed"],
-                     PARITY["regime"], " ".join("%s=%.4f" % (k, got[k]) for k in PROBE_FIGURES)))
-            summary["probe"] = {"report": probe_report,
-                                "upstream_report": probe_payload["upstream_report"],
-                                "timing": probe_payload["timing"],
-                                "device": stage_device(probe_payload),
-                                "u_seed": probe_u_seed,
-                                "wall_s": probe_payload["_stage_wall_s"]}
+                     PARITY_REGIME, " ".join("%s=%.4f" % (k, got[k]) for k in PROBE_FIGURES)))
+            print("certified regime: %s (%s); the unclamped run above is the parity control"
+                  % (CERTIFIED_REGIME,
+                     regime_block(probe_payload, CERTIFIED_REGIME)["calibration_status"]))
+            summary["probe"] = {
+                "regime": PARITY_REGIME,
+                "report": probe_reports[PARITY_REGIME],
+                "reports": probe_reports,
+                "stage_reports": {regime: stage_report(probe_payload, regime)
+                                  for regime in REGIMES},
+                "calibration_status": {regime: regime_block(probe_payload, regime)
+                                       ["calibration_status"] for regime in REGIMES},
+                "upstream_report": regime_block(probe_payload, PARITY_REGIME)["upstream_report"],
+                "warnings": payload_warnings(probe_payload),
+                "chunks": probe_payload["chunks"], "chunk_size": probe_payload["chunk_size"],
+                "timing": probe_payload["timing"],
+                "device": stage_device(probe_payload),
+                "u_seed": probe_u_seed,
+                "wall_s": probe_payload["_stage_wall_s"]}
 
-            # 2. the artefact, one language per pass, streamed to a temp sibling of `out`, and
-            # renamed into place only once every language is in it.
-            with tmp.open("w") as fh:
+            # 2. the two artefacts, one language per pass, both streamed to temp siblings of their
+            # own destination and renamed into place only once every language is in both of them.
+            files = {regime: tmp_paths[regime].open("w") for regime in REGIMES}
+            try:
                 for lang in languages:
                     payload = run_model_stage(args, upstream, lang, "full", args.per_lang, payloads)
-                    check_payload(payload, lang, "full", args.per_lang, le)
+                    check_payload(payload, lang, "full", args.per_lang, le,
+                            asked_chunk_size=args.chunk_size)
                     u_seed = args.u_seed + positions[lang]
-                    records = records_from_logits(
-                        payload["logits"], payload["gold"], payload["option_keys"], lang,
-                        draw_u(seed=u_seed, n=payload["n_cases"]),
-                        item_ids=[case_id_for(lang, i) for i in payload["item_ids"]],
-                        temperatures=payload["temperatures"],
-                        texts=payload["texts"], backend=args.backend, regime=args.regime,
-                        suite_seed=args.seed, u_seed=u_seed, dataset=pin["dataset"],
-                        revision=pin["revision"], license_id=pin["license"],
-                        checkpoint=args.model, device=stage_device(payload))
-                    if lang == PARITY["lang"]:
-                        overlap = check_artefact_covers_probe(records, probe_records, lang)
-                        summary["probe_prefix_overlap"] = overlap
-                    for rec in records:
-                        fh.write(record_line(rec) + "\n")
-                    fh.flush()
-                    report = summarise_with(le, records)
-                    written[lang] = {"report": report,
-                                     "upstream_report": payload["upstream_report"],
-                                     "timing": payload["timing"], "u_seed": u_seed,
-                                     "device": stage_device(payload),
-                                     "records": len(records),
-                                     "wall_s": payload["_stage_wall_s"],
-                                     "stderr_tail": payload.get("_stage_stderr_tail", "")}
-                    print("lang=%s n=%d %s cases_per_s=%s stage_wall_s=%s"
-                          % (lang, len(records),
-                             " ".join("%s=%.4f" % (k, round(float(report[k]), 4))
-                                      for k in PROBE_FIGURES),
-                             payload["timing"].get("cases_per_s"), payload["_stage_wall_s"]))
-                os.fsync(fh.fileno())
-            os.replace(tmp, out)
+                    records = {regime: records_for_regime(payload, regime, lang, u_seed, pin, args)
+                               for regime in REGIMES}
+                    per_regime = {}
+                    for regime in REGIMES:
+                        recs = records[regime]
+                        if lang == PARITY["lang"]:
+                            overlaps[regime] = check_artefact_covers_probe(
+                                recs, probe_records[regime], lang)
+                        for rec in recs:
+                            files[regime].write(record_line(rec) + "\n")
+                        files[regime].flush()
+                        per_regime[regime] = {
+                            "report": summarise_with(le, recs),
+                            "upstream_report": regime_block(payload, regime)["upstream_report"],
+                            "calibration_status": regime_block(payload, regime)
+                                                  ["calibration_status"],
+                            "records": len(recs)}
+                    written[lang] = {
+                        "regimes": per_regime,
+                        # The certified column is the one this artefact is *for*; the flat keys stay
+                        # as its mirror, so a reader of an old summary field gets the published
+                        # number rather than whichever regime happened to be written first.
+                        "report": per_regime[CERTIFIED_REGIME]["report"],
+                        "upstream_report": per_regime[CERTIFIED_REGIME]["upstream_report"],
+                        "records": per_regime[CERTIFIED_REGIME]["records"],
+                        "regime": CERTIFIED_REGIME,
+                        "calibration_status": per_regime[CERTIFIED_REGIME]["calibration_status"],
+                        "parity_control_regime": PARITY_REGIME,
+                        "timing": payload["timing"], "u_seed": u_seed,
+                        "device": stage_device(payload),
+                        "chunks": payload["chunks"], "chunk_size": payload["chunk_size"],
+                        "warnings": payload_warnings(payload),
+                        "wall_s": payload["_stage_wall_s"],
+                        "stderr_tail": payload.get("_stage_stderr_tail", "")}
+                    for regime in REGIMES:
+                        # Every regime's row is printed and kept, but only the control's is a claim
+                        # about upstream's table: the headline figures in the log are the certified
+                        # ones, labelled, so `lang=en …` cannot be read as the parity row.
+                        print("lang=%s regime=%s n=%d %s"
+                              % (lang, regime, per_regime[regime]["records"],
+                                 " ".join("%s=%.4f" % (k, round(float(per_regime[regime]
+                                          ["report"][k]), 4)) for k in PROBE_FIGURES)))
+                    print("lang=%s n=%d cases_per_s=%s chunks=%s stage_wall_s=%s"
+                          % (lang, len(records[CERTIFIED_REGIME]),
+                             payload["timing"].get("cases_per_s"), len(payload["chunks"]),
+                             payload["_stage_wall_s"]))
+            finally:
+                for handle in files.values():
+                    # fsync then close, on the handle that is still open: reopening the temp file to
+                    # sync it would be a second writer on a file this build is about to rename.
+                    os.fsync(handle.fileno())
+                    handle.close()
+            for regime in REGIMES:
+                os.replace(tmp_paths[regime], destinations[regime])
     finally:
-        if tmp.exists():
-            tmp.unlink()
+        for temp in tmp_paths.values():
+            if temp.exists():
+                temp.unlink()
     summary["languages"] = written
     summary["records_written"] = sum(v["records"] for v in written.values())
+    # The overlap is what `check_artefact_covers_probe` measured, per regime, not what the
+    # conditions imply: the same number computed two ways would let a build that compared nothing
+    # report the overlap it was supposed to have.
+    summary["probe_prefix_overlap"] = overlaps
+    summary["artefacts"] = {
+        regime: {"path": str(destinations[regime]),
+                 "role": "certified" if regime == CERTIFIED_REGIME else "parity control",
+                 "regime": regime,
+                 "calibration_status": written[languages[0]]["regimes"][regime]
+                                       ["calibration_status"] if written else None,
+                 "records": sum(v["regimes"][regime]["records"] for v in written.values()),
+                 "chunk_size": int(args.chunk_size)}
+        for regime in REGIMES}
     summary["wall_s"] = round(time.time() - started, 3)
     # `stage_device` digs the device out of a *payload*; handed the timing sub-dict it returned None
     # for every run, so the summary of a real build said nothing about which device produced its
     # numbers -- measured on the pilot, where every stage reported mps and the field read None.
     summary["device"] = written[languages[0]]["device"] if written else None
-    print("wrote %d records for %d languages to %s in %.1f s"
-          % (summary["records_written"], len(written), out, summary["wall_s"]))
+    print("wrote %d records for %d languages, regimes %s, chunk_size %d, to %s and %s in %.1f s"
+          % (summary["records_written"], len(written), " and ".join(REGIMES), args.chunk_size,
+             destinations[CERTIFIED_REGIME], destinations[PARITY_REGIME], summary["wall_s"]))
     if args.summary:
         Path(args.summary).write_text(json.dumps(summary, indent=2, sort_keys=True))
     return EXIT_OK
@@ -1129,14 +1701,23 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS)
     ap = parser
     ap.add_argument("--cache", required=True, help="the pinned MASSIVE cache directory")
-    ap.add_argument("--out", default=None, help="where to write the records JSONL")
+    ap.add_argument("--out", default=None,
+                    help="the CERTIFIED records JSONL (regime %r)" % CERTIFIED_REGIME)
+    ap.add_argument("--out-parity", default=None, dest="out_parity",
+                    help="the parity-control JSONL (regime %r); defaults to the sibling of --out "
+                         "named for its regime" % PARITY_REGIME)
     ap.add_argument("--pin", default=str(DEFAULT_PIN))
     ap.add_argument("--langs", default="en,de,sw")
-    ap.add_argument("--per-lang", type=int, default=2974)
+    ap.add_argument("--per-lang", type=int, default=2974,
+                    help="cases per language in the artefact; it does not size the batch, which "
+                         "--chunk-size does")
+    ap.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE, dest="chunk_size",
+                    help="cases per collated forward pass (R-117); ~%.1f GiB per %d cases on this "
+                         "checkpoint, and one 2,974-case batch is ~48.9 GB"
+                         % (3.6, DEFAULT_CHUNK_SIZE))
     ap.add_argument("--n-opts", type=int, default=PARITY["n_opts"])
     ap.add_argument("--seed", type=int, default=PARITY["seed"])
     ap.add_argument("--u-seed", type=int, default=PARITY["seed"], dest="u_seed")
-    ap.add_argument("--regime", default=PARITY["regime"], choices=("unclamped", "clamped"))
     ap.add_argument("--backend", default=BACKEND)
     ap.add_argument("--model", default="convaiinnovations/laya")
     ap.add_argument("--subfolder", default=None)
@@ -1144,6 +1725,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--upstream", default=None, help="the vendored tree (default: discovered)")
     ap.add_argument("--python", default=None, help="interpreter for the model stage")
     ap.add_argument("--payload", default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--layouts", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--lang", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--stage", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--summary", default=None, help="write the measured facts of this run here")
@@ -1157,6 +1739,12 @@ def main(argv=None) -> int:
         if args.worker:
             if not args.payload or not args.lang or args.stage not in WORKER_STAGES:
                 raise UsageRefusal("--worker needs --lang, --stage and --payload")
+            if not args.upstream:
+                # The build layer always passes it, so a bare `--worker` on a command line reached
+                # `Path(None)` inside the stage: a `TypeError`, and exit code 1 -- the one outcome
+                # this module says is unreachable. Found by running the equivalence stage by hand.
+                raise UsageRefusal("--worker needs --upstream: the stage imports the checkpoint "
+                                   "stack from the tree it is told about, and does not guess one")
             return worker_main(args)
         if args.out is None:
             raise UsageRefusal("--out is required unless --worker is set")
