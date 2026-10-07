@@ -1080,6 +1080,11 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
     by a run in `/tmp/r4`; three of the four did, the fourth never did, and nothing outside this file
     can reproduce a scratch directory.
 
+    And "each plant is executed" is not left as a claim about the block below: the arms record the name
+    they ran, and the last assertion requires that recorded set to equal the shapes list. Delete one
+    `_exec_plant` call and leave its shape in place -- detection still green, liveness quietly gone --
+    and this test reddens naming the plant that stopped running.
+
     Each exclusion is planted as well, because a reason for an exclusion that is never tested is the exact
     mistake this rule replaces: a `test_*` body reading the scale is legitimate -- and a second owner
     hidden inside one is now caught by the gap detector rather than excused, because that subtraction has
@@ -1336,25 +1341,31 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
     # solver shapes and false of the unrolled one, so the number is only stated here where the suite
     # checks it.
     ref = p_max_for_entropy(target=0.85, k=4)
+    executed = set()
     for name in ("while_loop", "recursion", "async_def", "walrus_comprehension", "starmap_callable",
                  "nested_package"):
         path = "pkg/sub.py" if name == "nested_package" else "plant_%s.py" % name
         value = _exec_plant(tmp_path / name, path, "pmax", (0.85, 4))
         assert value == pytest.approx(ref, abs=1e-8), (name, value, ref)
+        executed.add(name)
     folded = _exec_plant(tmp_path / "fold", "plant_fold.py", "pmax", (0.85, 4))
     assert folded == pytest.approx((ref, ref), abs=1e-8), (folded, ref)
+    executed.add("fold")
     unrolled = _exec_plant(tmp_path / "straight_line", "plant_straight_line.py", "pmax", (0.85, 4))
     assert unrolled == 1.0, unrolled
+    executed.add("straight_line")
     # Import scope is live in the same sense -- the module body runs the derivation as it loads, and the
     # globals it leaves behind are the evidence, not a return value. The bare `for` plant brackets the
     # shared answer to within a double, and the comprehension plant produced three real scale values.
     loop_ns = _exec_plant_namespace(tmp_path / "module_level_loop", "plant_module_level_loop.py")
     assert loop_ns["lo"] <= loop_ns["hi"], loop_ns
     assert loop_ns["hi"] == pytest.approx(ref, abs=1e-8), (loop_ns["lo"], loop_ns["hi"], ref)
+    executed.add("module_level_loop")
     comp_ns = _exec_plant_namespace(tmp_path / "module_level_comprehension",
                                     "plant_module_level_comprehension.py")
     assert len(comp_ns["GAPS"]) == 3 and all(0.0 < g < 1.0 for g in comp_ns["GAPS"]), comp_ns["GAPS"]
     assert comp_ns["GAPS"] == sorted(comp_ns["GAPS"]), comp_ns["GAPS"]
+    executed.add("module_level_comprehension")
     # The exclusions are live code as well, which is what makes reporting nothing about them a
     # decision rather than a blind spot: the narrowing plant finds the same crossing the gate test
     # pins, the plain read answers in both directions, the prose plant returns a string without
@@ -1362,14 +1373,25 @@ def test_the_owner_fingerprint_reports_every_shape_that_can_hold_a_scale_read(tm
     narrowed = _exec_plant(tmp_path / "indirect_narrowing", "plant_indirect_narrowing.py", "crossing",
                            (lambda p: [p, (1 - p) / 3, (1 - p) / 3, (1 - p) / 3], 1e-3))
     assert narrowed == pytest.approx(0.999855, abs=1e-5), narrowed
+    executed.add("indirect_narrowing")
     assert _exec_plant(tmp_path / "plain_read", "plant_plain_read.py", "score", ([0.7, 0.3],)) is False
     assert _exec_plant(tmp_path / "plain_read", "plant_plain_read.py", "score", ([0.999, 0.001],)) is True
+    executed.add("plain_read")
     assert _exec_plant(tmp_path / "prose_mention", "plant_prose_mention.py", "describe", ()) == \
         "def pmax(target, k): return entropy_confidence([target])"
+    executed.add("prose_mention")
     assert _exec_plant(tmp_path / "test_body_read", "plant_test_body_read.py",
                        "test_the_scale_reads_zero_on_uniform_mass", ()) is None
+    executed.add("test_body_read")
     # The gap plant's own number is the owner module's for the same vector, so what the gap detector
     # points at is arithmetic that works, not a shape that happens to parse.
     planted_gap = _exec_plant(tmp_path / "inline_gap_in_test_body", "plant_inline_gap_in_test_body.py",
                               "test_the_narrowest_gap_is_the_smallest_of_them", ())
     assert planted_gap == pytest.approx(scale_gap([0.7, 0.3]), abs=1e-12), planted_gap
+    executed.add("inline_gap_in_test_body")
+    # "every plant is executed" is a property, so it is asserted as one: the shapes list, the
+    # expectation table and the execution arms above must be the same thirteen names. A shape dropped
+    # from an `_exec_plant` call while staying in `shapes` was the hole this line closes -- detection
+    # kept passing, liveness quietly stopped being measured, and the docstring above would still have
+    # claimed every plant runs. Measured: deleting one execution arm reddens here naming that plant.
+    assert executed == set(shapes), (sorted(set(shapes) - executed), sorted(executed - set(shapes)))
