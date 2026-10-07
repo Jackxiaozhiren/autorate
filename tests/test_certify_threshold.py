@@ -1079,12 +1079,17 @@ def test_a_threshold_bound_that_moves_in_the_tenth_decimal_reds_naming_the_field
 def test_a_foreign_libm_writes_the_same_bytes_for_the_same_threshold_certificate(monkeypatch):
     """The artefact surface stops being platform-dependent, not merely the comparison.
 
-    Re-derive both certificates with the bound producers answering up to four ULPs away -- more
-    than the 4e-16 actually measured -- and the serialised certificate must be the bytes this
-    machine wrote, character for character. A tolerance in a comparison layer cannot make that
-    claim: it would still let two machines write two different files, which is the state R-121
-    was reported in.
+    The reference bytes are captured BEFORE any patch is installed -- they are what this machine
+    writes with its own libm, and they are what a committed artefact would hold. Re-deriving the
+    two certificates with the bound producers answering up to four ULPs away (more than the 4e-16
+    actually measured) must then reproduce those bytes character for character. Comparing a drifted
+    derivation with itself would be vacuous: both sides would drift together and the assertion
+    could never fail, which is exactly the blind guard this repository's falsification round is for.
+
+    A tolerance in a comparison layer cannot make this claim; it would still let two machines write
+    two different files, which is the state R-121 was reported in.
     """
+    reference = [cert.to_json() for cert in _gate_certificates()]
     for raw_offset in (1, 2, 4):
         def drifting(raw, offset=raw_offset):
             if raw >= 1.0:
@@ -1096,11 +1101,14 @@ def test_a_foreign_libm_writes_the_same_bytes_for_the_same_threshold_certificate
             return moved
 
         calls = _drift_the_transcendentals(monkeypatch, drifting)
-        for cert in _gate_certificates():
-            written = cert.to_json()
-            assert written == _stored(cert).to_json()
+        drifted = _gate_certificates()
+        # the instrument is live, and it moves the very numbers the artefact stores
         assert calls and any(moved != raw for _, _, _, raw, moved in calls), \
             "the drift was planted and moved nothing"
+        for expected, cert in zip(reference, drifted):
+            assert cert.to_json() == expected, "the artefact a %d-ULP libm writes differs" % \
+                raw_offset
+            assert expected == _stored(cert).to_json(), "the artefact does not survive its own format"
         monkeypatch.undo()
 
 
