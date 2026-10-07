@@ -4,9 +4,12 @@ The envelope is the product: a serialized certificate without one must be
 unconstructable, so the disclaimer cannot be lost by forgetting to copy a README
 section (spec 10).
 """
+import dataclasses
+
 import pytest
 
-from autorate.certificate import Reason, Certificate
+from autorate.certificate import (CANONICALISED_BOUND_FIELDS, PUBLISHED_DECIMALS,
+                                  Certificate, Reason, canonicalise_bound)
 
 _OK = dict(feasible=True, reason=None, alpha=0.05, beta=0.05, delta=0.05,
            method="aps", backend="synthetic", qhat=0.4, autorate=0.6,
@@ -144,3 +147,53 @@ def test_a_success_missing_a_bound_is_a_readable_error_not_a_typeerror():
         kw[field] = None
         with pytest.raises(ValueError, match="must carry"):
             Certificate(**kw)
+
+
+def test_the_canonical_field_list_is_exactly_the_bounds_the_shape_publishes():
+    """R-121: the canonicalisation is by field NAME, and this is the list it reads.
+
+    Two directions are checked, because either alone is satisfiable by accident. The bounds
+    must all be in the list -- a published `marginal_error_bound` left raw is a number the
+    runner cannot reproduce, which is the defect. And the fields NOT derived from a
+    transcendental must all be out of it -- `autorate`, `mean_set_size` and `qhat` are
+    quotients of integers or correctly-rounded sums, so rounding them buys nothing and buys
+    it only by teaching the gate to ignore a real change in them. Adding a name here is
+    therefore a deliberate edit to two files, not a widening of a catch.
+    """
+    floats = {f.name for f in dataclasses.fields(Certificate)
+              if f.type in ("float", "Optional[float]")}
+    assert set(CANONICALISED_BOUND_FIELDS) <= floats, CANONICALISED_BOUND_FIELDS
+    assert set(CANONICALISED_BOUND_FIELDS) == {"conditional_error_bound",
+                                              "marginal_error_bound"}
+    for not_a_bound in ("autorate", "mean_set_size", "qhat", "alpha", "beta", "delta"):
+        assert not_a_bound in floats, not_a_bound
+        assert not_a_bound not in CANONICALISED_BOUND_FIELDS, not_a_bound
+
+
+def test_the_canonical_form_is_idempotent_a_ceiling_and_swamps_the_libm_drift():
+    """The gate compares canonical values with `==`, so the mapping itself is load-bearing.
+
+    Idempotent, because the producer rounds and the artefact stores what it rounded: a
+    second pass that moved a canonical value would be a gate red on its own rounding. A
+    ceiling, because `tails.clopper_pearson_upper` raises `ArithmeticError` rather than
+    publish a bound its own data beats, and a nearest `round` can step 5e-13 DOWN. And it
+    must swallow the drift that was actually measured -- the 16th-decimal pair R-121 quotes
+    -- while a 10th-decimal move stays a different number, which is the pair the reproduction
+    gate depends on.
+    """
+    assert PUBLISHED_DECIMALS == 12
+    for value in (0.7884344428029715, 0.7884344428029711, 0.9746794344808963,
+                  0.139849460274226, 0.04846207170505716, 1.0, 0.0, 0.5, 2 / 3):
+        canon = canonicalise_bound(value)
+        assert canonicalise_bound(canon) == canon, value
+        assert canon >= value, (value, canon)
+        assert canon - value < 10 ** -PUBLISHED_DECIMALS + 1e-15, (value, canon)
+    assert canonicalise_bound(None) is None
+    assert canonicalise_bound(float("inf")) == float("inf")
+    # the drift class collapses; a real move does not
+    low, high = 0.7884344428029711, 0.7884344428029715
+    assert canonicalise_bound(low) == canonicalise_bound(high)
+    assert canonicalise_bound(high + 1e-10) != canonicalise_bound(high)
+    # monotone, so `marginal <= conditional` cannot be inverted by the trip
+    series = [canonicalise_bound(v / 7) for v in range(0, 7)]
+    assert series == sorted(series), series

@@ -67,6 +67,18 @@ def clopper_pearson_upper(k: int, n: int, delta: float) -> float:
 
     For `delta <= 0.5` the bound is at least the observed rate k/n; that invariant is
     asserted rather than assumed, because the underflow above breaks exactly it.
+
+    Deliberately NOT canonicalised. The returned double carries the last bits of 80
+    `math.log`/`math.exp` evaluations, and those bits are not identical between Apple
+    libm and glibc: the committed artefact says 0.7884344428029715, which is what this
+    machine's libm answered, and the Linux runner re-derived 0.7884344428029711 for the
+    same query (ledger R-121). That is exact arithmetic doing its job, and rounding it
+    here would move every consumer's number -- the audit tables and the bounds that are
+    only ever compared to themselves included -- to make a point about storage. The
+    published precision is the CERTIFICATE's to own, at `certificate.PUBLISHED_DECIMALS`,
+    applied where a bound crosses into a committed artefact. A caller re-deriving a stored
+    certificate must go through that same canonicalisation, or it will disagree with the
+    artefact in the last ULP.
     """
     if not 0.0 < delta < 1.0:
         raise ValueError("delta must be in (0,1), got %r" % (delta,))

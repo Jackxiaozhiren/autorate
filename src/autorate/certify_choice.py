@@ -30,7 +30,8 @@ import random
 from typing import Optional, Sequence
 
 from .case_count import Verdict, case_key, count_outcome
-from .certificate import N_CLAIMS, Certificate, Reason
+from .certificate import (CANONICALISED_BOUND_FIELDS, N_CLAIMS, Certificate, Reason,
+                          canonicalise_bound)
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
 from .tails import bound_width, clopper_pearson_upper
 
@@ -168,7 +169,10 @@ def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
     autom, err = observed["automated"], observed["errors"]
     n_case, auto_case, err_case = (observed["n_cases"], observed["automated_cases"],
                                    observed["erroneous_cases"])
-    half_width = bound_width(n_case, delta) / 2.0
+    # `bound_width` is `math.log`'s output, so it is canonicalised here rather than at the
+    # two endpoints it feeds: with a canonical width and a canonical rate, each endpoint is
+    # a correctly-rounded subtraction, which every platform reproduces bit for bit.
+    half_width = canonicalise_bound(bound_width(n_case, delta)) / 2.0
     meta.update(empties=observed["empties"], multi_label=observed["multi_label"],
                 automated=autom, errors_among_automated=err, n_eval_cases=n_case,
                 automated_cases=auto_case, erroneous_cases=err_case,
@@ -191,8 +195,11 @@ def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
                    "%d multi-label of %d)" % (1.0 - alpha, observed["empties"],
                                               observed["multi_label"], n_ev),
             meta=_with_diagnostic(meta, cal_scores, ev, method, grid, beta, delta))
-    cond_hi = clopper_pearson_upper(err_case, auto_case, delta)
-    marg_hi = clopper_pearson_upper(err_case, n_case, delta)
+    # Canonicalised at the source, so the number the budget test below reads is the number
+    # the certificate publishes: a refusal and its published bound cannot disagree by
+    # rounding, and neither depends on which C library ran `math.exp` (R-121).
+    cond_hi = canonicalise_bound(clopper_pearson_upper(err_case, auto_case, delta))
+    marg_hi = canonicalise_bound(clopper_pearson_upper(err_case, n_case, delta))
     rate = auto_case / n_case
     envelope = _BASE_ENVELOPE + (
         "set size fixed by the requested alpha=%.3f (coverage %.3f); no grid selection on "
@@ -226,6 +233,20 @@ def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
     return cert
 
 
+def _canonicalised(row: dict) -> dict:
+    """Round the named bound fields of one published row, and only those (R-121).
+
+    `CANONICALISED_BOUND_FIELDS` drives the walk, so a point of the diagnostic curve, the
+    `closest_attempt` copy taken from it, and the certificate's own headline attributes all
+    publish the identical canonical number -- while the fields of the same row that are NOT
+    bounds (`qhat`, the two `observed_*` ratios, the counts) keep the exact double the
+    records determine. That difference is the point: the sweep is by field name, not by
+    "it looks like a float", and a blanket pass would be the tolerance this replaces.
+    """
+    return {key: (canonicalise_bound(value) if key in CANONICALISED_BOUND_FIELDS else value)
+            for key, value in row.items()}
+
+
 def _with_diagnostic(meta: dict, cal_scores, ev, method: str, grid, beta: float,
                       delta: float) -> dict:
     """Sweep coverage levels for the refusal's evidence, and say it is only evidence.
@@ -247,12 +268,13 @@ def _with_diagnostic(meta: dict, cal_scores, ev, method: str, grid, beta: float,
         if obs["automated"] == 0:
             continue
         bound = clopper_pearson_upper(obs["errors"], obs["automated"], delta)
-        curve.append({"grid_alpha": a, "qhat": q, "automated": obs["automated"],
-                      "errors": obs["errors"], "empties": obs["empties"],
-                      "multi_label": obs["multi_label"],
-                      "observed_automation_rate": obs["automated"] / len(ev),
-                      "observed_conditional_error": obs["errors"] / obs["automated"],
-                      "conditional_error_bound": bound})
+        curve.append(_canonicalised({
+            "grid_alpha": a, "qhat": q, "automated": obs["automated"],
+            "errors": obs["errors"], "empties": obs["empties"],
+            "multi_label": obs["multi_label"],
+            "observed_automation_rate": obs["automated"] / len(ev),
+            "observed_conditional_error": obs["errors"] / obs["automated"],
+            "conditional_error_bound": bound}))
     if not curve:
         return {**meta, "closest_attempt": None, "diagnostic_curve": []}
     best = min(curve, key=lambda c: (c["conditional_error_bound"],

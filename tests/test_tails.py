@@ -98,3 +98,28 @@ def test_the_cdf_is_a_distribution_function_on_a_large_case():
     cdfs = [binom_cdf(k, n, p) for k in (550, 580, 600, 620, 650)]
     assert all(b > a for a, b in zip(cdfs, cdfs[1:])), cdfs
     assert binom_cdf(0, n, p) < 1e-9 and binom_cdf(1000, n, p) > 0.999999
+
+
+def test_the_primitive_stays_exact_and_the_published_precision_lives_elsewhere():
+    """`tails` answers a mathematical question; the CERTIFICATE decides its storage.
+
+    The obvious wrong fix for the cross-libc drift (R-121) is to round inside
+    `clopper_pearson_upper`, because that is where the last bits come from. It is wrong twice
+    over: the function's own contract is the root of P(X <= k | p) = delta, which test_tails
+    pins by feeding the returned value back into `binom_cdf` below, and rounding there moves
+    every consumer's number at once -- the audit tables, the non-published bounds that are only
+    ever compared to themselves, and the other two certifiers -- to make a point about one
+    artefact's bytes. So the raw double must stay raw here, and the canonicalisation belongs
+    where a bound crosses into a committed certificate.
+    """
+    from autorate.certificate import CANONICALISED_BOUND_FIELDS, canonicalise_bound
+
+    assert CANONICALISED_BOUND_FIELDS == ("conditional_error_bound", "marginal_error_bound")
+    for k, n in ((1, 96), (21, 33), (3, 200)):          # the pairs the published artefacts hold
+        raw = clopper_pearson_upper(k, n, 0.05)
+        canon = canonicalise_bound(raw)
+        assert raw != canon, (k, n, repr(raw))          # the primitive did NOT round itself
+        assert canon > raw, (k, n)                      # and the published value is not weaker
+        assert canon - raw < 1e-12, (k, n)
+        # the identity this module promises is the raw root, not the stored grid point
+        assert abs(binom_cdf(k, n, raw) - 0.05) < 1e-3, (k, n, raw)

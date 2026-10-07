@@ -18,6 +18,78 @@ from typing import Optional
 # the count lives here so no caller can restate it differently.
 N_CLAIMS = 3
 
+# --- the precision a published number is stored at -------------------------------
+#
+# `verify` re-derives every published number and compares it with `==`. That is an
+# honest gate only if a committed number is one any C library reproduces bit for bit,
+# and two families of certificate numbers are not: a Clopper-Pearson bound, from
+# `tails.clopper_pearson_upper` inverting a binomial tail through `math.log`/`math.exp`
+# 80 times, and the DKW half-width behind `autorate_ci`, from `tails.bound_width`
+# through `math.log`. The last bits of those transcendentals are NOT identical between
+# Apple libm and glibc, so at `351845e` the same commit re-derived `cert laya.meta` as
+# 0.7884344428029711 where the artefact said 0.7884344428029715 -- four units in the last
+# place of a double, gate red on the runner and green on the machine that wrote the file
+# (ledger R-121). The artefact therefore stops storing bits nobody else can produce: a
+# bound is stored at `PUBLISHED_DECIMALS`, and that canonical number is what both the
+# producer and the loaded artefact hold, so the gate's comparison stays exact.
+#
+# Why 12 decimals. The measured inter-libm drift is 4e-16 on a bound of order 0.79, so a
+# 1e-12 grid is 2500 times that drift -- about 9000 ULPs wide at that magnitude -- and it
+# swamps the disagreement, while 1e-12 sits 8 orders below the 4 decimals `docs/RESULTS.md`
+# renders and 6 below the 6 decimals `data/inventory.md` renders (ledger R-122: the rendered
+# documents cannot see this drift at all, so canonicalising moves stored bytes and no
+# published figure). Anything coarser starts eating real signal; anything finer stops
+# eating the drift.
+#
+# Why these fields and no others. The rest of the certificate's floats are quotients of
+# integers or correctly-rounded sums -- `autorate`, `mean_set_size`, `qhat`, the two
+# `observed_*` ratios -- and IEEE 754 requires + - * / and sqrt to be correctly rounded,
+# so those already agree bit for bit on every platform. The incident is the evidence:
+# 25 of the 28 curve points matched on the runner, and every mismatch was a bound. A
+# sweep over all floats would be exactly the blanket tolerance R-121 forbids, because it
+# would absorb a genuinely changed automation rate as cheerfully as it absorbs a libm
+# difference. Adding a name here is a deliberate edit, and
+# `test_the_canonical_field_list_is_exactly_the_bounds_the_shape_publishes` is what makes
+# adding one without a reason expensive.
+#
+# Why nearest-`round` and then a step up, rather than a bare `round`: the canonical form
+# must be idempotent, because the producer rounds, the artefact stores what it rounded, and
+# the gate compares the two -- so a canonical value has to canonicalise to itself. Nearest
+# `round(x, 12)` is idempotent (a midpoint between grid points would be a 13-decimal
+# fraction with an odd numerator over 2^13 * 5^13, hence never dyadic, so no double is ever
+# exactly halfway and a second pass cannot move it), but it rounds an UPPER bound DOWN by up
+# to 5e-13, and this repository does not publish a bound its own data can beat --
+# `tails.clopper_pearson_upper` raises `ArithmeticError` over exactly that. So the mapping
+# is the ceiling onto the grid, taken from the nearest value rather than from
+# `math.ceil(x * 1e12) / 1e12`: that scale-up is not idempotent, because multiplying a
+# canonical value back up can land a hair above the grid point it was made from and push it
+# a further ULP on the next pass, which is a gate that reds on its own rounding. A ceiling
+# is monotone, so `marginal <= conditional` survives the trip, and the most a published
+# bound can move is 1e-12 -- four orders below the precision anything renders at.
+PUBLISHED_DECIMALS = 12
+CANONICALISED_BOUND_FIELDS = ("conditional_error_bound", "marginal_error_bound")
+_GRID = 10.0 ** -PUBLISHED_DECIMALS
+
+
+def canonicalise_bound(value: Optional[float]) -> Optional[float]:
+    """One transcendental-derived published number, ceiled onto `PUBLISHED_DECIMALS`.
+
+    Named `bound` on purpose: it belongs on the numbers in
+    `CANONICALISED_BOUND_FIELDS`, on the `conditional_error_bound` of every row a
+    refusal publishes beside them, and on the half-width that feeds `autorate_ci` --
+    because that width is the last transcendental input to the interval, and once it is
+    canonical both endpoints are a correctly-rounded function of reproducible numbers,
+    so the interval needs no rounding of its own. It is not a general-purpose tidy-up
+    for floats, and it does not belong in `tails`, whose job is the exact arithmetic.
+    """
+    if value is None:
+        return None
+    v = float(value)
+    snapped = round(v, PUBLISHED_DECIMALS)
+    if snapped < v:                       # nearest went down; an upper bound goes up
+        snapped = round(snapped + _GRID, PUBLISHED_DECIMALS)
+    return snapped
+
 
 class Reason(str, Enum):
     N_BELOW_MIN = "n_below_min"
