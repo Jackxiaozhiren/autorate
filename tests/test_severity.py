@@ -771,6 +771,32 @@ def test_a_refusal_carries_its_budgets_and_no_headline_number():
         assert required in refused.summary(), (required, refused.summary())
 
 
+def test_the_price_line_prices_the_rule_that_ran_and_not_the_other_search():
+    """The over-call certificate's price is the under-call side of its OWN clip, and it is pinned.
+
+    A first draft of this file left that number published-but-unpinned, and a plant that made `_price`
+    read the same side as the requested loss ran 32 passed, rc 0 -- the row below is what the plant
+    bought. The pin is a symmetry: a clip on an under-caller and a floor on its scale-reversal are the
+    same rule seen from opposite ends, so `over` on `CLEAN` (ahat=4, 0 violating cases, 10 cases under
+    the clipped answer) reports exactly the three bounds that `under` reports on the mirror (ahat=0),
+    and the two certified levels sum to `k - 1`. If the price read the requested side, or came from the
+    other direction's own search, the equality breaks.
+    """
+    recs = ordinal_records(**CLEAN)
+    mir = _mirror_scale(recs)
+    over = certify_severity(recs, ALPHA, DELTA, "over", SEED)
+    under_m = certify_severity(mir, ALPHA, DELTA, "under", SEED)
+    assert (over.ahat, over.meta["violating_cases"], over.meta["price_cases"],
+            over.meta["override_cases"]) == (K - 1, 0, 10, 0), over.meta
+    assert over.bound == _hand_bound(0, 200) == over.override_bound, over.bound
+    assert over.price_bound == _hand_bound(10, 200), over.price_bound
+    assert (under_m.ahat, under_m.meta["price_cases"]) == (0, 10), under_m.meta
+    for field in ("bound", "price_bound", "override_bound", "measured_violation"):
+        assert getattr(over, field) == getattr(under_m, field), field
+    assert over.ahat + under_m.ahat == K - 1
+    assert "direction=over: P(Y <" in over.summary(), over.summary()
+
+
 def test_over_call_bound_is_direction_over_with_no_extra_machinery():
     """Task 4's second name: `over_call_bound(...)` is `certify_severity(..., direction="over")`."""
     recs = ordinal_records(**CLEAN)
