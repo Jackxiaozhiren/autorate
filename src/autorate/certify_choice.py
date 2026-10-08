@@ -348,9 +348,11 @@ class GroupsCertificate:
 
     Fields the artefact has to state, per R-149 and R-159: `n_groups` (the data's slice count, the
     only thing that may divide a budget), the uncorrected `alpha`/`beta`/`delta`, the corrected
-    budgets actually spent, `n_claims` per slice, and the resulting family `level`. `refused_by_size`
-    names the slices too small to bound -- the field is called that and not `n_min_violations`
-    because B3 Task 5 owns that name and the shape change together (R-149/2).
+    budgets -- of which `corrected_alpha` and `corrected_delta` are what this run SPENDS and
+    `corrected_beta` is the counterfactual it does not -- `n_claims` per slice, and the resulting
+    family `level`. `refused_by_size` names the slices too small to bound -- the field is called that
+    and not `n_min_violations` because B3 Task 5 owns that name and the shape change together
+    (R-149/2).
     """
 
     groups: tuple
@@ -501,10 +503,12 @@ def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, d
       slice's conditional-error bound has to beat, and bounding every slice at `beta` already bounds
       the worst one at `beta`; bounding each at `beta / n_groups` would promise something the
       deployment did not ask for and would make the pooled-vs-slice divergence an artefact of a
-      self-imposed straitjacket instead of the slice structure §8.1 is about. The corrected pair is
-      still computed and still PUBLISHED (`corrected_beta`) so a reader can see both numbers and which
-      one gated. R-124 respected: none of this says looser coverage automates more -- an empty set is
-      a refusal, and automation is non-monotone in `alpha`.
+      self-imposed straitjacket instead of the slice structure §8.1 is about. The divided value is
+      computed and PUBLISHED (`corrected_beta`) as the counterfactual a divided budget would have
+      cost, and nothing in this module compares a bound with it -- the envelope line says so, because
+      a sentence implying the reader could see the spent budget in the pair would describe a control
+      flow that does not exist (F-8 of the Task 2 review). R-124 respected: none of this says looser
+      coverage automates more -- an empty set is a refusal, and automation is non-monotone in `alpha`.
 
     A slice below `floor` CASES is refused BY NAME and never certified: no slice-level bound exists at
     that `n`, and averaging its records into the neighbours is precisely the move that produces the
@@ -573,9 +577,11 @@ def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, d
         "joint level is %.4f"
         % (g, uncorrected_alpha, corrected_alpha, delta, corrected_delta_value, N_CLAIMS, g, N_CLAIMS,
            corrected_delta_value, corrected_union, 1.0 - corrected_union),
-        "beta is NOT divided: %.3f is the budget every slice's bound must beat, which already bounds "
-        "the worst slice at %.3f; the corrected pair %.6f is published for the reader to see which "
-        "number gated" % (beta, beta, corrected_beta),
+        "beta is NOT divided and the divided budget is NOT spent: every slice's bound is tested "
+        "against the uncorrected %.3f, which is the number that gates this run, and bounding each "
+        "slice at %.3f already bounds the worst at %.3f; %.6f is published as the counterfactual a "
+        "divided budget would have cost, and no bound in this artefact is compared with it"
+        % (beta, beta, beta, corrected_beta),
         "an UNCORRECTED worst-of-%d at delta=%.3f would claim 1 - %d x %d x %.3f = %.4f, %s" % (
             g, delta, g, N_CLAIMS, delta, uncorrected_level,
             ("which is NOT a probability -- this is why the correction is not decorative"

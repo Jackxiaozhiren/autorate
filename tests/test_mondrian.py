@@ -412,6 +412,58 @@ def test_the_envelope_says_what_the_envelope_means_and_its_printed_product_is_it
     assert "-0.2000" not in line, "the uncorrected figure belongs on its own labelled line"
 
 
+def test_the_envelope_names_the_budget_the_slices_were_actually_tested_against(cert):
+    """F-8: the line about `beta` has to state the number the control flow SPENT.
+
+    `corrected_beta` is computed and published, and no bound in the artefact is ever compared with
+    it: each slice goes through `certify_choice(..., beta=beta, ...)`, the uncorrected budget. The
+    first version of the envelope line said the corrected pair was published "for the reader to see
+    which number gated", which is a sentence the module's own control flow contradicts -- the number
+    it showed is the one that did not gate. Same class as the drift lane's F4 and the audit lane's
+    MAJ-1: prose asserting what the code does not do.
+
+    The gating value is read out of the slices themselves (each certificate's own `beta` attribute,
+    which is the budget its bound was tested against) rather than typed, so a plant that starts
+    spending `corrected_beta` at the slice call site reddens this row by making the sentence
+    disagree with the artefact, not by being reworded.
+    """
+    line = next(text for text in cert.envelope if "beta is NOT divided" in text)
+    spent = sorted({slice_cert.beta for slice_cert in cert.per_group.values()})
+    assert spent == [cert.beta], spent
+    assert cert.corrected_beta != cert.beta, (
+        "a run at G=1 makes the pair coincide and this row vacuous; the census here is 8")
+    assert ("uncorrected %.3f" % cert.beta) in line, line
+    assert ("%.6f" % cert.corrected_beta) in line, line
+    assert "NOT spent" in line, line
+    assert "no bound in this artefact is compared with it" in line, line
+
+
+def test_the_divided_beta_would_have_refused_the_slices_this_run_certifies(cert, recs):
+    """The counterfactual the envelope line now publishes, measured instead of asserted in prose.
+
+    The five clean families certify with a conditional bound of about 0.0144 against a budget of
+    0.050, and the divided budget is 0.006250, so every one of those bounds sits ABOVE it: had this
+    run spent `corrected_beta`, all five would have refused and the pooled-versus-slice divergence
+    this fixture exists to show would have been an artefact of a self-imposed straitjacket rather
+    than of the slice structure. That is the reason §8.1 leaves `beta` undivided, and the last two
+    lines measure it by running the same slice through the same certifier at the divided budget.
+
+    GREEN ON ARRIVAL (a measurement row); reddened by a plant that passes `corrected_beta` to the
+    slice call, which flips the first two assertions because the slices stop being feasible.
+    """
+    certified = {name: c for name, c in cert.per_group.items() if c.feasible}
+    assert sorted(certified) == ["a", "b", "c", "d", "e"], sorted(certified)
+    for name, slice_cert in certified.items():
+        assert slice_cert.conditional_error_bound > cert.corrected_beta, (
+            "%s: the sentence claims the divided budget was not the gate" % name)
+        assert slice_cert.conditional_error_bound <= cert.beta, name
+    divided = certify_choice(by_group(recs, ("family",))["a"], alpha=cert.corrected_alpha,
+                            beta=cert.corrected_beta, delta=cert.corrected_delta, seed=7)
+    assert divided.feasible is False, divided.summary()
+    assert divided.reason == "empty_feasible_set", divided.summary()
+    assert "exceeds the budget %.3f" % cert.corrected_beta in divided.summary(), divided.summary()
+
+
 def test_an_uncorrected_worst_of_g_would_not_be_a_probability_and_the_envelope_says_so(cert):
     """The correction shown to do work by the number it replaces (R-149's falsification demand).
 
