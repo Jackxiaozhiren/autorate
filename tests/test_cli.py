@@ -508,7 +508,7 @@ def test_a_mixed_subject_certificate_gates_nothing():
     live = certify_choice(recs, alpha=0.05, beta=0.20, seed=3)
     assert live.feasible is True, live.summary()
     assert Gate(live).decide(recs[0])["action"] == "auto"
-    stripped = Certificate(**{**live.to_dict(), "backend": None})
+    stripped = Certificate.from_dict({**live.to_dict(), "backend": None})
     d = Gate(stripped).decide(recs[0])
     assert d["action"] == "abstain" and d["reason"] == "subject_mismatch", d
 
