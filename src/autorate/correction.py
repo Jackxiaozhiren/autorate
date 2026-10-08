@@ -399,7 +399,8 @@ def _shared_claim(rows: Sequence[dict]):
     return {"group": name, "alpha": alpha, "beta": beta, "n_claims": claims}
 
 
-def worst_group(groups, metric: str = "autorate", floor: Optional[int] = None) -> dict:
+def worst_group(groups, metric: str = "autorate", floor: Optional[int] = None,
+                derive_joint_level: bool = True) -> dict:
     """The worst slice of a group-conditional run, and every slice that refused with its reason.
 
     `metric` is the quantity a deployment acts on, so it is what "worst" means; `conditional` and
@@ -420,6 +421,16 @@ def worst_group(groups, metric: str = "autorate", floor: Optional[int] = None) -
     reader who cannot see whether the multiplier was 2 or 3 or how the two budgets combined. The
     plan's own Step 3 stands: compute the worst FROM the per-group objects, never a hand-picked
     maximum.
+
+    `derive_joint_level=False` states the rule but declines to compute a level from these rows, and
+    a caller with a `Certificate`'s meta should pass it. The derivation reads the rows' `alpha` and
+    `beta` as the per-ENVELOPE budgets (which is what makes `1 - n_claims * max(...)` the union it
+    claims to be), and a shipped certificate's meta carries `alpha` and `beta` as RISK TARGETS -- the
+    coverage level that sized the set and the budget the bound had to beat. At the published rubric
+    the two readings coincide at 0.85 and a test cannot tell them apart; at `beta=0.03` the silent
+    derivation prints 0.91 for a run whose envelopes were tested at `delta`. The certification lane
+    therefore publishes its level from `delta` itself (`GroupsCertificate.level`) and asks this
+    function not to guess.
     """
     rows = [_as_row(g) for g in (groups or [])]
     if not rows:
@@ -428,7 +439,7 @@ def worst_group(groups, metric: str = "autorate", floor: Optional[int] = None) -
         raise ValueError("unknown worst-slice metric %r; this claim is about %s"
                          % (metric, ", ".join(sorted(_METRICS))))
     key, direction = _METRICS[metric]
-    claim = _shared_claim(rows)
+    claim = _shared_claim(rows) if derive_joint_level else None
     inputs = (None if claim is None else
               joint_level_inputs({"alpha": claim["alpha"], "beta": claim["beta"]},
                                  len(rows), claim["n_claims"]))
@@ -472,10 +483,14 @@ def worst_group(groups, metric: str = "autorate", floor: Optional[int] = None) -
         "joint_level_rule": JOINT_LEVEL_RULE,
         "joint_level_inputs": inputs,
         "joint_level_note": (
-            "the slices publish no alpha/beta, so no simultaneous level is derived here; the rule "
-            "above is what would have made it" if inputs is None else
-            "stated from the rule and the inputs beside it: 1 - n_claims * max(alpha, beta) after "
-            "each slice's budgets are divided by n_groups"),
+            "the caller declined the derivation (derive_joint_level=False): these rows state risk "
+            "targets, not the per-envelope budgets, so this run's simultaneous level has one "
+            "publisher elsewhere and this artefact states the rule without a number"
+            if not derive_joint_level else
+            ("the slices publish no alpha/beta, so no simultaneous level is derived here; the rule "
+             "above is what would have made it" if inputs is None else
+             "stated from the rule and the inputs beside it: 1 - n_claims * max(alpha, beta) after "
+             "each slice's budgets are divided by n_groups")),
         "groups_declared": first["meta"].get("groups_declared"),
         "worst": _worst_row(rows, key, direction),
         "refusals": refusals,

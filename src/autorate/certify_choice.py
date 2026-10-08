@@ -26,13 +26,18 @@ counting is how a published automation rate stops describing the rule the deploy
 """
 from __future__ import annotations
 
+import json
 import random
+from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 from .case_count import Verdict, case_key, count_outcome
 from .certificate import (CANONICALISED_BOUND_FIELDS, N_CLAIMS, Certificate, Reason,
                           canonicalise_bound)
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
+from .correction import (GROUP_FLOOR_MESSAGE, corrected_delta, group_alpha, group_beta,
+                         joint_level_inputs, size_floor, worst_group)
+from .groups import by_group
 from .tails import bound_width, clopper_pearson_upper
 
 MIN_CAL = 60
@@ -43,6 +48,14 @@ _BASE_ENVELOPE = (
     "marginal certificate only - not group-conditional",
     "certified on archived responses; live traffic shift is not covered",
 )
+
+# The floor a slice has to clear before it is certified at all, stated in CASES because the
+# denominator of every slice-level bound is cases, not records. `MIN_CAL + MIN_EVAL` is not a taste
+# and not a second threshold: a slice below it cannot supply both halves the two-way construction of
+# spec 5.3 runs on, so the floor and the shipped minima have one owner. `correction.py` reads the
+# floor as a parameter for exactly that reason -- a floor stated in cases belongs with the
+# certificate that publishes the bound, while the corrected level belongs with the claim (spec 8.1).
+MIN_CASES_PER_SLICE = MIN_CAL + MIN_EVAL
 
 
 def _eligible(records: Sequence):
@@ -132,17 +145,27 @@ def _outcome(ev, qhat, method):
 
 def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
                    delta: float = 0.05, seed: int = 0, method: str = "aps",
-                   grid: Optional[Sequence[float]] = None) -> Certificate:
+                   grid: Optional[Sequence[float]] = None,
+                   groups: Optional[Sequence[str]] = None):
     """Certify the automation rate the coverage level `1 - alpha` buys, under budget `beta`.
 
     `beta` bounds P(wrong | automated); `delta` is the level each published bound is
     tested at, and `N_CLAIMS` of them are made, so the joint confidence is 1 - N_CLAIMS*delta.
+
+    `groups` switches the same function onto the group-conditional (Mondrian) surface of spec 8.1:
+    with it, the return is a `GroupsCertificate` -- one certificate per declared slice at the
+    corrected budgets, plus the simultaneous worst-of-G claim and the pooled certificate these slices
+    were cut from. Left as `None`, every number below is exactly what it was, and the certificate
+    stays the marginal one `verify` re-derives.
     """
     if method not in METHODS:
         raise ValueError("unknown method %r; choose from %s" % (method, sorted(METHODS)))
     for name, v in (("alpha", alpha), ("beta", beta), ("delta", delta)):
         if not 0.0 < v < 1.0:
             raise ValueError("%s must be in (0,1), got %r" % (name, v))
+    if groups is not None:
+        return certify_groups(records, alpha=alpha, beta=beta, delta=delta, seed=seed,
+                              method=method, grid=grid, groups=groups)
     cal, ev, dropped = split_cal(records, seed)
     subjects = {r.backend for r in cal + ev}
     backend = subjects.pop() if len(subjects) == 1 else None
@@ -282,3 +305,267 @@ def _with_diagnostic(meta: dict, cal_scores, ev, method: str, grid, beta: float,
     return {**meta, "closest_attempt": best, "diagnostic_curve": curve,
             "diagnostic_note": "the grid below was swept on the evaluation half for "
                                "evidence only; nothing on it was certified"}
+
+
+def _group_row(name, cert: Certificate, n_cases: int, groups_declared, corrected: dict) -> dict:
+    """One slice, in the shape `correction.worst_group` reads.
+
+    Deliberately not a `Certificate`: the correction module owns arithmetic and must not become an
+    owner of the shape it reads (`correction.py`'s own rule), and this row is where the case count
+    that the size floor and the worst-of-G tie-break both read gets stated under one name.
+
+    No simultaneous level is derived from these rows, and the caller says so (`derive_joint_level=False`
+    on the `worst_group` call). A shipped certificate's meta carries `alpha` and `beta` as RISK TARGETS
+    -- the coverage level that sized the set, and the budget the bound had to beat -- while the two
+    budgets that actually pay for the published envelopes are `N_CLAIMS` bounds each tested at
+    `delta / G`. Feeding the targets to the derivation would print a level that coincides with the
+    right one at the published rubric (where `alpha == beta == delta`) and is 0.91 instead of 0.85 the
+    moment `beta` moves. The family level therefore has exactly one publisher: `GroupsCertificate.
+    level`, derived below from `delta`.
+    """
+    return {
+        "group": name,
+        "feasible": cert.feasible,
+        "reason": cert.reason,
+        "autorate": cert.autorate,
+        "conditional_error_bound": cert.conditional_error_bound,
+        "marginal_error_bound": cert.marginal_error_bound,
+        "level": cert.level,
+        "n_cases": n_cases,
+        "meta": {**cert.meta, "slices": name, "n_eval_cases": n_cases,
+                 "groups_declared": groups_declared, **corrected},
+    }
+
+
+@dataclass(frozen=True)
+class GroupsCertificate:
+    """The Mondrian run: one certificate per declared slice, and ONE simultaneous claim over them.
+
+    The pooled certificate travels with the slices (`pooled`) because spec 8.1's failure mode is a
+    reader who sees one number and infers the other. They are not interchangeable and this object
+    never collapses them: a pooled certificate over a population whose thin slice refused says the
+    deployment is inside budget while the run that conditioned on the slice says it is not.
+
+    Fields the artefact has to state, per R-149 and R-159: `n_groups` (the data's slice count, the
+    only thing that may divide a budget), the uncorrected `alpha`/`beta`/`delta`, the corrected
+    budgets actually spent, `n_claims` per slice, and the resulting family `level`. `refused_by_size`
+    names the slices too small to bound -- the field is called that and not `n_min_violations`
+    because B3 Task 5 owns that name and the shape change together (R-149/2).
+    """
+
+    groups: tuple
+    n_groups: int
+    alpha: float
+    beta: float
+    delta: float
+    corrected_alpha: float
+    corrected_beta: float
+    corrected_delta: float
+    n_claims: int
+    per_group: dict = field(default_factory=dict)
+    pooled: Optional[Certificate] = None
+    worst: Optional[Certificate] = None
+    worst_claim: dict = field(default_factory=dict)
+    refused_by_size: list = field(default_factory=list)
+    slice_cases: dict = field(default_factory=dict)
+    slice_census: list = field(default_factory=list)
+    envelope: tuple = ()
+    meta: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        object.__setattr__(self, "groups", tuple(self.groups))
+        object.__setattr__(self, "envelope", tuple(self.envelope))
+        if len(self.per_group) != self.n_groups:
+            raise ValueError("a worst-of-%d claim has %d certificates: the slice count that divides "
+                             "the budgets and the slices actually certified have to be the same "
+                             "number, or the correction is applied to a family that does not exist"
+                             % (self.n_groups, len(self.per_group)))
+        if not self.envelope:
+            raise ValueError("every certificate needs a non-empty envelope of assumptions")
+        if self.n_groups < 1:
+            raise ValueError("no slices to certify; a worst-of-0 claim is not a claim")
+
+    @property
+    def level(self) -> float:
+        """The joint confidence of the whole worst-of-G statement: 1 - n_claims * delta.
+
+        Derived, in one place, from the same arithmetic `correction.joint_level` publishes -- and it
+        is CONSTANT in `n_groups`, which is not an oversight but the Bonferroni property the
+        correction exists to buy: each slice's `N_CLAIMS` bounds are tested at `delta / n_groups`, so
+        the union over `n_groups * N_CLAIMS` envelopes is `n_groups * N_CLAIMS * (delta/n_groups) =
+        N_CLAIMS * delta` however many slices the census produced. The slices' own certificates each
+        read a *higher* level (1 - N_CLAIMS*delta/n_groups); the family reads 0.85, the same number a
+        single pooled certificate publishes. See `correction.py`'s module docstring for the ruling.
+        """
+        return joint_level_inputs({"alpha": self.delta, "beta": self.delta}, self.n_groups,
+                                  self.n_claims)["level"]
+
+    @property
+    def thinnest(self):
+        """The slice with the fewest independent CASES -- the one the census can refuse first."""
+        return min(self.slice_cases, key=lambda name: (self.slice_cases[name], str(name)))
+
+    @property
+    def any_slice_refused(self) -> bool:
+        return bool(self.worst_claim.get("any_slice_refused"))
+
+    def summary(self) -> str:
+        head = ("group-conditional (Mondrian) run over %d slices declared as %s: %d certified, %d "
+                "refused" % (self.n_groups, ", ".join(repr(g) for g in self.groups),
+                             sum(1 for c in self.per_group.values() if c.feasible),
+                             sum(1 for c in self.per_group.values() if not c.feasible)))
+        verdict = ("NOT_CERTIFIED: the worst slice (%s) refused, so no worst-of-%d permission exists"
+                   % (self.worst_claim.get("worst", {}).get("group"), self.n_groups)
+                   if self.any_slice_refused else
+                   "certified: worst slice %s autorate %s"
+                   % (self.worst_claim.get("worst", {}).get("group"),
+                      self.worst_claim.get("worst", {}).get("autorate")))
+        sizes = ("; refused by size (below the floor of %d cases, named, never averaged away): %s"
+                 % (self.meta.get("min_cases_per_slice"),
+                    ", ".join("%s(n=%d)" % (row["group"], row["n"])
+                              for row in self.refused_by_size)) if self.refused_by_size else "")
+        joint = ("; joint level %.4f over %d slices x %d claims at delta=%.3f corrected to %.6f per "
+                 "slice (uncorrected alpha=%.3f beta=%.3f delta=%.3f)"
+                 % (self.level, self.n_groups, self.n_claims, self.delta, self.corrected_delta,
+                    self.alpha, self.beta, self.delta))
+        pooled = ("; the POOLED certificate over these same records says feasible=%s autorate=%s "
+                  "conditional bound=%s -- a slice refusal is not averaged away by that number"
+                  % (self.pooled.feasible, self.pooled.autorate, self.pooled.conditional_error_bound))
+        return head + " | " + verdict + sizes + joint + pooled
+
+    def to_dict(self) -> dict:
+        return {
+            "groups": list(self.groups), "n_groups": self.n_groups, "alpha": self.alpha,
+            "beta": self.beta, "delta": self.delta, "corrected_alpha": self.corrected_alpha,
+            "corrected_beta": self.corrected_beta, "corrected_delta": self.corrected_delta,
+            "n_claims": self.n_claims, "level": self.level, "thinnest": self.thinnest,
+            "any_slice_refused": self.any_slice_refused,
+            "refused_by_size": self.refused_by_size, "slice_census": self.slice_census,
+            "per_group": {str(name): cert.to_dict() for name, cert in self.per_group.items()},
+            "pooled": self.pooled.to_dict() if self.pooled else None,
+            "worst_claim": self.worst_claim, "envelope": list(self.envelope), "meta": self.meta,
+        }
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=True, ensure_ascii=False)
+
+
+def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, delta: float = 0.05,
+                   seed: int = 0, method: str = "aps", groups: Sequence[str] = ("family",),
+                   floor: int = MIN_CASES_PER_SLICE,
+                   grid: Optional[Sequence[float]] = None) -> GroupsCertificate:
+    """Group-conditional (Mondrian) certification with the simultaneous correction applied (spec 8.1).
+
+    The construction, and the three numbers that must not be confused:
+
+    * `alpha` is divided by the slice count. That is §8.1's literal "Bonferroni on alpha", and it is
+      where the correction actually bites: a smaller `alpha` sizes a LARGER set, so a slice automates
+      less, and a thin slice can stop automating at all.
+    * `delta` is divided by the slice count, because each slice publishes `N_CLAIMS` bounds and the
+      family claims `n_groups * N_CLAIMS` of them. This is the division `certificate.py`'s
+      `level = 1 - N_CLAIMS * delta` is the other half of.
+    * `beta` is NOT divided, and that is a decision rather than an oversight. `beta` is the budget a
+      slice's conditional-error bound has to beat, and bounding every slice at `beta` already bounds
+      the worst one at `beta`; bounding each at `beta / n_groups` would promise something the
+      deployment did not ask for and would make the pooled-vs-slice divergence an artefact of a
+      self-imposed straitjacket instead of the slice structure §8.1 is about. The corrected pair is
+      still computed and still PUBLISHED (`corrected_beta`) so a reader can see both numbers and which
+      one gated. R-124 respected: none of this says looser coverage automates more -- an empty set is
+      a refusal, and automation is non-monotone in `alpha`.
+
+    A slice below `floor` CASES is refused BY NAME and never certified: no slice-level bound exists at
+    that `n`, and averaging its records into the neighbours is precisely the move that produces the
+    false claim §8.1 names. The pooled certificate over the same records is still computed and still
+    published beside the slices, so the divergence is on the artefact rather than in a reader's head.
+    """
+    slices = by_group(records, groups)
+    g = len(slices)
+    subjects = {r.backend for r in records if r.backend}
+    if len(subjects) > 1:
+        # The same correction `certify_score.py:219-225` and `certify_threshold.py:301-310` make: a
+        # certificate names one subject, and a worst-of-G over two models states one permission for
+        # two deployments. The marginal set gate answers a mixed batch with `backend=None` (its own
+        # published behaviour, which `verify` compares and this function does not change); a
+        # group-conditional claim cannot inherit that silence.
+        raise ValueError("a certificate names one subject; this population spans backends %s -- "
+                         "certify one backend at a time" % ", ".join(sorted(subjects)))
+    backend = subjects.pop() if len(subjects) == 1 else None
+    declared = tuple(groups)
+    rubric = {"alpha": alpha, "beta": beta}
+    uncorrected_alpha, corrected_alpha = group_alpha(rubric, g)
+    _b0, corrected_beta = group_beta(rubric, g)
+    corrected_delta_value = corrected_delta(delta, g)
+    per_group: dict = {}
+    rows: list = []
+    census: list = []
+    slice_cases: dict = {}
+    refused_by_size: list = []
+    corrected_fields = {"corrected_alpha": corrected_alpha, "corrected_beta": corrected_beta,
+                        "corrected_delta": corrected_delta_value, "n_claims": N_CLAIMS}
+    for name, members in slices.items():
+        kept, dropped = _eligible(members)
+        n_cases = len({case_key(r) for r in members})
+        slice_cases[name] = n_cases
+        census.append({"group": name, "cases": n_cases, "records": len(members),
+                       "kept": len(kept), **dropped})
+        detail_meta = {"groups_declared": declared, "slice_cases": n_cases,
+                       "min_cases_per_slice": floor, "backend": backend}
+        if size_floor(n_cases, floor):
+            why = ("%s (slice %r holds %d independent cases; the floor is %d, which is MIN_CAL + "
+                   "MIN_EVAL -- the two halves of the split this rule certifies on)"
+                   % (GROUP_FLOOR_MESSAGE, name, n_cases, floor))
+            cert = Certificate.refused(Reason.N_BELOW_MIN, alpha=corrected_alpha, beta=beta,
+                                       n_cal=0, n_eval=len(members), delta=corrected_delta_value,
+                                       detail=why, meta=detail_meta, backend=backend, method=method)
+            refused_by_size.append({"group": name, "n": n_cases, "floor": floor, "reason": why})
+        else:
+            # One rule, one code path: the slice is certified by the pooled certifier at the
+            # corrected budgets, so a slice-level bound and the published marginal bound cannot be
+            # produced by two different implementations that drift apart.
+            cert = certify_choice(kept, alpha=corrected_alpha, beta=beta,
+                                  delta=corrected_delta_value, seed=seed, method=method, grid=grid)
+            cert.meta["groups_declared"] = declared
+            cert.meta["min_cases_per_slice"] = floor
+        per_group[name] = cert
+        rows.append(_group_row(name, cert, n_cases, declared, corrected_fields))
+    pooled = certify_choice(records, alpha=alpha, beta=beta, delta=delta, seed=seed, method=method,
+                            grid=grid)
+    claim = worst_group(rows, metric="autorate", floor=floor, derive_joint_level=False)
+    corrected_union = g * N_CLAIMS * corrected_delta_value
+    uncorrected_union = g * N_CLAIMS * delta
+    uncorrected_level = 1.0 - uncorrected_union
+    envelope = (
+        "group-conditional (Mondrian): the guarantee is conditional on %s, and exchangeability "
+        "within group is ASSUMED here and not proved by this run" % (", ".join(repr(x) for x in declared),),
+        "worst-of-%d claim with the simultaneous correction: alpha %.3f -> %.6f and delta %.3f -> "
+        "%.6f per slice, %d claims per slice, so the family risk is %d x %d x %.6f = %.4f and the "
+        "joint level is %.4f"
+        % (g, uncorrected_alpha, corrected_alpha, delta, corrected_delta_value, N_CLAIMS, g, N_CLAIMS,
+           corrected_delta_value, corrected_union, 1.0 - corrected_union),
+        "beta is NOT divided: %.3f is the budget every slice's bound must beat, which already bounds "
+        "the worst slice at %.3f; the corrected pair %.6f is published for the reader to see which "
+        "number gated" % (beta, beta, corrected_beta),
+        "an UNCORRECTED worst-of-%d at delta=%.3f would claim 1 - %d x %d x %.3f = %.4f, which is "
+        "%s a probability%s" % (
+            g, delta, g, N_CLAIMS, delta, uncorrected_level,
+            "" if 0.0 < uncorrected_level < 1.0 else "NOT",
+            "" if 0.0 < uncorrected_level < 1.0 else " -- this is why the correction is not "
+                                                    "decorative"),
+        "the pooled (marginal) certificate over these same records is published beside the slices "
+        "and is NOT a substitute for them: %s" % pooled.summary(),
+        "certified on archived responses; live traffic shift is not covered",
+    )
+    return GroupsCertificate(
+        groups=declared, n_groups=g, alpha=alpha, beta=beta, delta=delta,
+        corrected_alpha=corrected_alpha, corrected_beta=corrected_beta,
+        corrected_delta=corrected_delta_value, n_claims=N_CLAIMS, per_group=per_group, pooled=pooled,
+        worst=per_group[claim["worst"]["group"]], worst_claim=claim, refused_by_size=refused_by_size,
+        slice_cases=slice_cases, slice_census=census, envelope=envelope,
+        meta={"seed": seed, "method": method, "min_cases_per_slice": floor,
+              "groups_declared": declared, "backend": backend,
+              "n_refused_by_size": len(refused_by_size),
+              "slices_declared_but_empty": [row["group"] for row in census if not row["kept"]],
+              "census_note": "every slice is in slice_census with its own skipped_no_gold / "
+                             "skipped_wrong_qtype counts; a slice whose records all lack gold is "
+                             "reported as skipped and refused, never filtered out of the run"},
+    )
