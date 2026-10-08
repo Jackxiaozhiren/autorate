@@ -19,12 +19,18 @@ algorithmic reasons:
   0.0040), 0.1411 at n=25. `WEIGHTED_ENVELOPE` says this; a certificate stamped with mode 1 states
   a re-weighted estimate, not a bound.
 * `aci_threshold` (mode 2) trades the finite-sample statement itself for an adaptive threshold. Its
-  guarantee is a bound on the LONG-RUN regret of the average miscoverage rate, and `aci_regret_bound`
-  states that bound's shape: it exceeds 1.0 for the first ten rounds (so it says nothing about any
-  decision a deployment actually made), and with a fixed step size it tends to
-  `gamma / (2(1-2*alpha))` rather than to zero. An implementation dressed up as finite-sample would
-  be this repository's worst failure mode, so the tests hold the bound's vacuity at small T as well
-  as its convergence at large T.
+  published guarantee WAS a bound on the long-run regret of the average miscoverage rate, in the
+  form `|mean err - alpha| <= aci_regret_bound(T, alpha, gamma)`. That inequality is FALSE on inputs
+  this module's own validator accepts, and it is therefore withdrawn rather than defended: at
+  alpha=gamma=0.05 an all-1.0 sequence -- the module's own `SCORE_CEILING`, the value its vacuous arm
+  returns -- converges to a long-run error rate of 0.500250 against a bound of 0.028778, an
+  alternating 0.99/0.01 ordering reaches 0.166740 against 0.027978, a constant 0.99 sequence to
+  0.167100, and an all-0.0 sequence to 0.000000 (all deterministic constructions; see
+  `ACI_ENVELOPE` for the mechanism and the 400-sequence sweep). What mode 2 does buy is a threshold
+  that tracks the target rate while its iterate stays inside (0,1); the clip that keeps it there
+  discards the update whenever it fires, and every measured violation coincides with a fired clip.
+  An implementation dressed up as finite-sample would be this repository's worst failure mode, and an
+  implementation dressed up as a regret theorem is the same failure wearing the other hat.
 * `NOT_CERTIFIABLE_UNDER_DRIFT` is an envelope FLAG, not a return value. Any certificate that never
   conditioned on a declared drift variable is marginal-only, and marginal-only carries the flag.
   Absence of a declaration is read as marginal-only (the conservative direction); a declaration that
@@ -91,12 +97,25 @@ WEIGHTED_ENVELOPE = (
 )
 
 ACI_ENVELOPE = (
-    "adaptive conformal inference (mode 2): the stated guarantee is a long-run regret bound on the "
-    "average miscoverage over the whole sequence, not a coverage statement about any one decision",
-    "no per-round and no finite-sample claim: the bound exceeds 1.0 for the first ten rounds and "
-    "with a fixed step size tends to gamma / (2(1-2*alpha)) instead of to zero",
-    "stated for nonconformity scores in [0,1] and alpha in (0,0.5); the threshold is clipped to "
-    "[0,1] every round, and a certificate built on it carries this line, not the split bound",
+    "adaptive conformal inference (mode 2): what this recursion buys is a threshold that tracks the "
+    "target error rate while its iterate stays inside (0,1). It is not a bound on the average "
+    "miscoverage, and aci_regret_bound is not this mode's guarantee -- the inequality it used to "
+    "state, |mean err - alpha| <= aci_regret_bound(T, alpha, gamma), is withdrawn below",
+    "no per-round and no finite-sample statement, and no long-run regret statement either: on inputs "
+    "_checked_round_scores accepts, at alpha=gamma=0.05 an all-1.0 sequence (this module's own "
+    "SCORE_CEILING, the value its vacuous arm returns) converges to a long-run error rate of "
+    "0.500250 against a bound of 0.028778; an alternating 0.99/0.01 ordering reaches 0.166740 "
+    "against 0.027978; a constant 0.99 sequence reaches 0.167100; an all-0.0 sequence reaches "
+    "0.000000 against the same formula",
+    "the mechanism, stated because a withdrawal without one is a retraction and not a fix: the step "
+    "is clipped to [0,1] every round and a clip DISCARDS the update, so when the target rate is not "
+    "reachable on the score sequence's own atoms the recursion settles into a cycle instead of a "
+    "fixed point -- period 2 at the ceiling, which is exactly the 1/2 above. Over 400 constructed "
+    "sequences (seed 20261008, T=2000) no violation fired without a clip (0 of 400), while 112 of "
+    "400 clipped sequences still held: the clip is necessary, not sufficient, and it is observable "
+    "in the trace this function returns as step.lam in (0.0, 1.0)",
+    "stated for nonconformity scores in [0,1] and alpha in (0,0.5); a certificate built on this "
+    "threshold carries this line and the trace check, not the split bound",
 )
 
 #: The test point's own weight in the mode-1 correction. Read this as the EXCHANGEABLE case's
@@ -317,10 +336,17 @@ def aci_threshold(scores, alpha, gamma, lam0=0.5) -> Iterator:
     Every argument is validated BEFORE the iterator is returned, because a usage error raised from
     inside a generator surfaces at the consumer's first `next()`, far from the call that caused it.
 
-    What this is NOT: it carries no finite-sample correction and returns no vacuity flag, because
-    mode 2's guarantee is `aci_regret_bound` on the average over the whole sequence. A caller who
-    wants a per-decision bound needs `split_quantile` or `weighted_quantile` and pays their
-    assumptions instead; a certificate built on this threshold must carry `ACI_ENVELOPE`.
+    What this is NOT: it carries no finite-sample correction and returns no vacuity flag, and it does
+    not come with the regret statement `aci_regret_bound` names either -- that sentence used to be
+    published as this mode's guarantee and is withdrawn, because it is violated by an all-1.0
+    sequence (long-run rate 0.500250 against 0.028778 at alpha=gamma=0.05, T=20000) and by an
+    alternating 0.99/0.01 ordering (0.166740 against 0.027978 at T=100000), both of which
+    `_checked_round_scores` accepts. Nothing in this module can refuse them: whether the recursion
+    stays in the interior where it tracks its target is a property of the realised TRAJECTORY, not of
+    the input vector, so the check belongs to the caller and is cheap -- `any(step.lam in (0.0, 1.0)
+    for step in steps)` names the rounds whose update was discarded. A caller who wants a
+    per-decision bound needs `split_quantile` or `weighted_quantile` and pays their assumptions
+    instead; a certificate built on this threshold must carry `ACI_ENVELOPE`.
     """
     values = _checked_round_scores(scores)
     level = _alpha_check(alpha, 0.0, 0.5, "alpha",
@@ -341,19 +367,37 @@ def _walk(values: list, alpha: float, gamma: float, lam: float) -> Iterator:
 
 
 def aci_regret_bound(rounds, alpha, gamma) -> float:
-    """The stated long-run regret bound on the average miscoverage rate: 1/(gamma*T) + gamma/(2(1-2a)).
+    """The quoted ACI regret expression, 1/(gamma*T) + gamma/(2(1-2*alpha)) -- a formula, NOT a promise.
 
-    Both terms are the point. The first is the price of a short sequence and the second the price of
-    a coarse step, so the expression is a trade-off and NOT a width that shrinks to zero: at T=1 and
-    T=10 it exceeds 1.0, which is the same thing as saying it forbids nothing, and with gamma fixed
-    it tends to `gamma / (2(1-2*alpha))` rather than to 0. Measured on this formula at
-    alpha=0.05, gamma=0.05: the bound first comes under 0.10 at round 277 -- the drift mode's own
-    admission price, which is why callers get the number instead of a rounded impression of it.
+    WHAT IT IS NOT: it is not this module's guarantee, and the sentence that said it was has been
+    withdrawn. The published inequality |mean err - alpha| <= this(T, alpha, gamma) is violated by
+    inputs `aci_threshold` accepts, measured on the shipped recursion: all-1.0 scores give a
+    long-run rate of 0.500250 against 0.028778 (T=20000, alpha=gamma=0.05), an alternating
+    0.99/0.01 ordering 0.166740 against 0.027978 (T=100000), a constant 0.99 sequence 0.167100, and
+    an all-0.0 sequence 0.000000 against 0.028778. `tests/test_drift.py` pins each class.
 
-    A quotation of the ACI analysis' bound, not a derivation of it (see tests/test_drift.py's
-    docstring for what the suite cannot prove). `rounds` is a count of ROUNDS, and a round here is
-    one decision; the case-versus-row rule that says three repeats are one observation lives in
-    `case_count.py`, and a caller who feeds this T rows is overstating the sequence length.
+    SOURCE RELIED ON, and its limits stated rather than assumed away: the expression is quoted from
+    the adaptive-conformal-inference analysis of Gibbs and Candes (NeurIPS 2021, "Adaptive Conformal
+    Inference Under Distribution Shift"), whose iterate is the nominal MISCOVERAGE LEVEL projected
+    onto [0,1] and whose abstract claims the target error frequency "irrespective of the true data
+    generating process". This module iterates a THRESHOLD clamped by min/max, which is a different
+    recursion -- see the sign note below -- and the literal theorem statement could not be extracted
+    from a reachable copy in the session that fixed this, so no claim here rests on it: the
+    withdrawal rests on the measurements above, which are of this code.
+
+    Both terms are still the point of the expression. The first is the price of a short sequence and
+    the second the price of a coarse step, so it is a trade-off and NOT a width that shrinks to zero:
+    with gamma fixed it tends to `gamma / (2(1-2*alpha))` rather than to 0, and it is monotone
+    increasing in alpha at fixed gamma. Its vacuity is a property of the (alpha, gamma) PAIR and must
+    not be stated without naming gamma: at alpha=0.05, gamma=0.05 it exceeds 1.0 through round 10
+    (20.028 at T=1 down to 2.028 at T=10) and first comes under 0.10 at round 277, but at gamma
+    0.107 and above it is already under 1.0 by round 10 (measured: 1.00229 at gamma=0.106, 0.99402 at
+    0.107), and this function admits gamma anywhere in the open interval (0,1).
+
+    A quotation, not a derivation of it (see tests/test_drift.py's docstring for what the suite
+    cannot prove). `rounds` is a count of ROUNDS, and a round here is one decision; the
+    case-versus-row rule that says three repeats are one observation lives in `case_count.py`, and a
+    caller who feeds this T rows is overstating the sequence length.
     """
     if isinstance(rounds, bool) or not isinstance(rounds, (int, float)):
         raise ValueError("rounds must be a positive whole number of rounds, got %r" % (rounds,))

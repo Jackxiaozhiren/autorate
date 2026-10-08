@@ -3,10 +3,13 @@
 What this suite CANNOT detect, stated up front because several of its claims are prose claims about
 guarantees and a test cannot prove a guarantee:
 
-* it cannot show that ACI's regret bound is *true*. The bound is a theorem this module quotes, not
-  derives. What is checked here is its FORM (a long-run average, a term that does not vanish, an
-  alpha domain) and that the implementation does not contradict it on sequences the analysis
-  covers -- numeric agreement is evidence, not a proof.
+* it cannot show that ACI's regret expression is *true of this recursion*. It is not: the inequality
+  `|mean err - alpha| <= aci_regret_bound(T, alpha, gamma)` was published as mode 2's guarantee and
+  has been withdrawn because accepted sequences violate it -- the all-ceiling, adversarial-ordering,
+  constant-interior and all-floor classes are each pinned by a test here, on deterministic literal
+  constructions. What the suite can and does check is the FORM of the expression, the classes it
+  holds on, the classes it fails on, and that the envelope text still cites the measured failure
+  rather than the formula's promise. Proving the quoted theorem belongs to nobody in this repository.
 * it cannot detect a certificate whose producer declared a drift variable that does not exist in
   the data. `drift.py` reads a declaration; it has no record set to check it against, so a sincere
   lie ("variable: language" over a batch with no language slice) passes `marginal_only` and lands in
@@ -15,7 +18,10 @@ guarantees and a test cannot prove a guarantee:
 * it cannot see whether the caller-declared densities in `weighted_quantile` are the right ones.
   Every weighted-mode refusal below is about a *missing* or *malformed* declaration; a plausible
   wrong one moves the quantile and nothing here can tell that from a regime shift, which is exactly
-  why the weighted envelope names the declaration as an assumption instead of a measurement.
+  why the weighted envelope names the declaration as an assumption, not a measurement. What it now
+  also does NOT hide: with the declaration EXACT (calibration ~ U[0,1], target density 10*s^9), the
+  estimator still under-covers, because `+1` is the exchangeable correction and not the weighted one
+  -- that is a measured arm of this suite, not a prose claim.
 
 The one real artefact used is `data/cert_laya.json`, a committed certificate produced by the real
 certifier over the committed archive: it is the honest subject for the flag test, because nothing in
@@ -368,6 +374,149 @@ def test_the_vacuous_arm_is_the_ceiling_and_not_an_invented_value():
 
 def _steps(scores, alpha=0.05, gamma=0.05, **kwargs):
     return list(aci_threshold(scores, alpha, gamma, **kwargs))
+
+
+def _long_run_rate(scores, alpha=0.05, gamma=0.05):
+    """Average error over the whole sequence, streamed so a long T costs no memory."""
+    total = 0
+    count = 0
+    for step in aci_threshold(scores, alpha, gamma):
+        total += step.err
+        count += 1
+    return total / float(count)
+
+
+def test_the_published_regret_inequality_fails_on_every_class_the_validator_accepts():
+    """BLOCKER-2: the withdrawn sentence, falsified class by class on the shipped recursion.
+
+    Every sequence here is DETERMINISTIC (a literal construction, no RNG), so the deviation and the
+    bound are exact and re-runnable. All four are accepted by `_checked_round_scores`, which is the
+    point: the fix is the withdrawal, not a refusal, because the condition that separates them from a
+    tracking run is a property of the realised trajectory and no predicate on the input vector can
+    see it. The two controls at the end are what stop this test from being a blanket "nothing holds":
+    they are the fixture classes the old suite used, and there the inequality does hold.
+    """
+    alpha, gamma = 0.05, 0.05
+    violations = [
+        ("every score == SCORE_CEILING", [1.0] * 20000, 0.50025),
+        ("adversarial period-2 0.99/0.01", ([0.99, 0.01] * 50000)[:100000], 0.16674),
+        ("constant 0.99, below the ceiling", [0.99] * 20000, 0.16710),
+        ("every score == the floor 0.0", [0.0] * 20000, 0.0),
+    ]
+    for name, scores, want in violations:
+        realised = _long_run_rate(scores, alpha, gamma)
+        bound = aci_regret_bound(len(scores), alpha, gamma)
+        deviation = abs(realised - alpha)
+        assert deviation > bound, (name, realised, deviation, bound)
+        assert realised == pytest.approx(want, abs=1e-4), (name, realised, want)
+    # and none of them is refused: the module accepted all four before and accepts them now
+    for _name, scores, _want in violations:
+        assert len(_steps(scores, alpha, gamma)) == len(scores)
+    for name, scores in (("grid control", _grid(2000)), ("constant 0.95 control", [0.95] * 2000)):
+        realised = _long_run_rate(scores, alpha, gamma)
+        assert abs(realised - alpha) <= aci_regret_bound(len(scores), alpha, gamma), (
+            name, realised)
+
+
+def test_the_withdrawn_text_cannot_be_re_granted_and_cites_the_measured_rate():
+    """The envelope is checked against the arithmetic, the same coupling as mode 1's guard.
+
+    `ACI_ENVELOPE` must carry a figure for the all-ceiling long-run rate, and that figure must still
+    match what the shipped recursion does: re-granting the guarantee, or letting the citation go
+    stale because the recursion changed, both redden here. No word list is involved.
+    """
+    realised = _long_run_rate([1.0] * 20000, 0.05, 0.05)
+    cited = [float(t) for t in re.findall(r"\d\.\d{3,6}", " ".join(ACI_ENVELOPE))]
+    assert any(abs(c - realised) < 5e-4 for c in cited), (
+        "ACI_ENVELOPE must carry the measured all-ceiling long-run rate (%.6f), not a claim about "
+        "it: %r" % (realised, ACI_ENVELOPE))
+    # the inequality's own form must not be published as what mode 2 buys
+    joined = " ".join(ACI_ENVELOPE).lower()
+    assert "withdraw" in joined, ACI_ENVELOPE
+    # and the trace check the withdrawal points the caller at is real: clip is necessary for a
+    # violation on the two sides of the boundary, so naming it must not become a dead sentence
+    ceiling = _steps([1.0] * 200, 0.05, 0.05)
+    assert any(step.lam in (0.0, 1.0) for step in ceiling), "the ceiling cycle never touched a clip"
+    tracking = _steps(_grid(2000), 0.05, 0.05)
+    assert not any(step.lam in (0.0, 1.0) for step in tracking), (
+        "the control run now touches a clip, so the necessary-condition sentence has to be re-read")
+
+
+def test_the_regret_bound_says_what_the_envelope_claims_about_alpha_and_gamma():
+    """MINOR-1's correction pinned: the vacuity is a property of the (alpha, gamma) pair.
+
+    The withdrawn text said the bound "exceeds 1.0 for the first ten rounds" without naming gamma,
+    which is false for gamma >= 0.107 -- measured here on either side of the flip so the sentence in
+    `aci_regret_bound` cannot quietly become a universal again.
+    """
+    assert aci_regret_bound(10, 0.05, 0.106) > 1.0, aci_regret_bound(10, 0.05, 0.106)
+    assert aci_regret_bound(10, 0.05, 0.107) < 1.0, aci_regret_bound(10, 0.05, 0.107)
+    assert aci_regret_bound(1, 0.05, 0.05) == pytest.approx(20.0278, abs=1e-3)
+    assert aci_regret_bound(10, 0.05, 0.05) == pytest.approx(2.0278, abs=1e-3)
+    for gamma in (0.107, 0.2, 0.5, 0.99):
+        assert aci_regret_bound(10, 0.05, gamma) < 1.0, gamma
+    # monotone in alpha at fixed gamma, so a larger target buys a looser statement
+    alphas = (0.01, 0.05, 0.25, 0.49)
+    bounds = [aci_regret_bound(100, a, 0.05) for a in alphas]
+    assert bounds == sorted(bounds), (alphas, bounds)
+
+
+def test_a_clip_is_necessary_for_a_violation_over_the_swept_sequence_classes():
+    """The mechanism claim in `ACI_ENVELOPE`, re-run at the scale that claim cites.
+
+    Provenance: seed 20261008, 400 sequences, T=2000, eight constructed classes (uniform, two
+    Gaussians clipped to the range, two-point ties, the two degenerate constants, an alternating
+    pair, the module's own grid), alpha=gamma=0.05. Streamed, never materialised. The claim is
+    deliberately one-sided and stays that way: no violation WITHOUT a clip fired, while some clipped
+    sequences still hold. A theorem is not available here -- this is 400 measurements of this
+    recursion -- so the envelope words it as necessary-not-sufficient and this test re-derives
+    exactly that.
+    """
+    seed, sequences, rounds, alpha, gamma = 20261008, 400, 2000, 0.05, 0.05
+    rng = random.Random(seed)
+    bound = aci_regret_bound(rounds, alpha, gamma)
+    assert bound == pytest.approx(0.037778, abs=1e-6)
+    violated_unclipped = 0
+    held_clipped = 0
+    violations = 0
+    for k in range(sequences):
+        kind = k % 8
+        if kind == 0:
+            scores = [rng.random() for _ in range(rounds)]
+        elif kind == 1:
+            scores = [min(1.0, max(0.0, rng.gauss(0.9, 0.05))) for _ in range(rounds)]
+        elif kind == 2:
+            scores = [min(1.0, max(0.0, rng.gauss(0.5, 0.2))) for _ in range(rounds)]
+        elif kind == 3:
+            scores = [rng.choice((0.0, 1.0)) for _ in range(rounds)]
+        elif kind == 4:
+            scores = [rng.choice((0.99, 0.01)) for _ in range(rounds)]
+        elif kind == 5:
+            scores = [1.0] * rounds
+        elif kind == 6:
+            scores = [0.0] * rounds
+        else:
+            scores = _grid(rounds)
+        total = 0
+        clipped = False
+        for step in aci_threshold(scores, alpha, gamma):
+            total += step.err
+            if step.lam in (0.0, 1.0):
+                clipped = True
+        violated = abs(total / float(rounds) - alpha) > bound
+        if violated:
+            violations += 1
+        if violated and not clipped:
+            violated_unclipped += 1
+        if clipped and not violated:
+            held_clipped += 1
+    assert violated_unclipped == 0, (
+        "%d sequences violated with no round sitting on a clip: the mechanism sentence in "
+        "ACI_ENVELOPE is now wrong, and so is the withdrawal's explanation of it"
+        % violated_unclipped)
+    assert violations > 0, "the sweep found no violation at all: the classes stopped discriminating"
+    assert held_clipped > 0, "every clipped sequence violated: 'necessary, not sufficient' is wrong"
+    assert any("400" in line and "0 of 400" in line for line in ACI_ENVELOPE), ACI_ENVELOPE
 
 
 def test_aci_yields_the_threshold_it_used_before_it_saw_the_score():
