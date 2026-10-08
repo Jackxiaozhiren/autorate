@@ -8,11 +8,14 @@ differs is the SUBJECT (`score` records, not `choice`) and the FAMILY (the modal
 including the one ruling R-92a exists for: the second positional of `interval_set` is the calibration
 quantile, and a gate that passed `alpha` there would certify nothing while printing a coverage number.
 
-The record factory is LOCAL to this file, which is the convention that actually holds in this suite
-(`tests/test_certify_choice.py` builds its own `_records`, `tests/test_certify_threshold.py` builds its
-own `_rec`). Its keyword names are the ones Plan B2 Task 3 documents for
-`tests/_records.build_ordinal`, so when that module lands the call sites move without being rewritten;
-it is not imported here because it does not exist yet.
+The record factory used to be LOCAL to this file, which was the convention that held in this suite
+before Plan B2 Task 3 landed (`tests/test_certify_choice.py` builds its own `_records`,
+`tests/test_certify_threshold.py` builds its own `_rec`). Task 3 carried out ruling R-69 and moved
+`build_ordinal`, `_ballot` and `K` into the shared `tests/_records.py` unchanged, so this file imports
+them; the keyword names are identical, and the 33 rows below re-ran green with the same pinned numbers
+on both sides of the move. What stays file-local is anything shaped for one assertion only:
+`_disagreeing_cases` builds a shape `build_ordinal` cannot emit, deliberately, because a case's repeats
+are byte-identical there -- that is what the committed archive looks like.
 """
 import dataclasses
 import json
@@ -20,6 +23,7 @@ import math
 import random
 
 import pytest
+from _records import K, build_ordinal
 
 from autorate.case_count import KINDS, case_key, count_outcome
 from autorate.certificate import N_CLAIMS, Certificate, Reason
@@ -44,62 +48,6 @@ from autorate.tails import bound_width, clopper_pearson_upper
 ALPHA = 0.05
 BETA = 0.05
 DELTA = 0.05
-K = 5
-
-
-def _ballot(rng, centre, k, temp, jitter):
-    """One ordinal ballot: exponential decay away from `centre`, jittered so scores are not tied.
-
-    The jitter is not decoration. With `jitter=0` every ballot of a given shape is the same ballot,
-    the calibration scores collapse onto k distinct values, and the quantile stops being a sample
-    statistic at all -- the coverage row of this file would then be asserting the arithmetic of one
-    fixed vector. Ruling R-78 puts tie-breaking in the quantile, so the scores have to be distinct
-    for a gate's threshold to mean anything.
-    """
-    w = [math.exp(-temp * abs(j - centre)) * (1.0 + jitter * (rng.random() - 0.5)) for j in range(k)]
-    s = sum(w)
-    p = [round(x / s, 4) for x in w]
-    p[centre] = round(p[centre] + (1.0 - sum(p)), 4)
-    return tuple(p)
-
-
-def build_ordinal(n=1200, seed=1, k=K, shift=0.0, error_rate=0.0, temp=1.4, jitter=0.8, repeats=3,
-                  backend="synthetic-ordinal", unlabelled=0):
-    """`n` labelled `score` records over ceil(n/repeats) cases. Synthetic, with known answers.
-
-    `shift` is the probability that the reported centre sits one level BELOW the gold level -- a model
-    that under-calls severity, which is the failure spec §6.2 is about. `error_rate` overrides it with
-    a random displacement of one or two levels in either direction, and is the knob that makes the
-    peak wrong at all: a generator that is never wrong cannot be shown refusing an error, which is the
-    defect ledger D12 records for the choice gate's first generator.
-
-    `repeats` is what makes the certification unit visible: a case's repeats carry byte-identical
-    probabilities and gold, as the committed archive does (laya: three records per case), and only the
-    draw `u` differs -- which is also the inertness probe, since the chain family may not read `u`.
-    """
-    rng = random.Random(seed)
-    options = tuple(str(j) for j in range(k))
-    out = []
-    case = 0
-    while len(out) < n:
-        cid = "case%04d" % case
-        case += 1
-        gold = rng.randrange(k)
-        centre = gold
-        if error_rate and rng.random() < error_rate:
-            centre = gold + rng.choice([-2, -1, 1, 2])
-        elif rng.random() < shift:
-            centre = gold - 1
-        centre = max(0, min(k - 1, centre))
-        probs = _ballot(rng, centre, k, temp, jitter)
-        for rep in range(repeats):
-            if len(out) >= n:
-                break
-            out.append(Record(id="%s.r%d" % (cid, rep), qtype="score", backend=backend, repeat=rep,
-                              options=options, probs=probs,
-                              gold=None if len(out) < unlabelled else options[gold],
-                              predicted=options[centre], case_id=cid, seed=seed, u=rng.random()))
-    return out
 
 
 def _disagreeing_cases(count):
@@ -177,7 +125,9 @@ def test_the_split_is_the_choice_gate_s_rule_with_a_different_subject():
     and dropping the `sorted()` before the seeded shuffle -- left the pin green; that was measured,
     and it is why the R-123 deferral of the `split_cal` merge to B3 Task 2 could not rest on this row.
     `repeats=3` over a REVERSED list makes each drift a different partition: 1200 records over 400
-    cases separates the two balance rules by 200 units of `half`, and reversal makes `list(groups)`
+    cases puts the two balance rules at `half` = 600 against `half` = 200 -- 400 units apart, and the
+    resulting halves are (600, 600) against (201, 999), so 399 evaluation records change sides -- and
+    reversal makes `list(groups)`
     a permutation of `sorted(groups)` rather than a copy of it. The pin stays green against the
     pristine copy -- the mirror really is correct; a pin that could not be satisfied by any two
     agreeing implementations would only prove the assertion is a tautology. GREEN-ON-ARRIVAL
@@ -419,8 +369,11 @@ def test_the_bounds_use_the_case_denominator_and_not_the_row_count():
     assert len(outcomes_by_case) > 0, "the arm's cases never reached the evaluation half"
     disagreeing = [cid for cid, kinds in outcomes_by_case.items()
                    if ("auto" in kinds and kinds - {"auto"})]
-    assert disagreeing, ("no case's repeats disagree: the arm is inert and the two rates below "
-                         "coincide by construction again")
+    assert disagreeing, ("no case's repeats disagree: the arm is inert on this population, so the "
+                         "two rates below are no longer two derivations of one fact (a drift that "
+                         "leaves every case unanimous still parts the denominators on cardinality "
+                         "alone -- measured 0.466667 against 0.457944 under the temp=1.0 shift -- and "
+                         "it is the equality two lines below, not this message, that catches it)")
     # Both directions, so the row names the unit it protects instead of trusting the fixture.
     assert arm_cert.autorate == arm_obs["automated_cases"] / arm_obs["n_cases"], arm_cert.autorate
     assert arm_cert.autorate != arm_obs["automated"] / len(arm_ev), (
@@ -957,11 +910,14 @@ def test_passing_alpha_where_qhat_belongs_automates_everything_and_no_coverage_s
     # prose: re-wire the production call the way R-92a found it (`interval_set` handed `alpha` where
     # the quantile belongs -- the monkeypatch emulates the plant so the assertion runs against
     # shipped code) and read both budgets off the result. GREEN-ON-ARRIVAL by construction -- the
-    # plant is emulated inside this row, so what reddens it is a drift in what the witness claims:
-    # an error budget that stops gating on the case unit would let the tight arm publish, and a
-    # gate that checks the sets against the threshold used (the fix R-92a asks nobody for here)
-    # would refuse the loose one. Both arms reproduce against the real P-F1 production plant,
-    # which reddens this row outright -- see the fix report's lane.
+    # plant is emulated inside this row, so nothing here gates on the case unit and the two arms are
+    # witnesses to what the certificate prints, not falsifiers of a denominator: on this row's
+    # `repeats=1` population the case unit and the record unit ARE the same numbers (automated 600,
+    # n_eval 600), so the shipped case-unit->record-unit drift P-F1 leaves this row green, as does
+    # planting the budget to gate on records. The drift that reddens it is P-F4 itself -- the
+    # `qhat`-frozen threshold -- and it reddens at the row's own `assert (600 == 0)` above, before
+    # this block is ever reached, which is why the arms are reproduced off a standalone probe against
+    # the shipped module rather than under a live plant (task-2 fix review, MINOR-1/MINOR-2).
     import autorate.certify_score as score_gate
 
     real_interval_set = score_gate.interval_set
