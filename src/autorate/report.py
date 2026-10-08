@@ -28,6 +28,17 @@ SEED = 7
 # claim this corpus cannot make at all.
 BACKENDS = ("laya", "jev")
 
+# G1's published certificates: one artefact per held-out MASSIVE language, never pooled, because one
+# gate over three corpora would assert exchangeability between a 0.4617-accuracy and a 0.0982-accuracy
+# population. `verify` re-derives them and `report` publishes them, so the paths live once here rather
+# than in a list inside each caller -- two lists that can disagree about what was certified is the
+# defect this table exists to prevent, not a formatting choice.
+MASSIVE_CERTIFICATES = {
+    "massive/de": ("data/records_massive_de.jsonl", "data/cert_massive_de_laya.json"),
+    "massive/en": ("data/records_massive_en.jsonl", "data/cert_massive_en_laya.json"),
+    "massive/sw": ("data/records_massive_sw.jsonl", "data/cert_massive_sw_laya.json"),
+}
+
 
 def load_records(path: Path) -> dict:
     by_backend: dict = {}
@@ -42,6 +53,51 @@ def load_records(path: Path) -> dict:
 def certify_all(records: dict) -> dict:
     return {b: certify_choice(rs, alpha=ALPHA, beta=BETA, seed=SEED)
             for b, rs in records.items()}
+
+
+def massive_certificates() -> dict:
+    """`{label: (records, stored certificate)}` for every published MASSIVE artefact, read from the tree.
+
+    One owner for the read path, so the gate's re-derivation below and anything that quotes these
+    artefacts cannot end up opening two different sets of files. The read is strict: a missing artefact
+    raises, because a certificate the tool cannot open is not the same statement as a certificate that
+    agrees with nothing.
+    """
+    out = {}
+    for label, (records_path, cert_path) in sorted(MASSIVE_CERTIFICATES.items()):
+        stored = read_certificate(Path(cert_path))
+        out[label] = (load_records(Path(records_path)).get(stored.backend, []), stored)
+    return out
+
+
+def rederive_massive(expect, fields) -> None:
+    """Re-derive every published MASSIVE certificate from its committed records, field by field.
+
+    This is the arm `cmd_verify` already runs over the two feishu certificates, widened to G1's three
+    languages: read the artefact, run `certify_choice` over the rows that artefact was made from at the
+    rubric stored *inside* it, and hand every comparison to `verify`'s own `expect`, so a drift leaves as
+    exit 4 naming `cert massive/en.<field>` instead of as a complaint about a document.
+
+    Two differences from the feishu arm, both narrower rather than looser. `method` is taken from the
+    certificate instead of left at `certify_choice`'s default -- a `lac` artefact re-derived under `aps`
+    would be an accident waiting for the default to move, and the feishu arm only gets away with the
+    default because both of its artefacts happen to store it. `seed` comes from `meta.seed`, as it does
+    there. Nothing in this function chooses a rubric: the rubric is whatever the published artefact says
+    it was, so the gate cannot re-derive a certificate into existence by picking better numbers (R-143).
+
+    Rows are selected by the backend the certificate itself declares, which is the filter
+    `certify --backend laya` applied when the artefact was written, so the gate and the producer read the
+    same population. An empty selection is not special-cased: `certify_choice([])` returns a
+    `no_gold_labels` refusal, so a records file that stopped carrying that backend shows up as drift on
+    `reason`, `n_cal` and `n_eval` rather than as an exception.
+    """
+    for label, (records, stored) in massive_certificates().items():
+        fresh = certify_choice(records, alpha=stored.alpha, beta=stored.beta,
+                               delta=stored.delta, seed=stored.meta.get("seed", SEED),
+                               method=stored.method)
+        for field in fields:
+            expect("cert %s.%s" % (label, field), getattr(fresh, field), getattr(stored, field))
+        expect("cert %s.summary" % label, fresh.summary(), stored.summary())
 
 
 def _first_clause(gap: str) -> str:

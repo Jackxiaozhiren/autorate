@@ -290,3 +290,110 @@ def test_the_tool_exposes_its_claims_as_a_module_and_not_only_as_a_stdout_table(
     assert OWNER_SENTENCE == split_owner()
     assert "tools/split_records.py" in OWNER_SENTENCE and "--in" not in OWNER_SENTENCE, \
         OWNER_SENTENCE
+
+
+# ------------------------------------------------- the certificates the committed rows produce
+def _drift_labels(report_module, fields, table=None):
+    """Run the re-derivation arm and collect only the labels it says disagree.
+
+    `verify` owns the counting and the exit code; this helper is the same call with a sink that keeps
+    the failures, because the thing being asserted here is *which* label fires, not how many checks ran.
+    """
+    if table is not None:
+        report_module.MASSIVE_CERTIFICATES = table
+    seen = []
+    report_module.rederive_massive(lambda label, actual, published:
+                                   None if actual == published else seen.append(label), fields)
+    return seen
+
+
+def test_the_committed_certificates_rederive_from_the_committed_records(monkeypatch):
+    """G1's three artefacts must be a function of the bytes committed beside them, field by field.
+
+    Counting and reporting those comparisons is `cmd_verify`'s job, and `cli.py` is not this lane's file
+    (see the report's `OUT-OF-FENCE` note), so the arm is run here directly instead of left unguarded:
+    this row is the proof that `data/cert_massive_*.json` are what the tool writes and not hand-authored
+    numbers. The field list is read from `cli.py` rather than retyped, so a field the gate stops
+    comparing has to leave this row's coverage in the open rather than in a comment.
+    """
+    from autorate import report as report_module
+    from autorate.cli import CERT_COMPARE_FIELDS
+    from autorate.report import MASSIVE_CERTIFICATES, massive_certificates
+
+    monkeypatch.chdir(REPO)
+    assert _drift_labels(report_module, CERT_COMPARE_FIELDS) == [], "published drift"
+    published = massive_certificates()
+    assert sorted(published) == ["massive/de", "massive/en", "massive/sw"], sorted(published)
+    assert sorted(MASSIVE_CERTIFICATES) == sorted(published), "the table and the artefacts disagree"
+    for label, (records, cert) in published.items():
+        # A selection that found no rows would re-derive a `no_gold_labels` refusal and so would NOT
+        # match quietly above -- but the population is pinned anyway, because "the arm compared nothing"
+        # and "the arm compared the right 2,974 rows" look identical in a green run.
+        assert len(records) == 2974, (label, len(records))
+        assert cert.n_cal == cert.n_eval == 1487, (label, cert.n_cal, cert.n_eval)
+        assert cert.backend == "laya" and cert.meta["n_eval_cases"] == 1487, label
+        # The verdict is G1's result, so it is asserted as stored, not paraphrased: three refusals.
+        assert cert.feasible is False, (label, cert.feasible)
+        assert cert.reason == "empty_feasible_set", (label, cert.reason)
+        # ...and the budgets it refuses at are the pre-registered ones. A re-certification at a looser
+        # beta would still satisfy every line above EXCEPT these, which is why they are here (R-143).
+        assert (cert.alpha, cert.beta, cert.delta) == (0.05, 0.05, 0.05), label
+        assert cert.method == "aps" and cert.meta["seed"] == 7, label
+
+
+def test_the_rederivation_arm_bites_on_a_tampered_published_digit(tmp_path, monkeypatch):
+    """Two plants, because a re-derivation that cannot fail is a second copy of the artefact.
+
+    The copies live in `tmp_path` and the table is patched to point at them: the committed bytes are
+    hashed before and after the row, so "we proved the guard bites" cannot have been paid for by editing
+    the evidence. This is also the in-tree demonstration that the one line `cmd_verify` still owes would
+    do its job -- the labels below are exactly what that arm would hand to `expect`, and `verify` would
+    print them to stderr and exit 4.
+    """
+    import shutil
+
+    from autorate import report as report_module
+    from autorate.cli import CERT_COMPARE_FIELDS
+
+    committed = {p: hashlib.sha256((REPO / "data" / p).read_bytes()).hexdigest()
+                 for p in [f + ".jsonl" for f in ("records_massive_de", "records_massive_en",
+                                                  "records_massive_sw")]
+                 + ["cert_massive_de_laya.json", "cert_massive_en_laya.json",
+                    "cert_massive_sw_laya.json"]}
+    lane = tmp_path / "data"
+    lane.mkdir()
+    table = {}
+    for lang in ("de", "en", "sw"):
+        records = lane / ("records_massive_%s.jsonl" % lang)
+        cert = lane / ("cert_massive_%s_laya.json" % lang)
+        shutil.copy(REPO / "data" / records.name, records)
+        shutil.copy(REPO / "data" / cert.name, cert)
+        table["massive/" + lang] = (str(records), str(cert))
+    monkeypatch.setattr(report_module, "MASSIVE_CERTIFICATES", table)
+    monkeypatch.chdir(tmp_path)
+
+    # 1. the control: the same function over byte-identical copies reports nothing, so any red below is
+    #    the plant and not the plumbing.
+    assert _drift_labels(report_module, CERT_COMPARE_FIELDS, table) == []
+
+    # 2. plant the published Clopper-Pearson bound, one place below the last digit `verify` prints.
+    en = json.loads((lane / "cert_massive_en_laya.json").read_text())
+    bound = en["meta"]["closest_attempt"]["conditional_error_bound"]
+    en["meta"]["closest_attempt"]["conditional_error_bound"] = bound * 1.0001
+    (lane / "cert_massive_en_laya.json").write_text(json.dumps(en))
+    drifts = _drift_labels(report_module, CERT_COMPARE_FIELDS, table)
+    assert drifts == ["cert massive/en.meta"], drifts
+
+    # 3. plant the reason a refusal is published under. Two labels fire, and the second one is the point:
+    #    `summary()` carries the reason as text, so a gate that compared only fields would still catch it
+    #    -- and a gate that compared only the summary would name nothing.
+    de = json.loads((lane / "cert_massive_de_laya.json").read_text())
+    de["reason"] = "no_gold_labels"
+    (lane / "cert_massive_de_laya.json").write_text(json.dumps(de))
+    drifts = _drift_labels(report_module, CERT_COMPARE_FIELDS, table)
+    assert "cert massive/de.reason" in drifts and "cert massive/de.summary" in drifts, drifts
+    assert "cert massive/en.meta" in drifts, "the first plant stopped being visible: a shared sink?"
+
+    # 4. nothing in the repository moved.
+    for path, digest in committed.items():
+        assert hashlib.sha256((REPO / "data" / path).read_bytes()).hexdigest() == digest, path
