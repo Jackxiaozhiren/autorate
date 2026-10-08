@@ -13,7 +13,7 @@ from .inventory import corpus_label, inventory, write_inventory
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
 from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, RECORDS, SEED, build_report,
-                     certify_all, load_records, read_certificate, write_report)
+                     certify_all, load_records, read_certificate, rederive_massive, write_report)
 
 EXIT_CERTIFIED = 0
 EXIT_NOT_CERTIFIABLE = 3
@@ -506,6 +506,12 @@ def cmd_verify(args) -> int:
             expect("cert %s.%s" % (backend, field), getattr(fresh, field),
                    getattr(stored, field))
         expect("cert %s.summary" % backend, fresh.summary(), stored.summary())
+
+    # G1's published artefacts re-derive the same way, from `report.py`'s table, because that is the
+    # file that also prints them -- a second list of artefacts inside the gate could disagree with the
+    # list the document is built from. The field list is handed in rather than copied for the same
+    # reason: `CERT_COMPARE_FIELDS` has one owner, and it is this file.
+    rederive_massive(expect, CERT_COMPARE_FIELDS)
 
     inv, source = _inventory()
     rebuilt = build_report(inv, certify_all(records),

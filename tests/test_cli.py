@@ -43,6 +43,23 @@ def counts(text):
     return int(m.group(1)), int(m.group(2))
 
 
+def stage_published(work):
+    """Copy into `work` every artefact the gate's own tables say is published.
+
+    A scratch checkout built from a hand-kept list of file names goes red on a missing artefact
+    before it ever reaches the refusal the test is about: when G1's three MASSIVE certificates
+    joined the gate, two tests that had been naming four files began to fail on a
+    `FileNotFoundError` for a fifth. The tables in `report.py` are the one owner of what is
+    published, so the fixture reads them instead of remembering them.
+    """
+    from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS
+
+    names = ({RECORDS} | set(CERTS.values())
+             | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair})
+    for rel in sorted(names):
+        shutil.copy(REPO / rel, work / rel)
+
+
 def test_verify_passes_on_the_committed_tree():
     p = run("verify")
     assert p.returncode == 0, p.stdout + p.stderr
@@ -77,8 +94,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # list rather than typed, so a row that quietly disappears changes the expectation too.
     from autorate.cli import CERT_COMPARE_FIELDS
 
-    # two certificates x (each compared field + its summary), then the two published
-    # artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md,
+    # every certificate in the two published tables x (each compared field + its summary), then the
+    # two published artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md,
     # then every MASSIVE figure that `data/massive_provenance.json` owns. The pin rows are
     # counted from the same producer's output, and the ids it covers are pinned separately so
     # a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change. The key
@@ -86,6 +103,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # this expectation before it can shrink the gate.
     from autorate.cli import PIN_DERIVED_KEYS
     from autorate.inventory import corpus_options, massive_pin
+    from autorate.report import CERTS, MASSIVE_CERTIFICATES
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
                    if o["id"].startswith("massive")]
@@ -95,7 +113,13 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     assert "feasible_at_0.10" in PIN_DERIVED_KEYS and "feasible_at_0.25" in PIN_DERIVED_KEYS
     pin_rows = sum(1 for o in pin_options for k in PIN_DERIVED_KEYS if k in o)
     assert pin_rows == 13, pin_rows      # 7 for the pooled row, 6 for per-language (no `n_shards`)
-    expected = 2 * (len(CERT_COMPARE_FIELDS) + 1) + 2 + pin_rows
+    # A published certificate is counted here because its table says it exists, not because a
+    # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
+    # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
+    # `total` 47 against `expected` 95 until the gate grew the arm, which is the defect class
+    # (a published number with no producer) this formula exists to make loud.
+    expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1) + 2
+                + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 
 
@@ -477,9 +501,7 @@ def test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error(tmp_path):
     work = tmp_path / "no_data"
     (work / "data").mkdir(parents=True)
     shutil.copytree(REPO / "docs", work / "docs")
-    shutil.copy(REPO / "data" / "records_feishu.jsonl", work / "data")
-    shutil.copy(REPO / "data" / "cert_laya.json", work / "data")
-    shutil.copy(REPO / "data" / "cert_jev.json", work / "data")
+    stage_published(work)
     r = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     assert "nothing to verify against" in r.stderr, r.stderr
@@ -813,8 +835,8 @@ def test_verify_reds_when_a_transcribed_bound_column_is_wrong(monkeypatch, tmp_p
     work = tmp_path / "checkout"
     (work / "data").mkdir(parents=True)
     shutil.copytree(REPO / "docs", work / "docs")
-    for name in ("records_feishu.jsonl", "cert_laya.json", "cert_jev.json",
-                 "massive_provenance.json", "inventory.md.json"):
+    stage_published(work)
+    for name in ("massive_provenance.json", "inventory.md.json"):
         shutil.copy(REPO / "data" / name, work / "data" / name)
 
     published = json.loads((REPO / "data" / "inventory.md.json").read_text())

@@ -655,3 +655,41 @@ makes widening the field list a deliberate two-file edit and
 
 No published figure in this project changed, and none of the sentences above is a correction of a number:
 the CI failures were real, the local greens were real, and the gap between them was the unstated premise.
+
+## 2026-10-08 — three certificates were published while `verify` re-derived two of them
+
+G1's three MASSIVE certificates (`data/cert_massive_{en,de,sw}_laya.json`) were committed and CI-witnessed
+at `72edd91`, and every published sentence about them was true: each refused at the pre-registered rubric,
+each reproduced digit for digit by a second CLI run, and a probe over the committed records re-derived all
+48 values they carry. What none of that did was make the gate re-derive them. `cmd_verify` had one
+certificate loop, over `CERTS`, and G1's artefacts were not in it -- so this file's own headline claim,
+that `verify` re-derives every published number, was true for two artefacts and untested for three, and the
+denominator it printed (`47 /47` corpus-absent, `82 /82` corpus-present) was the measure of the gap rather
+than of the gate.
+
+The fix is the arm, not the assertion. `report.py` now owns the table (`MASSIVE_CERTIFICATES`: which records
+file each certificate was made from, in the same module that prints them), and `verify` calls
+`rederive_massive(expect, CERT_COMPARE_FIELDS)` beside the loop it already ran. The field list is passed in
+rather than copied because `CERT_COMPARE_FIELDS` has one owner, in `cli.py`; the rubric is read out of each
+artefact rather than chosen by the gate, so a re-derivation cannot certify a refusal into a pass by picking
+better numbers.
+
+Measured after, both rc 0: corpus-absent `re-derived 95 /95 values`, corpus-present `re-derived 130 /130`.
+The gap between the two lanes is still exactly 35 checks -- the 9 upstream `SOURCE.json` digests and the 26
+snapshot keys -- because everything the widening added is corpus-independent, which is what the pin arm was
+already for. `README.md` now quotes 95 and 130; the rows above this one keep the figures they measured, and
+were written to be read as dated.
+
+Two tests had to be completed, and what they proved is worth more than the edit. Both built a scratch
+checkout from a hand-kept list of published file names (`records_feishu.jsonl`, `cert_laya.json`,
+`cert_jev.json`, …). Once the gate read the third table, each died on a `FileNotFoundError` for
+`data/cert_massive_de_laya.json` *before* it could reach the refusal it was asserting -- a usage error and a
+drift, respectively. A fixture that remembers which artefacts exist is a second owner of the publication
+list, and the failure mode of a second owner is exactly this: it goes red on the wrong thing. Both now stage
+through `tests/test_cli.py::stage_published`, which reads `CERTS` and `MASSIVE_CERTIFICATES`, and the
+assertions they carry were not touched.
+
+Disclosed rather than fixed, because it is not this change's to make: with a published certificate absent,
+`verify` surfaces a bare `FileNotFoundError` mapped onto the usage exit code, instead of naming the missing
+artefact. The two feishu certificates have always behaved that way; the arm inherits it. A named refusal
+belongs with the queued work on the gate's error surface, not here.
