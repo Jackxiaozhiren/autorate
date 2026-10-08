@@ -30,6 +30,17 @@ Everything here is a constructed population, labelled as constructed. The real c
 Plan C lane measured (`de`: 0 of 1,487 automated; `sw`: 39 automated, 13 wrong, bound 0.477) are not
 read into these rows: `km` is measured but not yet published, and R-158 says not to read machine paths
 into a committed test. The slice-level real-data row is a named follow-up (obligation #68).
+
+TWO FIXTURES, BECAUSE THE UNIT THEY GUARD DIFFERS. `_family` below emits ONE record per case
+(`repeat=0`, a per-record unique `id`, no `case_id`), so in its 3,960 rows `cases == records` and no
+assertion about which of the two the size floor counts can fail -- plant `len(members)` in place of
+the case set at `certify_choice.py:539` and every row here stays green while the artefact publishes a
+slice's record count as its case count. That inertness is F-1 of the Task 2 review, and it is the
+third time this session a `repeats=1` fixture has made a case/record guard blind. `_case_slice` is the
+disagreeing-repeat arm: a case owns 1-3 records whose `id`, `repeat` and drawn `u` differ, and whose
+ANSWER differs too for the `km` slice, so the floor's unit is contradicted in both directions.
+`tests/_records.py::choice_record` is the builder it goes through, because a fixture shaped by only
+one consumer certifies a fiction (R-69).
 """
 from __future__ import annotations
 
@@ -37,6 +48,7 @@ import random
 
 import pytest
 
+from autorate.case_count import case_key
 from autorate.certificate import N_CLAIMS, Certificate
 from autorate.certify_choice import (MIN_CAL, MIN_CASES_PER_SLICE, MIN_EVAL, GroupsCertificate,
                                      certify_choice, certify_groups)
@@ -44,6 +56,8 @@ from autorate.correction import GROUP_FLOOR_MESSAGE, bonferroni
 from autorate.groups import by_group
 from autorate.records import Record
 from autorate.report import ALPHA, BETA
+
+from _records import choice_record
 
 FAMILIES = (("a", 700, 8.0, 0.0), ("b", 700, 8.0, 0.0), ("c", 700, 8.0, 0.0), ("d", 700, 8.0, 0.0),
             ("e", 700, 8.0, 0.0), ("risky", 150, 8.0, 0.30), ("tiny", 10, 8.0, 0.0),
@@ -75,6 +89,189 @@ def _family(name, n, sharpness=8.0, seed=1, k=4, error_rate=0.0, backend="synthe
                           options=options, probs=tuple(p), gold=gold, predicted=options[peaked],
                           slices={"family": name}, scores={}, seed=seed, u=rng.random(), meta={}))
     return out
+
+
+def _ballot(sharpness: float, peaked: int, k: int) -> tuple:
+    """One probability vector: `sharpness` on `peaked`, mass elsewhere, summing to 1 by construction.
+
+    Same arithmetic as `_family`'s inline ballot, kept local because moving it would re-roll the
+    3,960-row fixture above and every published number that rides on it.
+    """
+    w = [1.0] * k
+    w[peaked] = sharpness
+    tot = sum(w) + k * 0.05
+    p = [round(x / tot, 4) for x in w]
+    p[peaked] = round(p[peaked] + (1.0 - sum(p)), 4)
+    return tuple(p)
+
+
+def _case_slice(value, n_cases, repeats=1, seed=1, wrong_repeats=0, k=4, sharpness=8.0):
+    """`n_cases` independent CASES, each carrying `repeats` records that are not the same row.
+
+    This is the arm `_family` cannot express, and the reason F-1 exists: one-record-per-case fixtures
+    make `cases == records`, so the size floor's unit -- CASES, per `MIN_CASES_PER_SLICE`'s own
+    docstring -- cannot be contradicted by any assertion. Here `case_id` is shared by a case's
+    records while `id`, `repeat` and the drawn `u` differ, so the two counts disagree by a factor of
+    `repeats` and the unit becomes falsifiable.
+
+    `wrong_repeats` is how many of a case's records, counted from the last, put forward a label that
+    is NOT the gold one. With it >= 1 the repeats genuinely disagree about the ANSWER, which is what
+    makes a record-denominated error count and a case-denominated one tell different stories about
+    the same slice. The committed archive does not exercise that: its three repeats per case carry
+    byte-identical ballots (pinned by `tests/test_report_prose.py`), which is why 3/96 == 1/32 there
+    and why a guard built on data of that shape is blind. Even with every repeat correct the two
+    units still split, because a case automates only when EVERY one of its records does
+    (`case_count.count_outcome`): measured on the `zh` slice below, 295 of 300 evaluation RECORDS
+    automate while 95 of its 100 evaluation CASES do -- 0.98333 against the published 0.95.
+
+    Built through `choice_record` (R-69's shared factory), so every validation a corpus row passes a
+    fixture passes too, and `id`/`case_id` are passed by keyword because they are the same shape and
+    can trade places without any assertion noticing.
+    """
+    rng = random.Random(seed)
+    options = tuple("opt%d" % j for j in range(k))
+    out = []
+    for i in range(n_cases):
+        case_id = "%s-%04d" % (value, i)
+        gold = options[i % k]
+        for rep in range(repeats):
+            wrong = wrong_repeats and rep >= repeats - wrong_repeats
+            peaked = (i % k + 1 + rep % (k - 1)) % k if wrong else i % k
+            out.append(choice_record(id="%s.r%d" % (case_id, rep), case_id=case_id, repeat=rep,
+                                     options=options, probs=_ballot(sharpness, peaked, k),
+                                     gold=gold, predicted=options[peaked], u=rng.random(),
+                                     slices={"language": value}))
+    return out
+
+
+@pytest.fixture(scope="module")
+def repeat_records():
+    """540 cases over 1,020 records, so one run holds a slice in each branch of the unit.
+
+    km: 40 cases x 3 records (120), two of the three records per case answering WRONG.
+    zh: 200 cases x 3 records (600), all answering right, the set still varying with each `u`.
+    en: 300 cases x 1 record (300) -- the control where the two units genuinely coincide.
+    """
+    return (_case_slice("km", 40, repeats=3, seed=901, wrong_repeats=2)
+            + _case_slice("zh", 200, repeats=3, seed=902)
+            + _case_slice("en", 300, repeats=1, seed=903))
+
+
+@pytest.fixture(scope="module")
+def repeat_run(repeat_records):
+    return certify_groups(repeat_records, alpha=ALPHA, beta=BETA, delta=0.05,
+                          groups=("language",), seed=7)
+
+
+def test_the_repeats_actually_disagree_so_the_unit_guard_has_a_premise(repeat_records):
+    """The fixture's own premise, forced from the records rather than assumed from the parameters.
+
+    Every case/record guard written this session has been made inert by a fixture that quietly was
+    one-record-per-case (`tests/test_mondrian.py::_family`, B2 Task 2's MAJ-1, the drift lane's F3),
+    so the premise gets its own row: if `_case_slice` ever collapses to `repeats=1` the guards below
+    stop being guards, and this is the row that says so out loud instead of passing.
+    """
+    by_case = {}
+    for r in repeat_records:
+        by_case.setdefault(case_key(r), []).append(r)
+    assert len(repeat_records) == 1020 and len(by_case) == 540, (
+        "1,020 rows are 540 observations; a floor that counted rows would claim 480 extra cases")
+    assert {len(members) for members in by_case.values()} == {1, 3}, "not all cases are one row"
+    km = [members for members in by_case.values() if members[0].slices["language"] == "km"]
+    assert len(km) == 40 and {len(m) for m in km} == {3}
+    within = km[0]
+    assert len({r.id for r in within}) == 3 and len({r.u for r in within}) == 3, (
+        "three records of one case that are not the same row")
+    assert [r.predicted for r in within].count(within[0].gold) < len(within), (
+        "km's repeats must DISAGREE about the answer, or the case is just three copies of a record")
+    assert all(len({r.case_id for r in m}) == 1 for m in by_case.values()), (
+        "a case whose repeats carry different case_ids is two observations, not one")
+
+
+def test_the_size_floor_counts_cases_and_never_the_records_of_those_cases(repeat_run):
+    """F-1's guard, in the direction that REFUSES: `len(members)` for the case count reddens this row.
+
+    Plant `n_cases = len(members)` at `certify_choice.py:539` and km's 120 rows clear the 120-case
+    floor, so `refused_by_size` goes empty, the census publishes 120 where the slice holds 40
+    independent observations, and the slice's refusal becomes `empty_feasible_set` -- a different
+    story about a different unit. Every one of those moves is asserted here in both directions: the
+    published count IS the case count and IS NOT the record count.
+
+    GREEN ON ARRIVAL against the shipped code, which already counts cases
+    (`len({case_key(r) for r in members})`). The row is not evidence that the code was wrong; it is
+    the guard that had been missing, and the plant in its docstring is what makes it one.
+    """
+    census = {row["group"]: row for row in repeat_run.slice_census}
+    assert census["km"]["records"] == 120 and census["km"]["cases"] == 40
+    assert census["km"]["cases"] != census["km"]["records"], (
+        "the fixture has to keep the two units apart or this row guards nothing")
+    assert [row["group"] for row in repeat_run.refused_by_size] == ["km"], (
+        "40 cases is below MIN_CAL + MIN_EVAL = 120; 120 records is not, and the difference is the "
+        "whole finding")
+    row = repeat_run.refused_by_size[0]
+    assert row["n"] == 40 and row["floor"] == MIN_CASES_PER_SLICE
+    assert row["n"] != census["km"]["records"], "the refusal may not publish the record count as n"
+    assert "holds 40 independent cases" in row["reason"], row["reason"]
+    assert "holds 120 independent cases" not in row["reason"], row["reason"]
+    assert repeat_run.per_group["km"].reason == "n_below_min", repeat_run.per_group["km"].reason
+    assert repeat_run.thinnest == "km"
+    summary = repeat_run.summary()
+    assert "km(n=40)" in summary and "km(n=120)" not in summary, summary
+    assert sum(census[name]["cases"] for name in census) == 540
+    assert sum(census[name]["records"] for name in census) == 1020
+    assert sum(census[name]["cases"] for name in census) != sum(
+        census[name]["records"] for name in census), (
+        "a run whose published case census equals its record census has no unit to guard")
+
+
+def test_a_slice_that_clears_the_floor_on_cases_still_publishes_the_case_count(repeat_run):
+    """The other direction: a case-heavy slice certifies, and its `n` is still not its row count.
+
+    zh holds 600 records over 200 cases, so BOTH numbers clear the 120 floor and the refusal row
+    above could not catch a record-denominated census here. It is caught on the published count
+    instead: the artefact states 200, the same census row states 600 as the record count, and the
+    slice's autorate is 95/100 CASES (0.95) where the record reading of the same evaluation half is
+    295/300 (0.98333). A plant that counts rows makes `slice_cases["zh"] == 600` and reddens this row
+    without moving a verdict, which is the half of F-1 the floor branch alone cannot show.
+
+    GREEN ON ARRIVAL; reddened by `certify_choice.py:539` -> `len(members)`, and by any change that
+    makes the certificate's autorate a record rate.
+    """
+    census = {row["group"]: row for row in repeat_run.slice_census}
+    assert census["zh"]["cases"] == 200 and census["zh"]["records"] == 600
+    assert repeat_run.slice_cases["zh"] == 200 != 600
+    zh = repeat_run.per_group["zh"]
+    assert zh.feasible is True, zh.summary()
+    assert zh.meta["automated_cases"] == 95 and zh.meta["n_eval_cases"] == 100
+    assert zh.meta["automated"] == 295 and zh.n_eval == 300
+    assert zh.autorate == pytest.approx(95 / 100), (
+        "the published rate is cases over cases: %r" % zh.autorate)
+    assert zh.autorate != zh.meta["automated"] / zh.n_eval, (
+        "the record reading of this slice is 0.98333; a certificate that published it would be "
+        "naming a unit the bound is not computed on")
+    assert repeat_run.slice_cases["en"] == 300 == census["en"]["records"], (
+        "the one-record-per-case slice is the control: cases and records agree there, and only there")
+    payload = repeat_run.to_dict()
+    assert payload["slice_cases"] == {"en": 300, "km": 40, "zh": 200}, payload["slice_cases"]
+    assert 120 not in payload["slice_cases"].values() and 600 not in payload["slice_cases"].values(), (
+        "a record count published in the case map is the artefact-side half of F-1")
+
+
+def test_the_floor_is_still_the_sum_of_the_two_halves_when_the_units_disagree(repeat_run):
+    """The floor's owner, re-checked on a population where cases and records differ.
+
+    `test_the_floor_and_the_pools_own_minima_have_one_owner` pins `MIN_CASES_PER_SLICE == MIN_CAL +
+    MIN_EVAL` on one-record-per-case data, where a row and a case are the same thing. This row pins
+    the same constant against the census of a repeat-bearing population: km is refused with its own
+    case count, and `cases == records` is asserted to be FALSE for it, so the arithmetic the floor
+    compares (40) is the arithmetic the split actually gets to halve (120 rows over 40 cases).
+    """
+    assert repeat_run.meta["min_cases_per_slice"] == MIN_CAL + MIN_EVAL == 120
+    km = next(row for row in repeat_run.slice_census if row["group"] == "km")
+    assert km["cases"] == 40 < 120 <= km["records"] == 120, (
+        "the slice clears the floor on rows and falls below it on cases: that is the unit")
+    assert GROUP_FLOOR_MESSAGE in repeat_run.refused_by_size[0]["reason"]
+    assert repeat_run.worst_claim["n_groups"] == 3 == repeat_run.n_groups
 
 
 @pytest.fixture(scope="module")
@@ -137,6 +334,10 @@ def test_a_slice_too_small_to_bound_is_refused_by_name_not_averaged_away(cert):
     assert cert.per_group["tiny"].conditional_error_bound is None
     tiny_row = next(row for row in cert.slice_census if row["group"] == "tiny")
     assert tiny_row["cases"] == 10 and tiny_row["records"] == 10
+    # This equality is the FIXTURE's collapse, not a property of the floor: `_family` emits one
+    # record per case, so on this population no assertion can tell the two units apart. The rows that
+    # can are `test_the_size_floor_counts_cases_and_never_the_records_of_those_cases` and its
+    # companion, which use `_case_slice`.
     summary = cert.summary().lower()
     assert "refused" in summary or "not certified" in summary, cert.summary()
     assert not hasattr(cert, "n_min_violations"), (
