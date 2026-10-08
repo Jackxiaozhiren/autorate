@@ -73,10 +73,23 @@ def expect_snapshot_is_current(expect, inv: dict) -> None:
 
 def _records_from(path: Path, backend=None, mode=None) -> list:
     out = []
-    for line in Path(path).read_text().splitlines():
+    for number, line in enumerate(Path(path).read_text().splitlines(), start=1):
         if not line.strip():
             continue
-        r = Record.from_dict(json.loads(line))
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            # Refused here, at the site that decides "a line becomes a record", rather than by
+            # `Record.from_dict`: a list answers its field check by accident (`"id" in [1, 2, 3]` is
+            # legal Python, and the loader round `746f10f` turns it into `MissingRecordField`), but
+            # `null` answers it with `TypeError: argument of type 'NoneType' is not iterable`, which
+            # `cli.main` does not and must not catch -- measured as rc 1 through this very function
+            # before the guard landed. rc 1 is outside the documented 0/2/3/4 contract, and a
+            # hand-edited or truncated export is the operator's input, not ours.
+            raise UsageError("%s line %d is a JSON %s, not a record object: this file is read as one "
+                             "record per line, and a row that is not a mapping has no fields to read "
+                             "(a blank line is skipped; a `null`, a number, a string or a list is a "
+                             "refusal)" % (path, number, type(row).__name__))
+        r = Record.from_dict(row)
         if backend and r.backend != backend:
             continue
         if mode and r.slices.get("mode") != mode:

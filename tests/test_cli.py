@@ -1176,3 +1176,35 @@ def test_a_multi_key_group_name_still_serialises_because_json_has_no_tuple_keys(
     # whether the permission exists.
     assert result.returncode == (0 if doc["feasible"] else 3)
     assert doc["feasible"] is (not doc["any_slice_refused"])
+
+
+def test_a_records_row_that_is_not_an_object_is_a_usage_error_and_never_rc_1(tmp_path):
+    """A `null` row exited rc 1 with a `TypeError`; rc 1 is a defect, not an exit code (R-115).
+
+    Found by sweeping the new `--groups` surface with the shapes a truncated or hand-edited JSONL
+    actually contains -- a blank final line is skipped, but `null`, a bare number, a string and a list
+    are all valid JSON that is not a record. `_records_from` handed each straight to
+    `Record.from_dict`, whose first act is a membership test on the row: a list happens to answer with
+    `MissingRecordField` (the loader round, `746f10f`), and `None` answers
+    `TypeError: argument of type 'NoneType' is not iterable` --
+    a traceback outside the documented 0/2/3/4 contract, on the one input an operator can produce by
+    pressing enter twice in the wrong place.
+    """
+    good = _write(tmp_path / "good.jsonl", _clean("f", 140))
+    for index, (shape, needle) in enumerate((("null", "NoneType"), ("42", "int"),
+                                             ('"a row"', "str"), ("[1, 2, 3]", "list"))):
+        path = tmp_path / ("bad_row_%d.jsonl" % index)
+        path.write_text(good.read_text() + shape + "\n")
+        for extra in ([], ["--groups", "family"]):
+            result = run("certify", str(path), "--out", str(tmp_path / "o.json"), *extra)
+            assert result.returncode == 2, (shape, extra, result.returncode, result.stderr)
+            assert "Traceback" not in result.stderr, (shape, extra, result.stderr)
+            assert "TypeError" not in result.stderr, (shape, extra, result.stderr)
+            assert "UsageError" in result.stderr, (shape, extra, result.stderr)
+            assert needle in result.stderr, (shape, extra, result.stderr)
+            assert "line 141" in result.stderr, (shape, result.stderr)
+        # the same file with the offending line removed still certifies: this is a refusal about the
+        # row, not a poisoning of the run
+        clean = tmp_path / "clean_again.jsonl"
+        clean.write_text(good.read_text())
+        assert run("certify", str(clean), "--out", str(tmp_path / "c.json")).returncode == 0
