@@ -35,6 +35,7 @@ The one real artefact used is `data/cert_laya.json`, a committed certificate pro
 certifier over the committed archive: it is the honest subject for the flag test, because nothing in
 this project has ever conditioned on a declared drift variable.
 """
+import dataclasses
 import inspect
 import json
 import math
@@ -213,22 +214,72 @@ def test_a_marginal_only_certificate_carries_the_flag_and_it_is_the_committed_on
     assert with_drift_envelope(flagged) is flagged, "applying it twice must not double-print it"
 
 
+def _numbered_certificate(**kwargs):
+    """A FEASIBLE certificate that carries headline numbers, labelled as constructed.
+
+    Needed because no committed certificate can: `certificate.py` refuses headline numbers on a
+    refusal -- measured, both `data/cert_laya.json` and `data/cert_jev.json` answer
+    `qhat/autorate/conditional_error_bound/marginal_error_bound/mean_set_size = None` -- so a guard
+    that wants to see a number MOVED has to build the only shape that can hold one. The values obey
+    the shape owner's own grammar (`marginal_error_bound <= conditional_error_bound`, the CI brackets
+    the rate), so this is the owner's rules and not a fixture shaped to pass.
+    """
+    base = dict(feasible=True, reason=None, alpha=0.05, beta=0.05, delta=0.05, method="aps",
+                backend="synthetic", qhat=0.8659, autorate=0.34375, autorate_ci=(0.2201, 0.4889),
+                conditional_error_bound=0.774992335230, marginal_error_bound=0.05,
+                mean_set_size=2.5, n_cal=96, n_eval=96,
+                envelope=("exchangeability within group assumed; no group conditioning applied",),
+                meta={"automated_cases": 33, "seed": 7})
+    base.update(kwargs)
+    return Certificate(**base)
+
+
 def test_the_flag_names_the_condition_it_withdraws_and_moves_no_number():
     """A reader has to learn from the line itself what it voids, and the certificate stays intact.
 
-    An envelope flag that also edited a bound would be the opposite failure: the flag is a
-    statement about the claim, so every measured field has to survive it unchanged.
+    MAJOR-C2's correction. This guard used to iterate six fields on a deliberately REFUSED certificate
+    and assert they were unchanged -- while all six were already `None`, so clearing a bound was
+    invisible and plant M8 left the suite green. Two subjects are used now, and the comparison is over
+    EVERY field rather than a chosen six:
+
+    * `data/cert_laya.json`, the real artefact, which does carry alpha/beta/delta/n_cal/n_eval/reason/
+      method/backend/envelope and a 40-key meta mapping;
+    * `_numbered_certificate()`, which carries the headline numbers a refusal is not allowed to hold,
+      so a cleared or injected bound reddens here rather than passing silently.
     """
-    cert = _cert()
-    flagged = with_drift_envelope(cert)
     text = NOT_CERTIFIABLE_UNDER_DRIFT.lower()
     assert "marginal" in text, NOT_CERTIFIABLE_UNDER_DRIFT
     assert "not_certifiable_under_drift" in text, (
         "the flag names itself, so a report can be grepped for it")
-    for field in ("autorate", "qhat", "conditional_error_bound", "marginal_error_bound", "delta",
-                  "reason"):
-        assert getattr(flagged, field) == getattr(cert, field), field
-    assert len(flagged.envelope) == len(cert.envelope) + 1, flagged.envelope
+    subjects = ((_committed_certificate(), "committed cert_laya.json"),
+                (_numbered_certificate(), "constructed feasible certificate"))
+    for subject, label in subjects:
+        if label.startswith("constructed"):
+            for measured_field in ("qhat", "autorate", "conditional_error_bound",
+                                   "marginal_error_bound", "mean_set_size", "autorate_ci"):
+                assert getattr(subject, measured_field) is not None, (label, measured_field)
+        fields_before = {field.name: getattr(subject, field.name)
+                         for field in dataclasses.fields(subject)}
+        meta_before = dict(subject.meta)
+        flagged = with_drift_envelope(subject)
+        # (1) the envelope is the ONLY field that may differ, and it differs by exactly the flag
+        changed = sorted(field.name for field in dataclasses.fields(subject)
+                         if getattr(flagged, field.name) != getattr(subject, field.name))
+        assert changed == ["envelope"], (label, changed)
+        assert flagged.envelope == subject.envelope + (NOT_CERTIFIABLE_UNDER_DRIFT,), (
+            label, flagged.envelope)
+        # (2) every measured value survives verbatim, including the fields the old list omitted
+        for name, value in fields_before.items():
+            if name == "envelope":
+                continue  # the flag's own slot, already pinned exactly by arm (1)
+            assert getattr(flagged, name) == value, (label, name)
+        # (3) nobody's meta was edited in place, and the flag did not add a key to it
+        assert subject.meta == meta_before, (label, "the input certificate was mutated")
+        assert flagged.meta == meta_before, (label, "the flag wrote into meta")
+        assert DRIFT_DECLARATION_KEY not in flagged.meta, sorted(flagged.meta)
+    real = _committed_certificate()
+    assert len(with_drift_envelope(real).envelope) == len(real.envelope) + 1
+    assert with_drift_envelope(_cert()).envelope[-1] == NOT_CERTIFIABLE_UNDER_DRIFT
 
 
 def test_a_declared_drift_variable_exempts_the_certificate_from_the_flag():
@@ -274,23 +325,68 @@ def test_a_malformed_declaration_is_a_usage_refusal_not_a_pass_and_not_a_flag():
     assert marginal_only(_cert(meta={DRIFT_DECLARATION_KEY: None})) is True
 
 
-def test_the_envelope_text_withdraws_the_finite_sample_claim_where_it_does_not_hold():
-    """The deliverable is the prose. Both modes say what they assume and neither claims immunity.
+def test_the_envelope_lines_must_negate_or_evidence_every_guarantee_word_they_use():
+    """MAJOR-C1: the deliverable is prose, so the guard has to police CLAIMS, not vocabulary.
 
-    This is a pattern guard, the same shape as the plan's Task 2 prose guard: it forbids wording,
-    it can go red on an edit, and the pattern list only ever grows -- never narrows to pass.
+    The old arm forbade nine words. Plant M6b re-granted mode 2's immunity in a sentence that used
+    none of them -- "the finite-sample behaviour is met from round one ... needs no further
+    correction" -- and the guard passed. What replaces it is a per-line rule with the same teeth as
+    the measurements: any published line that uses a guarantee word (`finite-sample`, `bound`,
+    `guarantee`, `regret`) must negate it IN THAT SAME LINE. A line may not simply state that a
+    guarantee is met; it has to say which measurement it stands on, and the figures it cites are the
+    ones the two simulation guards in this file re-derive from the shipped code.
+
+    The word list is kept as a second line of defence -- it is cheap and it catches the lazy re-grant
+    -- but it is no longer load-bearing, and the docstring says so because that is exactly the
+    difference between a guard and a ritual.
     """
+    guarantee_words = ("finite-sample", "bound", "guarantee", "regret")
+    negations = ("not", "no ", "never", "withdraw", "false", "violate", "only as good as",
+                 "instead of to zero", "rather than to zero")
+    lines = tuple(WEIGHTED_ENVELOPE) + tuple(ACI_ENVELOPE) + (NOT_CERTIFIABLE_UNDER_DRIFT,)
+    policed = 0
+    for line in lines:
+        low = line.lower()
+        if not any(word in low for word in guarantee_words):
+            continue
+        policed += 1
+        assert any(negation in low for negation in negations), (
+            "a published line uses a guarantee word without negating it in the same sentence, which "
+            "is precisely how plant M6b read: %r" % line)
+        if not re.search(r"\d\.\d{2,6}", low):
+            assert ("not" in low or "no " in low or "never" in low), (
+                "a guarantee line that cites no measured figure must be an explicit negation: %r"
+                % line)
+    assert policed >= 4, (
+        "the guarantee lines vanished from the envelopes, so this guard is checking nothing: %d"
+        % policed)
+    # and a line may not affirm a guarantee in passing while negating it elsewhere: plant M6b's
+    # second line kept the words "no per-round" and still said the behaviour "is met"
+    affirmations = ("is met", "retained", "holds for", "is what this mode buys",
+                    "no further correction", "is satisfied", "valid for", "serves as a bound")
+    for line in lines:
+        low = line.lower()
+        for claim in affirmations:
+            assert claim not in low, (line, claim)
     forbidden = ("immune", "immunity", "no drift", "drift-free", "guarantees coverage",
                  "protected against", "regardless of drift", "unaffected by", "always valid")
-    lines = tuple(WEIGHTED_ENVELOPE) + tuple(ACI_ENVELOPE) + (NOT_CERTIFIABLE_UNDER_DRIFT,)
     for line in lines:
         low = line.lower()
         for pattern in forbidden:
             assert pattern not in low, (line, pattern)
-    assert any("declared" in l.lower() for l in WEIGHTED_ENVELOPE), WEIGHTED_ENVELOPE
-    assert any("assum" in l.lower() for l in WEIGHTED_ENVELOPE), "an assumption, not a measurement"
-    assert any("regret" in l.lower() or "long-run" in l.lower() for l in ACI_ENVELOPE), ACI_ENVELOPE
-    assert any("finite" in l.lower() for l in ACI_ENVELOPE), ACI_ENVELOPE
+    # the four propositions the measurements force, named rather than left to paraphrase
+    weighted_joined = " ".join(WEIGHTED_ENVELOPE).lower()
+    assert "exchangeable" in weighted_joined, (
+        "mode 1 must name which case its +1 correction belongs to")
+    assert "no finite-sample bound" in weighted_joined, WEIGHTED_ENVELOPE
+    aci_joined = " ".join(ACI_ENVELOPE).lower()
+    assert "withdraw" in aci_joined, ACI_ENVELOPE
+    assert "necessary, not sufficient" in aci_joined, (
+        "the clip condition must be stated at the strength the 400-sequence sweep supports, no more")
+    assert any("declared" in line.lower() for line in WEIGHTED_ENVELOPE), WEIGHTED_ENVELOPE
+    assert any("assum" in line.lower() for line in WEIGHTED_ENVELOPE), (
+        "an assumption, not a measurement")
+    assert any("per-round" in line.lower() for line in ACI_ENVELOPE), ACI_ENVELOPE
 
 
 # ---------------------------------------------------------------------------- the weighted mode
