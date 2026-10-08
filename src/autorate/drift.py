@@ -53,9 +53,22 @@ the reader the same two counts.
 Exit codes (R-115, and the same discipline as every other module here): every input problem is a
 `ValueError`, which `cli.main()` maps to 2; the single `ArithmeticError` site is the quantile
 cross-check, which maps to 4 because it means this project's own published arithmetic contradicted
-itself. Nothing here escapes as rc 1: `alpha` is checked before it reaches a denominator, `rounds`
-and the weight sum are checked before any division, and no dict lookup is left to raise `KeyError`
-on operator-supplied data.
+itself. Nothing here escapes as rc 1, and that sentence is now a measured claim rather than an
+intention: `tests/test_drift.py::test_every_documented_error_path_lands_on_a_documented_exit_code`
+walks the whole error surface -- empty population, all-equal weights, zero weights, a non-finite or
+uncoercible element, a declared sum that overflows `fsum`, a single calibration point, a one-shot
+iterable declaration, an undeclared or malformed drift key, a vector that is not a sequence at all, a
+candidate threshold that is not a number, and an object with a `meta` mapping but no envelope slot --
+and asserts each lands on 0, 2 or 4. Five of those reached rc 1 or the wrong rc before that table was
+written (`list(5)` and `float(None)` raised `TypeError`, a missing `envelope` raised `AttributeError`,
+`1e308 + 1e308` raised `OverflowError` which `cli` counts as rc 4 = this project's own arithmetic
+contradicting itself, and an exhausted generator was refused as an empty vector); each is refused at
+its own site now, in the `ValueError`/rc-2 register, with the reason named. No `except` was widened to
+achieve that: `OverflowError` and `TypeError` are caught only where they were raised, only to be
+re-raised as the refusal the contract already promises, and `groups.UndeclaredGroupKey` is not
+re-invented here -- `drift.py` holds no group keys, and the drift declaration it does read is
+validated in this file (measured over the tree, `groups.py` still raises a bare `KeyError` today; the
+named class is B3 Task 2's to add, and this module neither copies it nor swallows it).
 """
 from __future__ import annotations
 
@@ -172,24 +185,32 @@ def _number(what: str, index: int, value, allow_negative: bool) -> float:
     return number
 
 
+def _as_sequence(what, name, value):
+    """One caller's vector as a list, or a usage refusal that names which vector it could not read.
+
+    `list()` raises `TypeError`, which has no exit code in this project: `cli.main()` maps
+    `ValueError` to 2 and has no catch-all, so an unguarded `list(5)` reaches the operator as rc 1 -- a
+    traceback outside the documented 0/2/3/4 contract. Both vectors are checked the same way for that
+    reason; one of them being guarded and the other not is exactly the shape Axis D found.
+    """
+    if value is None or isinstance(value, (str, bytes)):
+        raise ValueError("%s must be a sequence of %s, got %r" % (name, what, type(value).__name__,))
+    try:
+        return list(value)
+    except TypeError:
+        raise ValueError("%s is not a sequence: %r; a %s vector is read element by element, and this "
+                         "object cannot be" % (name, type(value).__name__, what)) from None
+
+
 def _checked_declaration(scores, weights) -> tuple:
     """Validate a score vector and its CALLER-DECLARED densities; return (pairs, total weight)."""
-    if scores is None or isinstance(scores, (str, bytes)):
-        raise ValueError("scores must be a sequence of nonconformity scores, got %r"
-                         % (type(scores).__name__,))
+    scored = _as_sequence("nonconformity scores", "scores", scores)
     if weights is None:
         raise ValueError(
             "no declared density vector: weighted_quantile implements the weighted mode, whose "
             "weights are DECLARED by the caller. Pass [1.0] * len(scores) to say 'uniform' out "
             "loud; there is no default, because an omitted declaration is not a uniform one")
-    if isinstance(weights, (str, bytes)):
-        raise ValueError("weights must be a sequence of declared densities, not a bare string")
-    scored = list(scores)
-    try:
-        weight_list = list(weights)
-    except TypeError:
-        raise ValueError("the declared density vector is not a sequence: %r"
-                         % (type(weights).__name__,)) from None
+    weight_list = _as_sequence("declared densities", "weights", weights)
     if not scored:
         raise ValueError("empty score vector: no quantile is certifiable from nothing")
     if not weight_list:
@@ -206,7 +227,16 @@ def _checked_declaration(scores, weights) -> tuple:
             raise ValueError("scores are nonconformity scores bounded in [0,1] (the vacuous arm "
                              "answers with the ceiling 1.0, which is only a ceiling for a score "
                              "inside that range); got %r" % (score,))
-    total = math.fsum(weight for _score, weight in pairs)
+    try:
+        total = math.fsum(weight for _score, weight in pairs)
+    except OverflowError:
+        # `fsum` raises for a declared sum past float's range, and OverflowError is an ArithmeticError
+        # -- rc 4, which this project reserves for its own arithmetic contradicting itself. An absurd
+        # declaration is the caller's, so it leaves as rc 2 with the reason named.
+        raise ValueError("the declared densities overflow the accumulator: their sum is not a finite "
+                         "float, so no weighted quantile exists on this declaration") from None
+    if not math.isfinite(total):
+        raise ValueError("the declared densities do not sum to a finite weight: got %r" % (total,))
     if total <= 0.0:
         raise ValueError("the declared densities sum to zero: every sample was declared to have no "
                          "mass in the target regime, so there is no weighted quantile to take")
@@ -226,19 +256,40 @@ def _alpha_check(alpha, low: float, high: float, name: str, why: str) -> float:
 
 # ------------------------------------------------------------------------ mode 1: weighted
 
+def _candidate(value) -> float:
+    """A candidate threshold as a number, or a usage refusal: `float(None)` is a `TypeError` (rc 1)."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError("a candidate threshold must be a number in [0,1], got %r; the level a "
+                         "threshold buys is asked of this module as a value, not as a sentence"
+                         % (value,)) from None
+
+
+def _level_from_pairs(pairs, value) -> tuple:
+    """(weight at or below `value`, weight strictly below it) over ALREADY-validated pairs.
+
+    Deliberately a different computation from `weighted_quantile`'s scan: this uses `math.fsum` over
+    two comprehensions, the scan accumulates with `+=` in sorted order, so a selection that does not
+    sit on its own crossing is caught by comparing the two -- the same shape as the invariant
+    `tails.clopper_pearson_upper` asserts against its own bisection.
+    """
+    threshold = _candidate(value)
+    at_or_below = math.fsum(weight for score, weight in pairs if score <= threshold)
+    strictly_below = math.fsum(weight for score, weight in pairs if score < threshold)
+    return at_or_below, strictly_below
+
+
 def weighted_level(scores, weights, value) -> tuple:
     """(total declared weight at or below `value`, total strictly below it).
 
-    The definition, computed directly from the pairs the caller declared. `weighted_quantile`
-    selects with a one-pass scan and then checks its choice against this, so the selection and the
-    predicate that justifies it are two different computations -- the same shape as the invariant
-    `tails.clopper_pearson_upper` asserts against its own bisection. It is public because a reader
-    can legitimately ask what level a threshold actually buys.
+    The definition, computed directly from the pairs the caller declared. `weighted_quantile` selects
+    with a one-pass scan and then checks its choice against this, so the selection and the predicate
+    that justifies it are two different computations. It is public because a reader can legitimately
+    ask what level a threshold actually buys.
     """
     pairs, _total = _checked_declaration(scores, weights)
-    at_or_below = math.fsum(w for s, w in pairs if s <= float(value))
-    strictly_below = math.fsum(w for s, w in pairs if s < float(value))
-    return at_or_below, strictly_below
+    return _level_from_pairs(pairs, value)
 
 
 def weighted_quantile(scores, weights, alpha) -> tuple:
@@ -279,7 +330,11 @@ def weighted_quantile(scores, weights, alpha) -> tuple:
             break
     if chosen is None:
         return SCORE_CEILING, True
-    at_or_below, strictly_below = weighted_level(scores, weights, chosen)
+    # the cross-check reads the pairs THIS call already validated, not the caller's objects a second
+    # time: a generator is single-use, and re-reading an exhausted one refused a valid non-vacuous
+    # declaration with a message about an empty vector (Axis D). The two computations stay independent
+    # -- scan accumulates with += per value group, predicate fsums over comprehensions.
+    at_or_below, strictly_below = _level_from_pairs(pairs, chosen)
     if not (strictly_below < target <= at_or_below):
         raise ArithmeticError(
             "the weighted quantile %.6f does not sit on its own crossing: declared weight at or "
@@ -303,11 +358,8 @@ class AciStep(NamedTuple):
 
 def _checked_round_scores(scores) -> list:
     """Scores on the bounded range the ACI analysis is stated on, validated eagerly."""
-    if scores is None or isinstance(scores, (str, bytes)):
-        raise ValueError("scores must be a sequence of nonconformity scores, got %r"
-                         % (type(scores).__name__,))
     values = []
-    for index, raw in enumerate(scores):
+    for index, raw in enumerate(_as_sequence("nonconformity scores", "scores", scores)):
         try:
             value = float(raw)
         except (TypeError, ValueError):
@@ -471,7 +523,13 @@ def with_drift_envelope(certificate):
     """
     if not marginal_only(certificate):
         return certificate
-    if NOT_CERTIFIABLE_UNDER_DRIFT in tuple(certificate.envelope):
+    # an object can carry a `meta` mapping and still have no envelope slot; `tuple(None)` is a
+    # TypeError, which has no exit code here. Name it as the usage refusal it is instead.
+    if getattr(certificate, "envelope", None) is None:
+        raise ValueError("the drift envelope is written to a certificate's envelope slot; this "
+                         "object has none, so there is nothing to append the line to")
+    envelope = tuple(certificate.envelope)
+    if NOT_CERTIFIABLE_UNDER_DRIFT in envelope:
         return certificate
     return dataclasses.replace(certificate,
-                               envelope=tuple(certificate.envelope) + (NOT_CERTIFIABLE_UNDER_DRIFT,))
+                               envelope=envelope + (NOT_CERTIFIABLE_UNDER_DRIFT,))

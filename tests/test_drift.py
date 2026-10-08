@@ -196,6 +196,133 @@ def test_the_published_drift_number_is_the_case_denominated_one_not_the_row_one(
         case_scores, alpha)
 
 
+def test_every_documented_error_path_lands_on_a_documented_exit_code():
+    """The reviewer's unfinished Axis D, executed: each refusal's class IS its exit code.
+
+    `cli.main()` maps `ReaderContractError` -> 2, `ArithmeticError` -> 4, `(OSError, ValueError)` -> 2
+    and has NO catch-all, so a `TypeError`, `AttributeError`, `KeyError`, `IndexError`,
+    `ZeroDivisionError` or `OverflowError` escaping this module reaches the operator as rc 1 -- a
+    traceback, not a refusal, and outside the contract the module docstring publishes.
+
+    The table is the population the brief named (empty population, all-equal weights, zero weights, an
+    undeclared key, non-finite input, a single calibration point) plus the shapes a caller can actually
+    hand a vector-taking module: a non-iterable score vector, a declared sum that overflows the
+    accumulator, a candidate threshold that is not a number, a one-shot iterable declaration, and an
+    object that has `meta` but no `envelope`. Every `rc` below is what cli's mapping produces FROM the
+    class raised, so a future escape is a red here rather than a surprise in the field.
+    """
+    good = [0.1, 0.5, 0.9]
+    cases = [
+        # (label, callable, args, expected rc: 0 = answers, 2 = usage, 4 = arithmetic)
+        ("empty population, empty weights", weighted_quantile, ([], [], 0.1), 2),
+        ("empty population, one weight given", weighted_quantile, ([], [1.0], 0.1), 2),
+        ("all-equal weights", weighted_quantile, (good, [2.0, 2.0, 2.0], 0.05), 0),
+        ("all-zero weights", weighted_quantile, (good, [0.0, 0.0, 0.0], 0.05), 2),
+        ("non-finite score (nan)", weighted_quantile, ([0.1, float("nan")], [1.0, 1.0], 0.05), 2),
+        ("non-finite density (inf)", weighted_quantile, (good, [float("inf"), 1.0, 1.0], 0.05), 2),
+        ("declared densities that overflow the accumulator", weighted_quantile,
+         ([0.5, 0.6], [1e308, 1e308], 0.05), 2),
+        ("single calibration point", weighted_quantile, ([0.5], [1.0], 0.05), 0),
+        ("single point carrying the mass", weighted_quantile, ([0.5], [100.0], 0.05), 0),
+        ("scores is not a sequence", weighted_quantile, (5, [1.0], 0.05), 2),
+        ("scores is a bare string", weighted_quantile, ("0.5", [1.0], 0.05), 2),
+        ("weights is not a sequence", weighted_quantile, (good, 7, 0.05), 2),
+        ("one-shot iterables, non-vacuous answer", weighted_quantile,
+         (iter(good), iter([10.0, 10.0, 10.0]), 0.2), 0),
+        ("candidate threshold is None", weighted_level, (good, [1.0, 1.0, 1.0], None), 2),
+        ("candidate threshold is a mapping", weighted_level, (good, [1.0, 1.0, 1.0], {}), 2),
+        ("aci: empty sequence", aci_threshold, ([], 0.05, 0.05), 2),
+        ("aci: scores is not a sequence", aci_threshold, (5, 0.05, 0.05), 2),
+        ("aci: single round", aci_threshold, ([0.5], 0.05, 0.05), 0),
+        ("aci: score above the ceiling", aci_threshold, ([1.4], 0.05, 0.05), 2),
+        ("aci: alpha at the divergence", aci_threshold, ([0.5], 0.5, 0.05), 2),
+        ("bound: rounds zero", aci_regret_bound, (0, 0.05, 0.05), 2),
+        ("bound: rounds fractional", aci_regret_bound, (2.5, 0.05, 0.05), 2),
+        ("bound: rounds infinite", aci_regret_bound, (float("inf"), 0.05, 0.05), 2),
+        ("bound: rounds is a bool", aci_regret_bound, (True, 0.05, 0.05), 2),
+        ("bound: alpha at the pole", aci_regret_bound, (100, 0.5, 0.05), 2),
+        ("bound: gamma zero", aci_regret_bound, (100, 0.05, 0.0), 2),
+        ("flag: undeclared drift key is absence, not a refusal", marginal_only,
+         (_cert(meta={}),), 0),
+        ("flag: malformed declaration", marginal_only, (_cert(meta={"drift_declaration": 7}),), 2),
+        ("flag: half-filled declaration", marginal_only,
+         (_cert(meta={"drift_declaration": {"variable": "language"}}),), 2),
+        ("flag: certificate object without a meta mapping", marginal_only, (object(),), 2),
+        ("envelope: object with meta but no envelope slot", with_drift_envelope, (_NoEnvelope(),), 2),
+    ]
+    for label, fn, args, want in cases:
+        kind = _rc_of(fn, *args)
+        assert kind == want, "%s: raised a class cli maps to rc %r, expected rc %r" % (label, kind, want)
+    # and the one site that is deliberately NOT a usage refusal stays rc 4. The helper already maps
+    # the class to a code, so it is called directly -- wrapping it in `_rc_of` again would read the
+    # returned integer as a clean answer and report rc 0, which is how this line first misled me.
+    assert _broken_cross_check() == 4, "the ArithmeticError site lost its exit code"
+
+
+def _rc_of(fn, *args):
+    """The exit code `cli.main()` would print for one call: 0, 2, 4, or 1 for anything else."""
+    try:
+        result = fn(*args)
+        if hasattr(result, "__next__"):
+            next(result)  # a generator refuses lazily; this module promises it does not
+        return 0
+    except (OSError, ValueError):
+        return 2
+    except ArithmeticError:
+        return 4
+    except BaseException:
+        return 1
+
+
+class _NoEnvelope(object):
+    """The shape `marginal_only` accepts and `with_drift_envelope` used to crash on."""
+
+    meta: dict = {}
+
+
+def _broken_cross_check():
+    """Force the one `ArithmeticError` site and confirm it still leaves as rc 4, not rc 1.
+
+    `weighted_quantile` compares its own scan against `weighted_level`; to reach the contradiction
+    without editing production code, the predicate is temporarily replaced by one returning a crossing
+    the scan cannot have produced -- which is exactly what that site exists to refuse loudly. The
+    original is restored in `finally`, and the guard below asserts the class, not the message.
+    """
+    import autorate.drift as module
+
+    real = module._level_from_pairs
+
+    def lying(_pairs, _value):
+        return 0.0, 0.0
+
+    module._level_from_pairs = lying
+    try:
+        # a non-vacuous declaration (the crossing exists), or the check is never reached
+        return _rc_of(module.weighted_quantile, [0.1, 0.5, 0.9], [10.0, 10.0, 10.0], 0.2)
+    finally:
+        module._level_from_pairs = real
+
+
+def test_a_declaration_handed_as_one_shot_iterables_is_answered_not_refused_as_empty():
+    """Axis D's misleading refusal: a valid declaration is refused as "empty score vector".
+
+    `_checked_declaration` consumed the caller's generators to build its pairs, and the cross-check then
+    re-read the SAME exhausted objects, so a non-vacuous declaration was refused with a message about an
+    empty vector -- rc 2 for a refusal that should not exist, and a wrong reason for a caller who
+    followed the signature. The list form and the iterator form must give the same answer.
+    """
+    scores, weights, alpha = [0.1, 0.5, 0.9], [10.0, 10.0, 10.0], 0.2
+    as_lists = weighted_quantile(scores, weights, alpha)
+    as_iterators = weighted_quantile(iter(scores), iter(weights), alpha)
+    assert as_iterators == as_lists, (as_iterators, as_lists)
+    assert as_lists == (0.9, False), as_lists
+    # a generator is single-use by contract, so the refusal for an exhausted one must name THAT
+    exhausted = iter(scores)
+    list(exhausted)
+    with pytest.raises(ValueError, match="empty score vector"):
+        weighted_quantile(exhausted, [1.0, 1.0, 1.0], alpha)
+
+
 # ----------------------------------------------------------------------------- the envelope flag
 
 def test_a_marginal_only_certificate_carries_the_flag_and_it_is_the_committed_one():
