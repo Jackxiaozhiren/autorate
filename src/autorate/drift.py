@@ -40,7 +40,15 @@ algorithmic reasons:
 Like `conformal.py`, this module knows numbers and never field names: it takes score vectors, not
 records. The case denominator therefore belongs to its callers, and the unit rule is stated in
 `case_count.py` and `groups.py` -- three repeats of one case are one observation, so a score vector
-built from rows would silently inflate the sample every bound here is computed on.
+built from rows would silently inflate the sample every bound here is computed on. Because this module
+cannot see case identity, the rule used to be backed by prose only; it is now backed by an executable
+arm. `tests/test_drift.py` builds 60 cases x three DISAGREEING repeats through
+`tests/_records.py:choice_record(case_id=..., repeat=...)`, runs them through `weighted_quantile` and
+`aci_regret_bound` on the row vector AND the case vector, and pins which number is the published one
+(0.780900 versus 0.950100 for the threshold; 0.361111 versus 0.138889 for the regret expression, so a
+row-denominated caller understates the price by a factor of 0.384615). `groups.group_counts` publishes
+both `cases` and `records` for the same reason (`groups.py:12-17`), and a caller of this module owes
+the reader the same two counts.
 
 Exit codes (R-115, and the same discipline as every other module here): every input problem is a
 `ValueError`, which `cli.main()` maps to 2; the single `ArithmeticError` site is the quantile

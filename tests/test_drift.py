@@ -22,6 +22,14 @@ guarantees and a test cannot prove a guarantee:
   also does NOT hide: with the declaration EXACT (calibration ~ U[0,1], target density 10*s^9), the
   estimator still under-covers, because `+1` is the exchangeable correction and not the weighted one
   -- that is a measured arm of this suite, not a prose claim.
+* it could not see the CERTIFICATION UNIT until this round. `drift.py` takes vectors and holds no case
+  identity, so a row vector and a case vector are the same shape to it and to every numeric assertion
+  that only compares two estimators over ONE vector -- which is why the flagship
+  `assert weighted == plain` control is inert under a case->row substitution by construction. Two
+  tests now own that gap: `test_the_fixture_actually_holds_three_disagreeing_repeats_per_case` keeps
+  the fixture honest, and `test_the_published_drift_number_is_the_case_denominated_one_not_the_row_one`
+  pins both arms and names which one is published. What remains undetectable is a CALLER that feeds
+  rows anyway: this module cannot see where its vector came from.
 
 The one real artefact used is `data/cert_laya.json`, a committed certificate produced by the real
 certifier over the committed archive: it is the honest subject for the flag test, because nothing in
@@ -36,11 +44,14 @@ from pathlib import Path
 
 import pytest
 
+from _records import choice_record
+from autorate.case_count import case_key
 from autorate.certificate import Certificate
 from autorate.conformal import split_quantile
 from autorate.drift import (ACI_ENVELOPE, DRIFT_DECLARATION_KEY, NOT_CERTIFIABLE_UNDER_DRIFT,
                             WEIGHTED_ENVELOPE, aci_regret_bound, aci_threshold, marginal_only,
                             weighted_level, weighted_quantile, with_drift_envelope)
+from autorate.nonconformity import aps_score
 
 REPO = Path(__file__).resolve().parents[1]
 LAYA_CERT = REPO / "data" / "cert_laya.json"
@@ -74,6 +85,114 @@ def _declaration(variable="language", declared_by="producer slices", evidence="R
 def _grid(count, modulus=100):
     """A deterministic pseudo-uniform sequence of scores in [0,1): no RNG, so a red is re-runnable."""
     return [((i * 37) % modulus) / float(modulus) for i in range(count)]
+
+
+REPEATS_PER_CASE = 3
+
+
+def _probs_for(case, repeat):
+    """A deterministic, per-case-varying ballot: no RNG, so both units are re-derivable.
+
+    The top probability walks the case index, so the CASE vector is a real distribution and not one
+    repeated value -- a degenerate case vector would make a row/case swap invisible, which is the
+    failure this fixture exists to make visible.
+    """
+    top = 0.05 + 0.90 * (((case * 17 + repeat * 11) % 40) / 39.0)
+    rest = (1.0 - top) / 3.0
+    return tuple(round(value, 4) for value in (top, rest, rest, rest))
+
+
+def _repeat_rows(n_cases=60):
+    """`n_cases` cases x three DISAGREEING repeats, built through the shared record factory.
+
+    `tests/_records.py:choice_record(case_id=..., repeat=...)` is the project's one owner of this shape
+    (ruling R-69). The repeats disagree on purpose -- the gold label moves with the repeat, so three
+    rows of one case carry three different nonconformity scores.
+    """
+    rows = []
+    for case in range(n_cases):
+        case_id = "case-%03d" % case
+        for repeat in range(REPEATS_PER_CASE):
+            ballot = tuple("opt%d" % index for index in range(4))
+            rows.append(choice_record(id="%s-r%d" % (case_id, repeat), case_id=case_id,
+                                      repeat=repeat, probs=_probs_for(case, repeat),
+                                      gold=ballot[(case + repeat) % 4], u=repeat / 3.0))
+    return rows
+
+
+def _row_and_case_vectors(rows):
+    """(row_scores, case_scores, groups): the SAME evidence on the two units, deterministically.
+
+    The case score is the mean of its repeats' scores -- one value per independent observation, which is
+    the unit `case_count.case_key` names. The row score is the record's own APS value.
+    """
+    row_scores = [aps_score(record.probs, list(record.options).index(record.gold), record.u)
+                  for record in rows]
+    groups = {}
+    for record, score in zip(rows, row_scores):
+        groups.setdefault(case_key(record), []).append(score)
+    case_ids = sorted(groups)
+    case_scores = [math.fsum(groups[key]) / len(groups[key]) for key in case_ids]
+    return row_scores, case_scores, groups
+
+
+def test_the_fixture_actually_holds_three_disagreeing_repeats_per_case():
+    """The precondition of every unit guard below, asserted rather than assumed.
+
+    A fixture whose repeats AGREED would make the row and case vectors collapse towards each other and
+    the unit guards would be inert in exactly the way the flagship reproduction control already is. This
+    test reddens first if the fixture degenerates, so the guards below never have to be re-proved by
+    hand.
+    """
+    rows = _repeat_rows()
+    row_scores, case_scores, groups = _row_and_case_vectors(rows)
+    assert len(rows) == REPEATS_PER_CASE * len(groups), (len(rows), len(groups))
+    assert len(groups) == 60, len(groups)
+    assert all(len(members) == REPEATS_PER_CASE for members in groups.values())
+    for key, members in groups.items():
+        assert len(set(members)) == REPEATS_PER_CASE, (key, members)
+    assert len(set(row_scores)) > 1 and len(set(case_scores)) > 1, (
+        "a constant vector on either unit makes the swap invisible")
+    assert case_scores != row_scores, "the two units produced the same vector"
+
+
+def test_the_published_drift_number_is_the_case_denominated_one_not_the_row_one():
+    """MAJOR-B1's missing shape: certification is by CASE, and both arms are measured here.
+
+    The precedent is `groups.py:12-17`, which publishes BOTH `cases` and `records` because they are not
+    interchangeable. On this evidence (60 cases / 180 rows, three disagreeing repeats each):
+
+      * the weighted threshold is 0.780900 on the case vector and 0.950100 on the row vector, so the
+        published number moves by 0.169200 purely from the unit;
+      * `aci_regret_bound` is 0.361111 on 60 cases and 0.138889 on 180 rows -- feeding rows does not
+        restate the same bound, it makes it 0.384615 of its size, i.e. it UNDERSTATES the price of a
+        short sequence, which is the anti-conservative direction.
+
+    The reproduction control cannot see this, and that is asserted here too: `weighted_quantile` agrees
+    with `split_quantile` on BOTH vectors, so `assert weighted == plain` survives any unit swap -- the
+    old flagship guard was inert by construction, not by accident.
+    """
+    rows = _repeat_rows()
+    row_scores, case_scores, _groups = _row_and_case_vectors(rows)
+    alpha = 0.05
+    q_case, _ = weighted_quantile(case_scores, [1.0] * len(case_scores), alpha)
+    q_row, _ = weighted_quantile(row_scores, [1.0] * len(row_scores), alpha)
+    assert len(case_scores) == 60 and len(row_scores) == 180, (len(case_scores), len(row_scores))
+    assert q_case == pytest.approx(0.780900, abs=1e-6), q_case
+    assert q_row == pytest.approx(0.950100, abs=1e-6), q_row
+    assert q_case != q_row, (q_case, q_row)
+    assert abs(q_row - q_case) > 0.1, (q_row, q_case)
+    bound_case = aci_regret_bound(len(case_scores), alpha, alpha)
+    bound_row = aci_regret_bound(len(row_scores), alpha, alpha)
+    assert bound_case == pytest.approx(0.361111, abs=1e-6), bound_case
+    assert bound_row == pytest.approx(0.138889, abs=1e-6), bound_row
+    assert bound_row < bound_case, "rows must not read as a longer, cheaper sequence"
+    assert bound_row / bound_case == pytest.approx(0.384615, abs=1e-4)
+    # and the flagship control is unit-blind: it agrees on both arms, which is why it never reddened
+    assert weighted_quantile(row_scores, [1.0] * len(row_scores), alpha) == split_quantile(row_scores,
+                                                                                           alpha)
+    assert weighted_quantile(case_scores, [1.0] * len(case_scores), alpha) == split_quantile(
+        case_scores, alpha)
 
 
 # ----------------------------------------------------------------------------- the envelope flag
