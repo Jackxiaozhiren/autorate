@@ -46,9 +46,11 @@ def test_a_refusal_without_a_reason_cannot_be_constructed():
 def test_a_reason_outside_the_closed_set_is_rejected():
     with pytest.raises(ValueError, match="reason"):
         _ok(feasible=False, reason="because")
-    # The set has five members now (I-10); a sixth invented the same way is still rejected --
-    # including the two near-misses a guard written as a prefix or substring match, rather
-    # than set membership, would let through.
+    # The set has five members now (I-10); a sixth invented the same way is still rejected.
+    # The three near-misses are the shapes a guard written as a match in either direction --
+    # `reason.startswith(member)` or `member.startswith(reason)`, rather than set membership --
+    # would wave through: an extension of a real value, a truncation of one, and a real value
+    # with trailing whitespace.
     for invented in ("no_automation_at_coverage_at_all", "no_automation", "n_below_min "):
         with pytest.raises(ValueError, match="reason"):
             _ok(feasible=False, reason=invented)
