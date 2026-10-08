@@ -92,10 +92,72 @@ def canonicalise_bound(value: Optional[float]) -> Optional[float]:
 
 
 class Reason(str, Enum):
+    """The closed set of refusals a certificate may name, one finding per member (spec 5.5).
+
+    I-10 is why the set has five members and not four: `empty_feasible_set` was made to carry
+    two different findings, which read as one result to anyone downstream. The enumeration's
+    own text is where the difference lives -- one sentence per member, and a member with no
+    sentence, or two members sharing one, is red in `tests/test_certificate_shape.py`.
+
+    n_below_min: the calibration or evaluation half is too small for any bound in the family
+        to be informative. It is the sample that is short.
+
+    vacuous_quantile: the coverage quantile of the calibration scores is above 1, so the rule
+        would certify every label whatever the data said.
+
+    no_gold_labels: no record carries a gold label, so there is nothing to score a rule
+        against and no error rate can be measured at all.
+
+    no_automation_at_coverage: nothing automated at coverage 1 - alpha -- the TASK is not
+        automatable at these budgets, and more data would not change that verdict.
+
+    empty_feasible_set: something automated and its bound missed beta -- the DATA cannot
+        certify the task at this budget, which more evaluation cases might yet do.
+
+    A refusal travels inside the certificate with the budget pair (alpha, beta) that made it
+    infeasible, its case counts and a non-empty envelope: spec 5.5's claim is that a reason
+    and its budgets are fields of the returned object, not a line printed beside it.
+    """
     N_BELOW_MIN = "n_below_min"
     EMPTY_FEASIBLE_SET = "empty_feasible_set"
+    NO_AUTOMATION_AT_COVERAGE = "no_automation_at_coverage"
     VACUOUS_QUANTILE = "vacuous_quantile"
     NO_GOLD_LABELS = "no_gold_labels"
+
+
+# --- the shape a serialized certificate was written in (D14) -------------------------
+#
+# `from_dict` could formerly refuse a stale artefact only by diffing field names, which cannot
+# tell "written by an older shape" from "corrupted on disk". Measured at the moment this tag
+# landed: the two committed certificates differ from what this build writes by exactly one
+# key, and the complaint the field diff produced was `unknown ['shape'], missing []` -- a
+# statement about keys, not about versions. D14 ruled the tag in for exactly that reason.
+#
+# The tag is a property of the SERIALIZED shape, not a field of the object: it appears in
+# `to_dict`/`from_dict` alone, so no caller of `Certificate` carries it, no rubric comparison
+# reads it, and it cannot become a second owner of anything the object already holds.
+#
+# Why 2, and why an absent key is refused rather than forgiven. Shape 1 is every artefact
+# written without a tag, so the absence of the key IS the old shape; accepting it would mean
+# the tag forgives precisely the shape it exists to detect, which certifies nothing.
+SHAPE_VERSION = 2
+SHAPE_KEY = "shape"
+
+
+class CertificateShapeMismatch(ValueError):
+    """A stored certificate was not written in the shape this build reads (D14).
+
+    A `ValueError` of its own class, following the precedent for a new refusal in this
+    repository (`MissingRecordField` in `records.py`, `UndeclaredGroupKey` in `groups.py`):
+    `cli.main` already maps `(OSError, ValueError)` to EXIT_USAGE, so the refusal reaches a
+    documented exit code instead of escaping as a traceback with rc 1, and the class name
+    keeps it greppable in the error stream.
+
+    It is deliberately NOT a `ReaderContractError`, which is a `RuntimeError` and not a
+    `ValueError` precisely so the reader's per-line quarantine guard cannot absorb a corpus
+    refusal (`readers/feishu_zh.py`). A schema mismatch is an input problem of a different
+    kind, and reusing that class would route it through the wrong arm for the wrong reason.
+    """
 
 
 @dataclass(frozen=True)
@@ -232,6 +294,9 @@ class Certificate:
     def to_dict(self) -> dict:
         d = asdict(self)
         d["envelope"] = list(self.envelope)
+        # Written here and nowhere else, so a certificate and its serialization cannot
+        # disagree about which shape they are in.
+        d[SHAPE_KEY] = SHAPE_VERSION
         return d
 
     def to_json(self, indent: int = 2) -> str:
@@ -244,11 +309,24 @@ class Certificate:
         A certificate written by an older shape is an INPUT problem, not a code bug: it
         used to escape as a `TypeError` with a traceback and rc 1, outside the documented
         0/2/3/4 exit-code contract, and `verify` printed nothing the reader could act on.
+
+        The shape is checked BEFORE the field diff, so a pre-2 artefact is told it is a
+        pre-2 artefact. The field-name diff alone would report `unknown ['shape'], missing []`
+        for it, which names keys where the finding is a version (D14).
         """
         from dataclasses import fields
 
+        found = d.get(SHAPE_KEY)
+        if found != SHAPE_VERSION:
+            named = (repr(found) if SHAPE_KEY in d else
+                     "none (no %r key at all: a certificate written before shape %d existed)"
+                     % (SHAPE_KEY, SHAPE_VERSION))
+            raise CertificateShapeMismatch(
+                "stored certificate is not in the shape this build reads: found shape %s, "
+                "required shape %d -- regenerate it with `autorate certify`"
+                % (named, SHAPE_VERSION))
         names = {f.name for f in fields(cls)}
-        unknown = sorted(set(d) - names)
+        unknown = sorted(set(d) - names - {SHAPE_KEY})
         defaulted = {f.name for f in fields(cls) if f.default is not MISSING}
         missing = sorted(names - set(d) - defaulted)
         if unknown or missing:
@@ -256,6 +334,7 @@ class Certificate:
                 "stored certificate does not match the certificate shape: unknown %s, "
                 "missing %s -- regenerate it with `autorate certify`" % (unknown, missing))
         kw = dict(d)
+        kw.pop(SHAPE_KEY)
         kw["envelope"] = tuple(d["envelope"])
         if d.get("autorate_ci") is not None:
             kw["autorate_ci"] = tuple(d["autorate_ci"])

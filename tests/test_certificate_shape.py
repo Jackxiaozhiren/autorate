@@ -5,11 +5,14 @@ unconstructable, so the disclaimer cannot be lost by forgetting to copy a README
 section (spec 10).
 """
 import dataclasses
+import inspect
+import json
 
 import pytest
 
-from autorate.certificate import (CANONICALISED_BOUND_FIELDS, PUBLISHED_DECIMALS,
-                                  Certificate, Reason, canonicalise_bound)
+from autorate.certificate import (CANONICALISED_BOUND_FIELDS, PUBLISHED_DECIMALS, SHAPE_VERSION,
+                                  Certificate, CertificateShapeMismatch, Reason,
+                                  canonicalise_bound)
 
 _OK = dict(feasible=True, reason=None, alpha=0.05, beta=0.05, delta=0.05,
            method="aps", backend="synthetic", qhat=0.4, autorate=0.6,
@@ -43,6 +46,34 @@ def test_a_refusal_without_a_reason_cannot_be_constructed():
 def test_a_reason_outside_the_closed_set_is_rejected():
     with pytest.raises(ValueError, match="reason"):
         _ok(feasible=False, reason="because")
+    # The set has five members now (I-10); a sixth invented the same way is still rejected --
+    # including the two near-misses a guard written as a prefix or substring match, rather
+    # than set membership, would let through.
+    for invented in ("no_automation_at_coverage_at_all", "no_automation", "n_below_min "):
+        with pytest.raises(ValueError, match="reason"):
+            _ok(feasible=False, reason=invented)
+
+
+def test_the_fifth_member_names_the_task_and_travels_with_its_budgets():
+    """I-10: `empty_feasible_set` covered two findings; the other one gets its own member.
+
+    Constructible is the requirement here, not printable: no gate emits this reason yet (the
+    `certify_*` lane owns the branch), and until one does, the two dependent plans need the
+    member to be in the closed set so a refusal can be built and round-tripped with it.
+    Spec 5.5/10 say what a reason travels with, so this asserts the pair (alpha, beta), the
+    case counts and a non-empty envelope arrive inside the certificate rather than beside it.
+    """
+    c = Certificate.refused(Reason.NO_AUTOMATION_AT_COVERAGE, alpha=0.05, beta=0.05,
+                            n_cal=96, n_eval=96, detail="nothing automated at coverage 0.95",
+                            meta={})
+    assert c.feasible is False
+    assert c.reason == Reason.NO_AUTOMATION_AT_COVERAGE.value == "no_automation_at_coverage"
+    assert (c.alpha, c.beta, c.n_cal, c.n_eval) == (0.05, 0.05, 96, 96), c
+    assert c.envelope, "a refusal is still conditioned by assumptions"
+    assert c.autorate is None and c.autorate_ci is None
+    summary = c.summary()
+    for required in ("no_automation_at_coverage", "alpha=0.050", "beta=0.050"):
+        assert required in summary, (required, summary)
 
 
 def test_a_feasible_certificate_may_not_carry_a_reason():
@@ -109,7 +140,53 @@ def test_a_feasible_summary_states_both_error_notions_and_never_conflates_them()
 
 def test_reason_codes_are_a_closed_enumeration():
     assert {r.value for r in Reason} == {
-        "n_below_min", "empty_feasible_set", "vacuous_quantile", "no_gold_labels"}
+        "n_below_min", "empty_feasible_set", "vacuous_quantile", "no_gold_labels",
+        "no_automation_at_coverage"}
+
+
+def _findings_in_the_enumeration_text():
+    """The sentences `Reason`'s own docstring dedicates to its members, as (value, text) pairs.
+
+    Read rather than retyped: the closed set is the only place a reader of a refusal learns
+    which finding a code names, so the distinction this file guards has to live in that text
+    and nowhere else. A member with no sentence, and a sentence shared by two members, are
+    both visible here and nowhere else.
+    """
+    doc = inspect.getdoc(Reason) or ""
+    members = [r.value for r in Reason]
+    found, current = [], None
+    for line in doc.splitlines():
+        head = line.strip()
+        label = next((m for m in members if head.startswith(m + ":")), None)
+        if label is not None:
+            current = label
+            found.append([label, head[len(label) + 1:].strip()])
+        elif current is not None and head:
+            found[-1][1] += " " + head
+        else:
+            current = None
+    return found
+
+
+def test_the_enumeration_text_keeps_the_two_findings_i_10_split_apart():
+    """One sentence per member, and the two that shared a label must not share a finding.
+
+    I-10 is not closed by adding a member: `empty_feasible_set` and
+    `no_automation_at_coverage` are different claims a reader acts on differently -- one says
+    the task is not automatable at these budgets, the other says the data cannot certify it.
+    The text is the only owner of that difference in this lane (no gate emits the new reason
+    yet), so it is pinned here, and a plant that writes one sentence for both codes reddens it.
+    """
+    found = _findings_in_the_enumeration_text()
+    labels = [label for label, _ in found]
+    assert len(labels) == len(set(labels)) == len(list(Reason)), found
+    texts = dict(found)
+    task = texts[Reason.NO_AUTOMATION_AT_COVERAGE.value]
+    data = texts[Reason.EMPTY_FEASIBLE_SET.value]
+    assert task and data, (task, data)
+    assert task != data, "the two findings collapsed back into one sentence"
+    assert "not automatable" in task.lower() and "task" in task.lower(), task
+    assert "cannot certify" in data.lower() and "data" in data.lower(), data
 
 
 def test_marginal_can_never_exceed_conditional_because_p_auto_is_at_most_one():
@@ -197,3 +274,85 @@ def test_the_canonical_form_is_idempotent_a_ceiling_and_swamps_the_libm_drift():
     # monotone, so `marginal <= conditional` cannot be inverted by the trip
     series = [canonicalise_bound(v / 7) for v in range(0, 7)]
     assert series == sorted(series), series
+
+
+# ------------------------------------------------------------------ the shape tag (D14)
+
+def test_the_shape_tag_is_written_at_the_version_that_can_detect_a_stale_one():
+    """`to_dict` writes `"shape": 2`; `from_dict` requires it.
+
+    A field-name diff alone cannot tell an older shape from a corrupt file, which is why D14
+    ruled a tag in. Two properties are pinned together: the number on the wire, and the fact
+    that the tag is metadata about the shape rather than a field of the object -- so it cannot
+    become a second owner of anything the certificate already carries.
+    """
+    d = _ok().to_dict()
+    assert d["shape"] == SHAPE_VERSION == 2, sorted(d)
+    assert json.loads(_ok().to_json())["shape"] == 2, "on the wire, not only in the dict"
+    refusal = Certificate.refused(Reason.EMPTY_FEASIBLE_SET, alpha=0.05, beta=0.05,
+                                  n_cal=500, n_eval=500, detail="none", meta={})
+    assert refusal.to_dict()["shape"] == SHAPE_VERSION, "the tag is the shape's, not the verdict's"
+    assert Certificate.from_dict(d) == _ok()
+    assert "shape" not in {f.name for f in dataclasses.fields(Certificate)}
+
+
+def test_a_shape_that_is_not_the_required_one_is_refused_by_its_number():
+    for stale in (1, 0, 3, "2"):
+        d = _ok().to_dict()
+        d["shape"] = stale
+        with pytest.raises(CertificateShapeMismatch) as caught:
+            Certificate.from_dict(d)
+        text = str(caught.value)
+        assert "found shape %r" % (stale,) in text, (stale, text)
+        assert "required shape %r" % (SHAPE_VERSION,) in text, (stale, text)
+        assert "autorate certify" in text, "actionable: name the command that rewrites it"
+
+
+def test_a_missing_shape_is_blamed_as_a_shape_and_not_as_a_field_diff():
+    """The exact state the committed artefacts were in before they were regenerated.
+
+    They carry every field shape 2 carries and no field it does not, so without the tag the
+    only available complaint was a key list. The tag has to be what fails, and it has to fail
+    by name -- leniency for an absent `shape` is precisely what D14 exists to prevent, since a
+    version tag that forgives the untagged shape certifies nothing.
+    """
+    d = _ok().to_dict()
+    del d["shape"]
+    with pytest.raises(CertificateShapeMismatch) as caught:
+        Certificate.from_dict(d)
+    text = str(caught.value)
+    assert "found shape" in text, text
+    assert "required shape %r" % (SHAPE_VERSION,) in text, text
+    assert "unknown" not in text and "missing" not in text, text
+
+
+def test_a_stale_artefact_reaches_an_exit_code_the_cli_already_has(tmp_path, capsys):
+    """rc 1 is a defect in this repository; 0/2/3/4 is the published contract.
+
+    The class has to be a `ValueError` for `main`'s existing arm to map it, and it must stay
+    greppable in the error stream. It is deliberately not a `ReaderContractError`, which is not
+    a `ValueError` so that a per-line quarantine guard cannot absorb a corpus refusal -- reusing
+    it here would put a schema mismatch in the wrong arm for the wrong reason.
+    """
+    assert issubclass(CertificateShapeMismatch, ValueError)
+    from autorate.cli import EXIT_USAGE, main
+    from autorate.readers.feishu_zh import ReaderContractError
+
+    assert not issubclass(CertificateShapeMismatch, ReaderContractError)
+    assert not issubclass(ReaderContractError, ValueError), "the arm it would join is not ours"
+
+    docs = []
+    for name in ("cert_laya.json", "cert_jev.json"):
+        doc = json.loads(_ok().to_json())
+        del doc["shape"]
+        path = tmp_path / name
+        path.write_text(json.dumps(doc, sort_keys=True))
+        docs.append(path)
+
+    rc = main(["compare", str(docs[0]), str(docs[1])])
+    assert rc == EXIT_USAGE == 2, (rc, rc)
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    assert err.startswith("CertificateShapeMismatch: "), err
+    assert "found shape" in err and "required shape 2" in err, err
+    assert "autorate certify" in err, err

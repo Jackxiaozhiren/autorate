@@ -559,5 +559,6 @@
   "n_cal": 96,
   "n_eval": 96,
   "qhat": null,
-  "reason": "empty_feasible_set"
+  "reason": "empty_feasible_set",
+  "shape": 2
 }
