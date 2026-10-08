@@ -175,22 +175,109 @@ def cmd_export_feishu(args) -> int:
     return 0
 
 
+def _slice_keys(values):
+    """The `--groups` text, as the tuple of names the Mondrian surface asks for.
+
+    Always a tuple, never a bare string: `groups.py` refuses a string because it iterates characters
+    -- `--groups family` arriving as `"family"` would ask for the keys 'f', 'a', 'm' -- and a CLI that
+    handed the operator's text straight through would be producing the one input shape its own
+    contract refuses. Repeated flags accumulate, so `--groups language --groups option_count` is the
+    two-key slice the spec writes as (language x option-count).
+    """
+    if values is None:
+        return None
+    if isinstance(values, str):
+        values = [values]
+    keys = []
+    for value in values:
+        for part in str(value).split(","):
+            name = part.strip()
+            if not name:
+                raise UsageError("--groups states an empty slice key (%r): a group has to be nameable "
+                                 "in the artefact that publishes it" % (value,))
+            keys.append(name)
+    if not keys:
+        raise UsageError("--groups was given no slice key; a split conditioned on nothing is the "
+                         "MARGINAL, and the marginal already has a command (certify without "
+                         "--groups)")
+    duplicates = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicates:
+        raise UsageError("--groups names %s twice: the second declaration would ask for the same "
+                         "partition again and the slice count that divides the budgets would be wrong "
+                         "by it" % ", ".join(repr(d) for d in duplicates))
+    return tuple(keys)
+
+
+def _print_slices(cert) -> None:
+    """The per-slice verdict lines, so the artefact cannot be read as one pooled number.
+
+    Printed from the certificates themselves and the worst-of-G artefact, in census order. A slice
+    refused by the size floor is named with its case count, because §8.1's whole claim is that the
+    thin slices are refused BY NAME -- a summary that only counts them is the averaging this tool is
+    supposed to refuse.
+    """
+    claim = cert.worst_claim
+    by_group_name = {row["group"]: row for row in claim["refusals"]}
+    for name, slice_cert in cert.per_group.items():
+        n_cases = cert.slice_cases[name]
+        if slice_cert.feasible:
+            print("  slice %s (n=%d cases): autorate %.3f, conditional error <= %.3f, level %.4f"
+                  % (name, n_cases, slice_cert.autorate, slice_cert.conditional_error_bound,
+                     slice_cert.level))
+        else:
+            why = by_group_name.get(name, {}).get("why", slice_cert.meta.get("detail", "refused"))
+            print("  slice %s (n=%d cases): NOT CERTIFIED -- %s" % (name, n_cases, why))
+    if cert.refused_by_size:
+        print("  refused by size (below %d cases, the two halves of the split this rule certifies "
+              "on): %s" % (cert.meta["min_cases_per_slice"],
+                           ", ".join("%s(n=%d)" % (row["group"], row["n"])
+                                     for row in cert.refused_by_size)))
+    print("  worst-of-%d over %s: slice %s; joint level %.4f = 1 - %d claims x delta %.3f, with "
+          "alpha/delta corrected to %.6f per slice"
+          % (claim["n_groups"], ", ".join(repr(g) for g in cert.groups),
+             claim["worst"]["group"], cert.level, cert.n_claims, cert.delta, cert.corrected_delta))
+
+
 def cmd_certify(args) -> int:
+    """Records -> certificate, marginal or group-conditional, and the exit code says which.
+
+    - **rc 0** -- the certificate a deployment acts on is feasible. Without `--groups` that is the
+      one marginal certificate; with it, EVERY slice certified, because the thing being claimed is
+      the worst of them.
+    - **rc 3** -- the run measured and refused: a marginal refusal, or one slice below the size floor
+      or over budget. The simultaneous claim does not exist, which is a result, not a crash.
+    - **rc 2** -- `--groups` names a key the records never declare (`UndeclaredGroupKey`), states an
+      empty or repeated key, or the rubric is not a probability. `main`'s `ValueError` arm maps all
+      of these, and the group-key refusal is a dedicated subclass precisely so this path needs no new
+      catch: R-115 ruled that `cli.main` gains no `KeyError` arm, because `KeyError` is ordinary dict
+      access everywhere here and catching it centrally would turn unrelated bugs into an exit 2 with
+      a helpful-looking message. Before that ruling the typo `--groups langauge` exited **1**.
+    - **rc 4** -- an invariant of our own arithmetic failed (`ArithmeticError`), which is not the
+      operator's mistake and not a refusal about the data.
+    """
     recs = _records_from(Path(args.records), backend=args.backend, mode=args.mode)
+    groups = _slice_keys(getattr(args, "groups", None))
     cert = certify_choice(recs, alpha=args.alpha, beta=args.beta, delta=args.delta,
-                          seed=args.seed, method=args.method)
+                          seed=args.seed, method=args.method, groups=groups)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(cert.to_json())
     print(cert.summary())
     for line in cert.envelope:
         print("  envelope:", line)
+    if groups is not None:
+        _print_slices(cert)
+    # The exit code is `cert.feasible`, and for a group run that property IS the conjunction over the
+    # slices: a deployment acts on the worst-of-G statement, so answering 0 because the marginal
+    # certificate certified while a slice has no bound at all is the averaging spec 8.1 refuses. rc 3
+    # is then the refusal of the simultaneous claim, not a crash, and rc 0 means every slice certified.
+    code = EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
     if cert.meta.get("diagnostic_curve"):
         print("  diagnostic sweep: %d coverage levels in meta.diagnostic_curve of %s "
               "(evidence only; nothing on it was certified)"
               % (len(cert.meta["diagnostic_curve"]), args.out))
     print("wrote %s" % args.out)
-    return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
+    return code
 
 
 RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
@@ -482,6 +569,14 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--seed", type=int, default=SEED)
     c.add_argument("--method", default="aps", choices=("aps", "lac"),
                    help="the nonconformity that sizes the set; lac is the comparison arm")
+    c.add_argument("--groups", action="append", metavar="KEY[,KEY...]",
+                   help="group-conditional (Mondrian) certification over these declared slice keys "
+                        "(spec 8.1): one certificate per slice at alpha/n_groups and delta/n_groups, "
+                        "a worst-of-n_groups claim, and the slices too small to bound refused BY "
+                        "NAME. Repeatable, or comma-separated, so '--groups language,option_count' "
+                        "and '--groups language --groups option_count' are the same run. The keys "
+                        "must be declared by the records themselves -- a slice key nobody set is a "
+                        "refusal (exit 2), not an empty group.")
     c.add_argument("--out", default="cert.json")
     c.set_defaults(fn=cmd_certify)
 

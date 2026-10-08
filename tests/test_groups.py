@@ -6,7 +6,7 @@ contract, because a grouping that cannot fail is a grouping whose numbers nobody
 import pytest
 
 from autorate.case_count import case_key
-from autorate.groups import by_group, group_counts, group_key
+from autorate.groups import UndeclaredGroupKey, by_group, group_counts, group_key
 from autorate.records import Record
 
 from _records import choice_record
@@ -23,7 +23,7 @@ def test_a_case_with_three_repeats_contributes_one_case_and_three_records():
 
 def test_an_undeclared_slice_key_is_a_refusal_not_a_silent_group():
     recs = [choice_record(slices={"family": "f0"})]
-    with pytest.raises(KeyError):
+    with pytest.raises(UndeclaredGroupKey):
         by_group(recs, ("language",)), "conditioning on a key the producer never set"
 
 
@@ -73,7 +73,7 @@ def test_group_key_returns_the_declared_values_in_the_order_declared():
     assert group_key(rec, ("family", "language")) == ("f0", "en")
     assert group_key(rec, ("language", "family")) == ("en", "f0")
     assert group_key(rec, ("family",)) == ("f0",)
-    with pytest.raises(KeyError):
+    with pytest.raises(UndeclaredGroupKey):
         group_key(rec, ("mode",))
 
 
@@ -101,11 +101,16 @@ def test_a_case_that_states_no_value_for_a_declared_key_is_a_refusal_not_a_dropp
 
 
 def test_a_key_no_record_states_is_never_declared_while_a_gap_in_one_case_is_not():
-    """The two refusals are different stories for the producer: `KeyError` means the caller asked
-    for a condition the data never carries; `ValueError` means the data carries it unevenly."""
+    """The two refusals are different stories for the producer.
+
+    `UndeclaredGroupKey` (a `ValueError`, and R-115 chose that shape for a reason: the CLI maps
+    `ValueError` to exit 2) means the CALLER asked for a condition the data never carries;
+    a plain `ValueError` means the data carries the key unevenly. Both exit 2, and only one of
+    them is fixed by changing the argument.
+    """
     recs = [choice_record(id="a-0", case_id="a", slices={"family": "f0"}),
             choice_record(id="b-0", case_id="b", slices={"mode": "fast"})]
-    with pytest.raises(KeyError):
+    with pytest.raises(UndeclaredGroupKey):
         by_group(recs, ("language",))
     with pytest.raises(ValueError, match="case b"):
         by_group(recs, ("family",))
@@ -138,9 +143,9 @@ def test_an_empty_batch_names_no_groups_instead_of_one_empty_group():
     group count of zero or publish "worst of none" -- so the refusal is the same one the producer
     gets for any key nothing states.
     """
-    with pytest.raises(KeyError):
+    with pytest.raises(UndeclaredGroupKey):
         by_group([], ("family",))
-    with pytest.raises(KeyError):
+    with pytest.raises(UndeclaredGroupKey):
         group_counts((), ("family",))
 
 

@@ -3,7 +3,8 @@
 A Mondrian bound is a bound *conditional on a group*, so the group has to come from somewhere the
 evidence can name. Here it comes from the producer: `Record.slices` carries the slice keys an
 upstream row actually states, and this module refuses to condition on any key that is not among
-them. An invented key does not yield an empty grouping -- it yields a `KeyError` -- because a
+them. An invented key does not yield an empty grouping -- it yields `UndeclaredGroupKey` (a
+`ValueError`, so the CLI exits 2 rather than tracebacking at 1: R-115) -- because a
 group nobody can point at in the data is a denominator with no owner, and silence about the
 condition a guarantee is valid under is the exact failure §8.1 exists to avoid.
 
@@ -32,6 +33,31 @@ from .records import is_hashable_key
 # a quantile. A fresh `object()` rather than a sentinel STRING, because a string is a value the
 # producer's own data can contain, and a group named like the marker would then read as a gap.
 _ABSENT = object()
+
+
+class UndeclaredGroupKey(ValueError):
+    """The caller asked to condition on a slice key no record in the batch declares.
+
+    Raised at the raising site -- `group_key` and `by_group` are the only places that hold both the
+    record and the declaration -- rather than by giving `cli.main` a `KeyError` arm. That is ledger
+    R-115's ruling on this exact escape, and the loader round (`746f10f`, `MissingRecordField`) is
+    the sibling that cites it: `KeyError` is ordinary dict access everywhere in this codebase, so
+    catching it centrally would convert unrelated bugs into a usage exit carrying a helpful-looking
+    message.
+
+    The class is a `ValueError` subclass, and the two neighbouring candidates were rejected on
+    purpose. Not a bare `ValueError`, because a dedicated name stays greppable and separately
+    testable -- the operator who typos `--groups langauge` has to be able to find what refused him,
+    and the two `ValueError`s this module also raises (a case that cannot be placed, a slice value
+    that cannot be a key) are about the PRODUCER's data while this one is about the CALLER's
+    arguments. Not a `KeyError`, even though a `KeyError` is what the dict lookup would have raised:
+    `cli.main()` maps `ValueError` to exit 2 and has no `KeyError` arm, so a `KeyError` here was an
+    rc-1 traceback on the one path a user reaches by typing -- measured through the real `main()`
+    before this class existed, and the reason R-115 changed the refusal type instead of the catch.
+
+    Being a `ValueError` is load-bearing and is pinned in `tests/test_groups.py`: the exit-code
+    contract is delivered by the parent class, and the diagnosis by this one.
+    """
 
 
 def _declared_keys(groups: Sequence[str]) -> tuple:
@@ -97,14 +123,15 @@ def group_key(record, groups: Sequence[str]) -> tuple:
     -- §8.1's groups are named `km`, not `('km',)` -- and the collapse is pinned by
     tests/test_groups.py rather than left to the reader.
 
-    `KeyError` when this record states no value for one of the keys: the domain of a Mondrian group
+    `UndeclaredGroupKey` (a `ValueError`) when this record states no value for one of the keys: the
+    domain of a Mondrian group
     is the producer's declared slices and nothing else.
     """
     keys = _declared_keys(groups)
     values = []
     for key in keys:
         if key not in record.slices:
-            raise KeyError(_undeclared_message(key, (record,)))
+            raise UndeclaredGroupKey(_undeclared_message(key, (record,)))
         values.append(record.slices[key])
     return tuple(values)
 
@@ -146,7 +173,8 @@ def by_group(records: Iterable, groups: Sequence[str]) -> dict:
     meaningful; the groups come back in the order their first case appeared, so a table built from
     them has one order instead of a hash's.
 
-    `KeyError` when no record in the batch declares one of the keys (the producer never set it),
+    `UndeclaredGroupKey` (a `ValueError`, so `cli.main` maps it to exit 2) when no record in the
+    batch declares one of the keys (the producer never set it),
     `ValueError` when the batch declares a key but some case cannot be placed by it -- either its
     records disagree, or none of them states it.
     """
@@ -154,7 +182,7 @@ def by_group(records: Iterable, groups: Sequence[str]) -> dict:
     recs = list(records)
     for key in keys:
         if not any(key in r.slices for r in recs):
-            raise KeyError(_undeclared_message(key, recs))
+            raise UndeclaredGroupKey(_undeclared_message(key, recs))
     out: dict = {}
     for values, members in _grouped_by_case(recs, keys).values():
         # The collapse is the published-name rule, not the tuple contract: `group_key` keeps

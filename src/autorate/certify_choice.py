@@ -367,7 +367,6 @@ class GroupsCertificate:
     worst: Optional[Certificate] = None
     worst_claim: dict = field(default_factory=dict)
     refused_by_size: list = field(default_factory=list)
-    slice_cases: dict = field(default_factory=dict)
     slice_census: list = field(default_factory=list)
     envelope: tuple = ()
     meta: dict = field(default_factory=dict)
@@ -401,9 +400,29 @@ class GroupsCertificate:
                                   self.n_claims)["level"]
 
     @property
+    def feasible(self) -> bool:
+        """A worst-of-G permission exists only if EVERY slice certified -- so does the worst one.
+
+        This is what `cli.cmd_certify` maps to exit 0 or exit 3, and it is deliberately the
+        conjunction over the slices rather than `pooled.feasible`: the pooled certificate is a
+        different (marginal) claim about the same records, and answering 0 because the pool certified
+        while a slice has no bound at all is the move spec 8.1 exists to forbid.
+        """
+        return all(cert.feasible for cert in self.per_group.values())
+
+    @property
+    def slice_cases(self) -> dict:
+        """Group name -> independent CASES, read from the census rather than stored beside it.
+
+        The floor and the worst-of-G tie-break both read this, and `slice_census` already carries it
+        per slice: a second stored map would be a second owner of a count that decides refusals.
+        """
+        return {row["group"]: row["cases"] for row in self.slice_census}
+
+    @property
     def thinnest(self):
         """The slice with the fewest independent CASES -- the one the census can refuse first."""
-        return min(self.slice_cases, key=lambda name: (self.slice_cases[name], str(name)))
+        return min(self.slice_census, key=lambda row: (row["cases"], str(row["group"])))["group"]
 
     @property
     def any_slice_refused(self) -> bool:
@@ -438,9 +457,23 @@ class GroupsCertificate:
             "groups": list(self.groups), "n_groups": self.n_groups, "alpha": self.alpha,
             "beta": self.beta, "delta": self.delta, "corrected_alpha": self.corrected_alpha,
             "corrected_beta": self.corrected_beta, "corrected_delta": self.corrected_delta,
-            "n_claims": self.n_claims, "level": self.level, "thinnest": self.thinnest,
+            # `feasible` is the derived conjunction, published because it is what the CLI's exit code
+            # answers: an artefact whose rc cannot be reconstructed from its own fields lets a re-run
+            # and a read disagree about whether the worst-of-G permission exists.
+            "n_claims": self.n_claims, "level": self.level, "feasible": self.feasible,
+            "thinnest": self.thinnest,
             "any_slice_refused": self.any_slice_refused,
             "refused_by_size": self.refused_by_size, "slice_census": self.slice_census,
+            # Stringified exactly like `per_group` below, and for the same reason: a two-key
+            # declaration (`--groups family,mode`) makes the group a TUPLE, and `json.dumps` refuses a
+            # tuple key with `TypeError: keys must be str, int, float, bool or None` -- measured as rc
+            # 1 through the real CLI before this line was rendered, which is outside the 0/2/3/4
+            # contract. Values may be tuples (they serialize as lists); keys may not.
+            "slice_cases": {str(name): n_cases for name, n_cases in self.slice_cases.items()},
+            # `str(name)` is not cosmetic: `by_group` names a one-key slice by its value and a
+            # multi-key slice by a tuple, and a tuple is not a JSON object key. One rendering rule,
+            # applied to every map keyed by a group, so the two cannot disagree about what a slice
+            # is called.
             "per_group": {str(name): cert.to_dict() for name, cert in self.per_group.items()},
             "pooled": self.pooled.to_dict() if self.pooled else None,
             "worst_claim": self.worst_claim, "envelope": list(self.envelope), "meta": self.meta,
@@ -498,17 +531,15 @@ def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, d
     per_group: dict = {}
     rows: list = []
     census: list = []
-    slice_cases: dict = {}
     refused_by_size: list = []
     corrected_fields = {"corrected_alpha": corrected_alpha, "corrected_beta": corrected_beta,
                         "corrected_delta": corrected_delta_value, "n_claims": N_CLAIMS}
     for name, members in slices.items():
         kept, dropped = _eligible(members)
         n_cases = len({case_key(r) for r in members})
-        slice_cases[name] = n_cases
         census.append({"group": name, "cases": n_cases, "records": len(members),
                        "kept": len(kept), **dropped})
-        detail_meta = {"groups_declared": declared, "slice_cases": n_cases,
+        detail_meta = {"groups_declared": declared, "n_eval_cases": n_cases,
                        "min_cases_per_slice": floor, "backend": backend}
         if size_floor(n_cases, floor):
             why = ("%s (slice %r holds %d independent cases; the floor is %d, which is MIN_CAL + "
@@ -545,12 +576,14 @@ def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, d
         "beta is NOT divided: %.3f is the budget every slice's bound must beat, which already bounds "
         "the worst slice at %.3f; the corrected pair %.6f is published for the reader to see which "
         "number gated" % (beta, beta, corrected_beta),
-        "an UNCORRECTED worst-of-%d at delta=%.3f would claim 1 - %d x %d x %.3f = %.4f, which is "
-        "%s a probability%s" % (
+        "an UNCORRECTED worst-of-%d at delta=%.3f would claim 1 - %d x %d x %.3f = %.4f, %s" % (
             g, delta, g, N_CLAIMS, delta, uncorrected_level,
-            "" if 0.0 < uncorrected_level < 1.0 else "NOT",
-            "" if 0.0 < uncorrected_level < 1.0 else " -- this is why the correction is not "
-                                                    "decorative"),
+            ("which is NOT a probability -- this is why the correction is not decorative"
+             if not (0.0 < uncorrected_level < 1.0) else
+             "which is a probability, but only until the census is large enough to break it: the "
+             "line above is the claim this run actually makes, and it is paid for by the division "
+             "this one undoes"),
+        ),
         "the pooled (marginal) certificate over these same records is published beside the slices "
         "and is NOT a substitute for them: %s" % pooled.summary(),
         "certified on archived responses; live traffic shift is not covered",
@@ -560,7 +593,7 @@ def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, d
         corrected_alpha=corrected_alpha, corrected_beta=corrected_beta,
         corrected_delta=corrected_delta_value, n_claims=N_CLAIMS, per_group=per_group, pooled=pooled,
         worst=per_group[claim["worst"]["group"]], worst_claim=claim, refused_by_size=refused_by_size,
-        slice_cases=slice_cases, slice_census=census, envelope=envelope,
+        slice_census=census, envelope=envelope,
         meta={"seed": seed, "method": method, "min_cases_per_slice": floor,
               "groups_declared": declared, "backend": backend,
               "n_refused_by_size": len(refused_by_size),
