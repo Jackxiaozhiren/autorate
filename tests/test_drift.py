@@ -24,6 +24,8 @@ this project has ever conditioned on a declared drift variable.
 import inspect
 import json
 import math
+import random
+import re
 from pathlib import Path
 
 import pytest
@@ -184,6 +186,48 @@ def test_unit_weights_reproduce_split_quantile_exactly_on_every_alpha_and_size()
             plain = split_quantile(s, alpha)
             weighted = weighted_quantile(s, [1.0] * n, alpha)
             assert weighted == plain, (n, alpha, weighted, plain)
+
+
+def test_the_declared_ratio_case_measures_the_deficit_the_envelope_admits():
+    """BLOCKER-1's arithmetic, run in the suite so the withdrawn sentence cannot go stale.
+
+    Calibration ~ U[0,1] (regime F0), declared ratio w(s) = 10*s^9 = f1/f0, so the declaration is
+    EXACT and `E_F0[w] = 1`: the only error available to the estimator is the finite-sample one. The
+    test regime's own CDF is F1(s) = s^10, so the coverage a threshold q buys is q^10 in closed form
+    -- no test-point sampling, hence no second Monte-Carlo layer.
+
+    Provenance, stated because a Monte-Carlo number without it is not evidence: seed 20261008,
+    4000 trials per size, `random.Random(seed + n)` so the two sizes are different streams.
+    Deterministic across libc: the assertions are bands around the mean with a Monte-Carlo tolerance,
+    never an exact float.
+    """
+    seed, trials, alpha = 20261008, 4000, 0.05
+    measured = {}
+    for n in (25, 100):
+        rng = random.Random(seed + n)
+        misses, vacuous = [], 0
+        for _ in range(trials):
+            cal = [rng.random() for _ in range(n)]
+            q, flag = weighted_quantile(cal, [10.0 * s ** 9 for s in cal], alpha)
+            if flag:
+                vacuous += 1
+            misses.append(1.0 - q ** 10)  # P(score > q) under the declared target regime
+        mean = math.fsum(misses) / trials
+        se = math.sqrt(math.fsum((m - mean) ** 2 for m in misses) / (trials - 1) / trials)
+        measured[n] = (mean, se, vacuous / float(trials))
+    for n in (25, 100):
+        mean, se, vac = measured[n]
+        assert mean > alpha, (n, mean, se)
+        assert mean > 1.5 * alpha, ("n=%d realised miscoverage %.4f is not 1.5x nominal" % (n, mean))
+        assert abs(mean - (0.1411 if n == 25 else 0.0933)) < 6.0 * se + 0.01, (n, mean, se)
+        if n == 25:
+            assert abs(vac - 0.3058) < 0.03, vac
+    # the envelope cites these figures; if the arithmetic moves, the citation goes stale and reddens
+    cited = [float(t) for t in re.findall(r"\d\.\d{4}", " ".join(WEIGHTED_ENVELOPE))]
+    for n in (25, 100):
+        assert any(abs(c - measured[n][0]) < 6.0 * measured[n][1] + 0.005 for c in cited), (
+            "WEIGHTED_ENVELOPE must carry the measured miscoverage at n=%d (%.4f), not a claim "
+            "about it: %r" % (n, measured[n][0], WEIGHTED_ENVELOPE))
 
 
 def test_the_density_vector_has_no_default_and_an_absent_one_is_a_refusal():

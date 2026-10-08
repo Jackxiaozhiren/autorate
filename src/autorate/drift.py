@@ -10,7 +10,14 @@ algorithmic reasons:
   weights are not estimated here and cannot be: an estimated ratio would be a second assumption
   wearing the clothing of a measurement. Unit weights reproduce `conformal.split_quantile` bit for
   bit, including the vacuity flag, because a generalisation that does not reduce to its special
-  case is a second owner of that special case's number.
+  case is a second owner of that special case's number. WHAT MODE 1 DOES NOT BUY: a finite-sample
+  bound. The correction this module applies is the `+1` of the EXCHANGEABLE case, and under a
+  non-unit declaration the weighted-conformal denominator is `sum(w) + w_{n+1}`, where `w_{n+1}` is
+  the test point's own weight -- drawn from the target regime, so unknown at calibration time. With
+  an exactly declared ratio the shipped threshold therefore under-covers: measured 0.0933 realised
+  miscoverage at n=100 against nominal 0.05 (seed 20261008, 4000 trials x 2000 test points, 3SE
+  0.0040), 0.1411 at n=25. `WEIGHTED_ENVELOPE` says this; a certificate stamped with mode 1 states
+  a re-weighted estimate, not a bound.
 * `aci_threshold` (mode 2) trades the finite-sample statement itself for an adaptive threshold. Its
   guarantee is a bound on the LONG-RUN regret of the average miscoverage rate, and `aci_regret_bound`
   states that bound's shape: it exceeds 1.0 for the first ten rounds (so it says nothing about any
@@ -72,8 +79,15 @@ WEIGHTED_ENVELOPE = (
     "estimated here, so the bound is only as good as that declaration",
     "assumed: the declared weights are the density ratio between the calibration regime and the "
     "regime the decision runs in; nothing in this module tests that assumption",
-    "finite-sample correction retained: the test point carries weight 1.0, so unit weights "
-    "reproduce split_quantile exactly -- the generalisation is checked against its special case",
+    "the finite-sample correction is the EXCHANGEABLE case's: the denominator adds weight 1.0 for "
+    "the test point, which is exact for unit weights -- where the answer reproduces split_quantile "
+    "value for value and flag for flag -- and is not the weighted-conformal correction, whose "
+    "denominator is sum(w) + w_{n+1} with w_{n+1} the test point's own target-regime weight",
+    "so mode 1 buys a re-weighted estimate of the target-regime quantile and NO finite-sample "
+    "bound: measured on an exactly declared ratio (calibration ~ U[0,1], target density 10*s^9, "
+    "E_F0[w] = 1, alpha = 0.05, seed 20261008, 4000 trials x 2000 test points), realised "
+    "miscoverage is 0.0933 at n=100 (3SE 0.0040) and 0.1411 at n=25 against a nominal 0.05, with "
+    "0.3058 of those n=25 trials returning the vacuous ceiling",
 )
 
 ACI_ENVELOPE = (
@@ -85,11 +99,22 @@ ACI_ENVELOPE = (
     "[0,1] every round, and a certificate built on it carries this line, not the split bound",
 )
 
-#: The test point's own weight in the mode-1 correction. This is the definition, not a tuned
-#: constant: the weights live in density-ratio units, so one sample of weight 1.0 is the unit, and
-#: `sum(weights) + 1` is the weighted analogue of `n + 1` in `split_quantile`. R-127 is the reason
-#: this line names its derivation -- it is a definition of the estimator, not a precision tolerance,
-#: and the two precision constants that already have owners (`tails.py`, `HALF_STEP`) stay untouched.
+#: The test point's own weight in the mode-1 correction. Read this as the EXCHANGEABLE case's
+#: correction, not as the weighted-conformal one: with unit weights `sum(weights) + 1` is `n + 1`,
+#: so `split_quantile` is reproduced exactly (measured, tests/test_drift.py, sizes 1..400 x 9
+#: alphas). Under a NON-unit declaration the denominator of the weighted argument is
+#: `sum(w) + w_{n+1}`, where `w_{n+1}` is the test point's own density ratio: a draw from the
+#: target regime, so not knowable at calibration time, because the score that names it needs the
+#: label. Setting it to 1.0 therefore under-corrects by O(1/n_eff), which is the whole size of the
+#: correction -- hence `WEIGHTED_ENVELOPE` withdraws the finite-sample sentence instead of restating
+#: it, and the measured deficit is in that line rather than hidden in a comment.
+#: Restoring a finite-sample statement here needs a DECLARED test-point weight (an upper bound on
+#: `w_{n+1}`, or its target-regime mean `E_F0[w^2]`) added to `DECLARATION_FIELDS`, i.e. a
+#: declaration-shape change whose producer is B3 Task 5 and whose meta-versus-shape ruling is ledger
+#: R-149's. That is not this round's call to make, so the shape is untouched and the text is fixed.
+#: R-127: this line names its derivation -- a definition of the estimator, not a tuned constant and
+#: not a precision tolerance; the two precision constants that already have owners (`tails.py`,
+#: `HALF_STEP`) stay untouched.
 TEST_POINT_WEIGHT = 1.0
 
 #: The ceiling a conformal threshold cannot exceed on this project's scores, and the value the
@@ -193,9 +218,15 @@ def weighted_quantile(scores, weights, alpha) -> tuple:
     """The weighted-conformal threshold at level 1 - alpha, plus the vacuity flag.
 
     `target = (1 - alpha) * (sum(weights) + TEST_POINT_WEIGHT)`, and the answer is the smallest
-    declared score whose cumulative weight reaches it -- the exact weighted analogue of
-    `split_quantile`'s `ceil((1-alpha)(n+1))` order statistic, so with unit weights the two agree
-    value for value and flag for flag (pinned by tests/test_drift.py over sizes 1..400).
+    declared score whose cumulative weight reaches it. With UNIT weights that is exactly
+    `split_quantile`'s `ceil((1-alpha)(n+1))` order statistic, and the two agree value for value and
+    flag for flag (pinned by tests/test_drift.py over sizes 1..400). With NON-unit weights it is NOT
+    the weighted analogue of that statement: the weighted-conformal denominator is
+    `sum(w) + w_{n+1}` and this module supplies `1`, so the correction is the exchangeable case's
+    only. The consequence is measured, not argued -- on an exactly declared ratio the realised
+    miscoverage is 0.0933 at n=100 and 0.1411 at n=25 against a nominal 0.05 (seed 20261008, 4000
+    trials x 2000 test points; `WEIGHTED_ENVELOPE`), so a caller gets a re-weighted estimate of the
+    target-regime quantile and must not present it as a bound.
 
     Scores are grouped by value before the cumulative is taken: the crossing is a property of the
     multiset of declared pairs, not of the order the caller typed them in, and a scan that walked
