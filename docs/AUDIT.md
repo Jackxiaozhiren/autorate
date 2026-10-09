@@ -1,6 +1,6 @@
 # Audit: the gate the README instructs, measured against what it implies
 
-Produced by `autorate audit` from the committed records file. Every number here is emitted by that command and re-derived by `tests/test_audit.py` from the same records; none is typed, and this file carries no timestamp, so a re-run is byte-comparable.
+Produced by `autorate audit` from the committed records file. Every number here is emitted by that command and re-derived by `autorate verify`, which byte-compares this file against a fresh render from the same records in both of its lanes, and by `tests/test_audit.py`; none is typed, and this file carries no timestamp, so a re-run is byte-comparable.
 
 **G2 (§2):** at `confidence >= 0.85`, the measured error among automated decisions against the 15% that sentence implies, and the multiple by which it misses.
 

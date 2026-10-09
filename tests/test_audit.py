@@ -844,6 +844,23 @@ def test_the_committed_artefact_is_what_this_revision_writes(by_backend):
                                          "what it implies"), committed.splitlines()[0]
 
 
+# --- MAJ-3: the artefact's own sentence about who re-derives it -------------------------------
+
+
+def test_the_artefact_names_the_gate_that_re_derives_it():
+    """The producer wrote "re-derived by `tests/test_audit.py`" at a revision where that was all.
+
+    True as far as it went -- the suite does re-render the file -- and beside the point: the
+    repository's published-numbers gate is `autorate verify`, and until `PUBLISHED_DOCS` grew this
+    artefact the gate never opened it. A published document that names the wrong re-derivation owner
+    states a fact no reader can check, so the sentence itself is policed here, and it is the sentence
+    the generator has to be changed to satisfy.
+    """
+    prose = AUDIT_MD.read_text().splitlines()[2]
+    assert "autorate verify" in prose, prose
+    assert "tests/test_audit.py" in prose, prose
+
+
 # --- R-121 at this module's producer: the precision a published bound is stored at -------------
 #
 # `float-canonical-b` fixed the choice gate and reported, as its concern 3, that this module was

@@ -94,14 +94,16 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # list rather than typed, so a row that quietly disappears changes the expectation too.
     from autorate.cli import CERT_COMPARE_FIELDS
 
-    # every certificate in the two published tables x (each compared field + its summary), then the
-    # two published artefacts that must reproduce byte for byte: docs/RESULTS.md and data/inventory.md,
-    # then every MASSIVE figure that `data/massive_provenance.json` owns. The pin rows are
-    # counted from the same producer's output, and the ids it covers are pinned separately so
-    # a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change. The key
-    # list is read from the gate itself (R-83), so a column the arm stops comparing has to widen
-    # this expectation before it can shrink the gate.
-    from autorate.cli import PIN_DERIVED_KEYS
+    # every certificate in the two published tables x (each compared field + its summary), then one
+    # row per published document that must reproduce byte for byte -- read from `PUBLISHED_DOCS`, the
+    # same table the gate loops over, so a document the gate stops re-rendering has to shrink this
+    # expectation before it can pass (R-168: a hand-kept list of published files is a second owner of
+    # the publication list). Then every MASSIVE figure that `data/massive_provenance.json` owns.
+    # The pin rows are counted from the same producer's output, and the ids it covers are pinned
+    # separately so a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change.
+    # The key list is read from the gate itself (R-83), so a column the arm stops comparing has to
+    # widen this expectation before it can shrink the gate.
+    from autorate.cli import PIN_DERIVED_KEYS, PUBLISHED_DOCS
     from autorate.inventory import corpus_options, massive_pin
     from autorate.report import CERTS, MASSIVE_CERTIFICATES
 
@@ -113,13 +115,20 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     assert "feasible_at_0.10" in PIN_DERIVED_KEYS and "feasible_at_0.25" in PIN_DERIVED_KEYS
     pin_rows = sum(1 for o in pin_options for k in PIN_DERIVED_KEYS if k in o)
     assert pin_rows == 13, pin_rows      # 7 for the pooled row, 6 for per-language (no `n_shards`)
+    # Membership, not only the count. The denominator below is read from the same table the gate
+    # loops over, so on its own it cannot notice a document deleted from the table: `expected` and
+    # `total` shrink together and the row stays green. This literal is the independent statement of
+    # which published documents `verify` owns -- it is the assertion that was red for `docs/AUDIT.md`
+    # before MAJ-3, and it is what a future narrowing of `PUBLISHED_DOCS` has to edit first.
+    assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
+                                                         "docs/AUDIT.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
     # `total` 47 against `expected` 95 until the gate grew the arm, which is the defect class
     # (a published number with no producer) this formula exists to make loud.
-    expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1) + 2
-                + pin_rows)
+    expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
+                + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 
 
@@ -625,6 +634,24 @@ def test_verify_catches_an_edited_inventory_markdown(tmp_path):
     p = run("verify", cwd=tmp_path)
     assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
     assert "data/inventory.md byte-identical" in p.stderr, p.stderr
+
+
+def test_verify_catches_an_edited_audit_markdown(tmp_path):
+    """MAJ-3's arm must be able to fail, or `docs/AUDIT.md` is a document the gate merely counts.
+
+    Same shape as the two byte-checks above: copy the published set, change one number the tool
+    emits, and require rc 4 naming the file. `docs/AUDIT.md` carries no timestamp, so a re-render is
+    byte-comparable -- the claim `tests/test_audit.py` could only make against its own re-render
+    until the gate itself re-derived the artefact.
+    """
+    for d in ("data", "docs"):
+        shutil.copytree(REPO / d, tmp_path / d)
+    doc = tmp_path / "docs" / "AUDIT.md"
+    doc.write_text(doc.read_text().replace("0.8312", "0.9000"))
+    assert "0.9000" in doc.read_text(), "tampering did not land"
+    p = run("verify", cwd=tmp_path)
+    assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
+    assert "docs/AUDIT.md byte-identical" in p.stderr, p.stderr
 
 
 def _tracked_subjects(repo: Path) -> tuple:

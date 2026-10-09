@@ -94,24 +94,25 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 95 /95 values` where the corpus is absent, `re-derived 130 /130
+prints say so: `re-derived 96 /96 values` where the corpus is absent, `re-derived 131 /131
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 130: every CI run is a 95 run, on both of its arms. Green CI is
+alone can never reach the 131: every CI run is a 96 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 95 run proves a lot inside that lane. Every published number that is a function of a
+A 96 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all five published certificates, each from the committed
 records it was actually made from, the whole
-of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, and the MASSIVE rows
-from their committed pin. What a 95 run cannot prove is what its own disclosure says in so
+of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
+for byte, and the MASSIVE rows
+from their committed pin. What a 96 run cannot prove is what its own disclosure says in so
 many words -- `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 95 /95.
+had drifted from the corpus would agree with itself and report 96 /96.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,

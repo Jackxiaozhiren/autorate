@@ -693,3 +693,33 @@ Disclosed rather than fixed, because it is not this change's to make: with a pub
 `verify` surfaces a bare `FileNotFoundError` mapped onto the usage exit code, instead of naming the missing
 artefact. The two feishu certificates have always behaved that way; the arm inherits it. A named refusal
 belongs with the queued work on the gate's error surface, not here.
+
+## 2026-10-09 — `verify` counted three published documents and opened two of them
+
+`docs/AUDIT.md` is a published table of Clopper-Pearson bounds, measured errors and multiples, and the
+repository's own claim is that `autorate verify` re-derives every published number. It did not open this
+one: `cmd_verify` carried two hand-written byte-comparisons -- `docs/RESULTS.md` and `data/inventory.md`
+-- and the audit artefact sat outside the gate while its first line asserted, in print, that
+`tests/test_audit.py` was what re-derived it. That sentence was true and beside the point. The suite
+re-renders the file to catch a renderer that moved; the gate is the thing a reader is told re-derives the
+numbers, and a published document whose re-derivation owner is misnamed states a fact no reader can check.
+
+The fix is a table with one owner, because the defect class is a hand-kept list. `PUBLISHED_DOCS` in
+`cli.py` now names every published document together with the function that renders it, `cmd_verify` loops
+over that table, and the test that counts the gate counts `len(PUBLISHED_DOCS)` rather than the literal `2`
+it used to hold. `docs/AUDIT.md` was regenerated from its producer (`autorate audit`, rc 0), which changed
+one line: the file now says `verify` byte-compares it in both lanes.
+
+Both arms were falsified, and the second falsification is the reason both exist. Tampering a bound in a
+scratch copy reddens the gate at rc 4 naming `docs/AUDIT.md byte-identical`. Narrowing `PUBLISHED_DOCS`
+in memory -- deleting the audit row, leaving the loop untouched -- leaves `verify` printing `95 /95`, rc 0:
+a denominator derived from the table it is derived from cannot see a document removed from it. What catches
+that is the separate membership pin in `test_cli.py`, which names the three documents independently of the
+count. One assertion notices a row that stopped being checked; the other notices a document that stopped
+existing.
+
+Measured after, both rc 0: corpus-absent `re-derived 96 /96 values`, corpus-present `re-derived 131 /131`.
+The gap between the lanes is still exactly 35 checks -- the 9 upstream `SOURCE.json` digests and the 26
+snapshot keys -- because the row the widening added reads only the committed records file, which is the
+same corpus-independent reason the pin arm exists. `README.md` now quotes 96 and 131 and lists
+`docs/AUDIT.md` among what a 96 run proves; the rows above this one keep the figures they measured.

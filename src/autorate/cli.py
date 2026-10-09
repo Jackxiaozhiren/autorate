@@ -482,6 +482,23 @@ def cmd_audit(args) -> int:
     return EXIT_CERTIFIED if informative else EXIT_NOT_CERTIFIABLE
 
 
+# Every published document `verify` re-renders and compares byte for byte, named once so the gate
+# cannot disagree with the list the documents are written from. A hand-kept list of published files
+# inside the gate would be a second owner of the publication list -- the defect class R-168 was
+# written for -- so the test that counts the gate counts `len(PUBLISHED_DOCS)` rather than a literal,
+# and the label printed on a failure is the path itself.
+PUBLISHED_DOCS = (
+    (RESULTS, lambda inv, records: build_report(
+        inv, certify_all(records), {b: len(rs) for b, rs in records.items()})),
+    (INVENTORY_MD, lambda inv, records: _rendered_inventory(inv)),
+    # Called with no gate and no delta on purpose: the committed `docs/AUDIT.md` was written by
+    # `autorate audit` under `audit_fields`' own defaults, so re-deriving it means re-deriving the
+    # default row, not inventing a third parameter set for the gate to own.
+    (AUDIT_MD, lambda inv, records: render_audit(
+        {b: audit_fields(rs) for b, rs in sorted(records.items())})),
+)
+
+
 def cmd_verify(args) -> int:
     """Recompute every published number from committed inputs and fail on drift."""
     checked = total = 0
@@ -514,11 +531,8 @@ def cmd_verify(args) -> int:
     rederive_massive(expect, CERT_COMPARE_FIELDS)
 
     inv, source = _inventory()
-    rebuilt = build_report(inv, certify_all(records),
-                           {b: len(rs) for b, rs in records.items()})
-    expect("docs/RESULTS.md byte-identical", rebuilt, RESULTS.read_text())
-    expect("data/inventory.md byte-identical", _rendered_inventory(inv),
-           INVENTORY_MD.read_text())
+    for path, render in PUBLISHED_DOCS:
+        expect("%s byte-identical" % path, render(inv, records), path.read_text())
 
     if source == FROM_CORPUS:
         for d in inv["digests"]:
