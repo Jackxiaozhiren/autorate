@@ -175,6 +175,29 @@ def _clean_three_record_cases(count):
     return out
 
 
+# The population the review's F-1 needed and this file did not have: a MONOTONE two-sided family, so
+# `direction="both_sides_sum"` certifies instead of refusing and its published price gets read by a
+# row. One shared ballot peaked at level 4, 10 of the cases gold "3" and the rest gold "4": the loss
+# `1{Y != a}` counts [n, n, n, n-10, 10] over the five candidates, which is non-increasing, so the
+# precondition passes and the search lands on ahat=4 -- the constant answer. At that rule the two
+# tails are NOT symmetric: nothing sits above the report (`P(Y > ahat)` counts 0 cases) while the 10
+# gold-"3" cases sit below it (`P(Y < ahat)` counts 4 in the calibration half). That asymmetry is the
+# whole content of F-1: a price bound made from the lower tail printed under the upper tail's name
+# states a probability of an event this population does not contain.
+TWO_SIDED_PEAK = (0.06, 0.06, 0.06, 0.06, 0.76)   # mode index 4 on every record
+
+
+def _two_sided_monotone_cases(count=1000, wrong=10):
+    """`count` single-record cases, `wrong` of them one level under a ballot that always says 4."""
+    out = []
+    for i in range(count):
+        cid = "twosided%04d" % i
+        out.append(Record(id="%s.r0" % cid, qtype="score", backend="synthetic-ordinal", repeat=0,
+                          options=OPTIONS, probs=TWO_SIDED_PEAK, gold="3" if i < wrong else "4",
+                          predicted="4", case_id=cid, seed=11, u=0.1))
+    return out
+
+
 def _hand_bound(count, n, delta=DELTA):
     """The published form of one exact binomial upper bound, counted here from the definitions."""
     return canonicalise_bound(clopper_pearson_upper(count, n, delta))
@@ -547,6 +570,52 @@ def test_the_two_gates_publish_one_joint_level_and_not_two_conventions():
     assert loose.level != sev.level
 
 
+def test_the_envelope_prints_the_joint_level_the_owner_derives_and_not_a_second_copy():
+    """F-2's guard: one producer for the printed confidence, across every budget the gate accepts.
+
+    GREEN-ON-ARRIVAL by construction -- the product already prints 0.85 here, and the review measured
+    that no shipped path over-states today. The change that reddens it is the one the review planted:
+    an envelope that computes its own `1.0 - delta` instead of asking `correction.joint_level`, which
+    prints "joint level 0.95" beside three bounds made at 0.85 and leaves all 33 original rows green.
+    The printed level is pinned in both places a reader meets it -- the envelope line that states the
+    claim count and the summary -- so neither can carry a number the certificate does not have.
+    """
+    recs = ordinal_records(**CLEAN)
+    for delta in (0.01, 0.05, 0.10, 0.30):
+        cert = certify_severity(recs, ALPHA, delta, "under", SEED)
+        assert cert.feasible is True, cert.summary()
+        lines = [line for line in cert.envelope if "%d claims at delta=%.3f"
+                 % (SEVERITY_N_CLAIMS, delta) in line]
+        assert len(lines) == 1, cert.envelope
+        assert "joint level %.2f by the rule" % cert.level in lines[0], (lines[0], cert.level)
+        assert "joint level %.2f over %d claims at delta=%.3f" % (
+            cert.level, SEVERITY_N_CLAIMS, delta) in cert.summary(), cert.summary()
+        assert cert.level == joint_level({"alpha": delta, "beta": delta}, 1, SEVERITY_N_CLAIMS)
+
+
+def test_a_joint_level_the_owner_refuses_to_derive_is_not_printed_as_a_confidence():
+    """F-2's red: a loose enough delta makes the printed envelope state a level that is not a probability.
+
+    The envelope used its own arithmetic, so it answered for a budget the one owner of the
+    simultaneous claim refuses at: at `delta=0.40` the artefact published "3 claims at delta=0.400,
+    joint level -0.20" while `SeverityCertificate.level` -- the same call to `correction.joint_level`
+    -- raised `ValueError: the joint level -0.2 … is not a probability`. A printed number with no
+    producer is exactly the anti-pattern R-160 names, and this is the state where the missing producer
+    is observable without planting anything: the print survives and the derivation does not. The fix
+    is one call site, so the refusal the owner states is the refusal the artefact carries (exit 2,
+    which `cli.main` maps from `ValueError`).
+    """
+    recs = ordinal_records(**CLEAN)
+    with pytest.raises(ValueError, match="not a probability"):
+        certify_severity(recs, ALPHA, 0.40, "under", SEED)
+    # The boundary is the owner's, not a number this module repeats: one claim's budget below the
+    # 1/3 the three-envelope product allows still certifies, and prints the level it derived.
+    just_inside = certify_severity(recs, ALPHA, 0.33, "under", SEED)
+    assert just_inside.feasible is True
+    assert just_inside.level == joint_level({"alpha": 0.33, "beta": 0.33}, 1, SEVERITY_N_CLAIMS)
+    assert "joint level %.2f by the rule" % just_inside.level in " ".join(just_inside.envelope)
+
+
 def test_the_severity_gate_ships_the_union_bound_the_spec_names_and_says_which_reading_it_rejects():
     """R-160 settled from the spec, not by preference, and the resolution travels in the artefact.
 
@@ -795,6 +864,91 @@ def test_the_price_line_prices_the_rule_that_ran_and_not_the_other_search():
         assert getattr(over, field) == getattr(under_m, field), field
     assert over.ahat + under_m.ahat == K - 1
     assert "direction=over: P(Y <" in over.summary(), over.summary()
+
+
+def test_each_direction_prints_the_event_its_bound_is_actually_counted_from():
+    """F-1's both-direction pin: the printed tail label must match the tail the number counts.
+
+    The label in the artefact and the comparison in `_loss`/`_price` are two statements about one
+    event, and a review found them disagreeing for a certified `both_sides_sum` run. This row is the
+    same check for the two directions that were already right, so that a future edit swapping either
+    label -- or making `_price` read the requested side -- reddens a row rather than shipping a
+    probability attributed to the wrong tail. Every count here is derived in the test from the records
+    and the public rule helpers, never read back from the certificate's own tables, and the two tails
+    hold DIFFERENT counts on this population (3 against 120, 10 against 0), which is what makes the
+    label testable rather than a matter of taste.
+    """
+    recs = ordinal_records(**CLEAN)
+    cal, _ev, _ = split_cal(recs, SEED)
+    cal_groups = _case_groups(cal)
+    n = len(cal_groups)
+    for direction, head, price, expected, rule in (
+            ("under", "P(Y > ahat(X))", "P(Y < ahat(X))", (3, 120), report_level),
+            ("over", "P(Y < ahat(X))", "P(Y > ahat(X))", (10, 0), report_ceiling)):
+        cert = certify_severity(recs, ALPHA, DELTA, direction, SEED)
+        assert cert.feasible is True, cert.summary()
+        above = sum(1 for g in cal_groups.values()
+                    if any(r.gold_index > rule(r.probs, cert.ahat) for r in g))
+        below = sum(1 for g in cal_groups.values()
+                    if any(r.gold_index < rule(r.probs, cert.ahat) for r in g))
+        assert (above, below) == expected, (direction, above, below)
+        assert above != below, (direction, above, below)
+        # The guarantee is the bound on the tail its own headline names; the price is the OTHER tail.
+        head_count = above if direction == "under" else below
+        price_count = below if direction == "under" else above
+        assert cert.bound == _hand_bound(head_count, n), (direction, cert.bound)
+        assert cert.price_bound == _hand_bound(price_count, n), (direction, cert.price_bound)
+        assert cert.meta["violating_cases"] == head_count
+        assert cert.meta["price_cases"] == price_count
+        text = cert.summary()
+        assert text.startswith("%s severity certificate, direction=%s: %s <= %.6f"
+                               % ("one-sided", direction, head, cert.bound)), text
+        assert "the price is %s <= %.6f" % (price, cert.price_bound) in text, text
+        # A price that belongs to the other tail cannot borrow this certificate's headline label.
+        assert "the price is %s" % head not in text, text
+        joined = " | ".join(cert.envelope)
+        assert "the guarantee is %s <= alpha=%.3f" % (head, ALPHA) in joined, joined
+        assert "not inside it: %s <= %.6f" % (price, cert.price_bound) in joined, joined
+
+
+def test_a_certified_two_sided_run_prices_the_lower_tail_and_labels_it_as_the_lower_tail():
+    """F-1: `both_sides_sum` is not one-sided, and its price is the over-call side it now names.
+
+    The review reproduced this with `rc 0` and no row covering it: on the monotone two-sided
+    population below the gate CERTIFIES (ahat=4, `[n, n, n, n-10, 10]` is non-increasing), the price
+    it publishes is counted from the cases strictly BELOW the report, and the artefact labelled that
+    number `P(Y > ahat(X))` -- the tail this population does not contain at all. So the label is now
+    pinned to the count, in both directions: the bound on 4 lower-tail cases must not be printed
+    beside the upper tail's name, and a certificate whose guarantee sums both tails must not call
+    itself one-sided.
+    """
+    recs = _two_sided_monotone_cases()
+    cert = certify_severity(recs, ALPHA, DELTA, "both_sides_sum", 0)
+    assert cert.feasible is True, cert.summary()
+    assert cert.ahat == K - 1, cert.ahat
+    cal, _ev, _ = split_cal(recs, 0)
+    cal_groups = _case_groups(cal)
+    n = len(cal_groups)
+    assert n == 500 and len(recs) == 1000, n
+    above = sum(1 for g in cal_groups.values() if any(r.gold_index > cert.ahat for r in g))
+    below = sum(1 for g in cal_groups.values() if any(r.gold_index < cert.ahat for r in g))
+    away = sum(1 for g in cal_groups.values() if any(r.gold_index != cert.ahat for r in g))
+    assert (above, below, away) == (0, 4, 4), (above, below, away)
+    assert cert.meta["violating_cases"] == away and cert.meta["price_cases"] == below
+    assert cert.bound == _hand_bound(away, n) == cert.price_bound, (cert.bound, cert.price_bound)
+    # The mislabel this row exists for: the printed price cannot be the upper tail's bound, because
+    # the upper tail is empty and its bound is a different number.
+    assert cert.price_bound != _hand_bound(above, n), cert.price_bound
+    text = cert.summary()
+    assert text.startswith("two-sided severity certificate, direction=both_sides_sum: "
+                           "P(Y != ahat(X)) <= %.6f" % cert.bound), text
+    assert "one-sided severity certificate" not in text, text
+    assert "the price is P(Y < ahat(X)) <= %.6f" % cert.price_bound in text, text
+    assert "the price is P(Y > ahat(X))" not in text, text
+    joined = " | ".join(cert.envelope)
+    assert "the guarantee is P(Y != ahat(X)) <= alpha=%.3f" % ALPHA in joined, joined
+    assert "not inside it: P(Y < ahat(X)) <= %.6f" % cert.price_bound in joined, joined
+    assert "not a one-sided severity guarantee in either direction" in joined, joined
 
 
 def test_over_call_bound_is_direction_over_with_no_extra_machinery():

@@ -131,8 +131,26 @@ _BASE_ENVELOPE = (
 _SENSE = {"under": "non_increasing", "over": "non_decreasing", "both_sides_sum": "non_increasing"}
 _PICK = {"under": "first", "over": "last", "both_sides_sum": "first"}
 _SIDE = {"under": "P(Y > ahat(X))", "over": "P(Y < ahat(X))", "both_sides_sum": "P(Y != ahat(X))"}
+# Which side of the reported level `_price` actually counts, per family -- not which side a reader
+# would expect to be the interesting one. `under` lifts, so its price is the over-call the lift
+# introduced (the lower tail is where a floor over-reports); `over` clips, so its price is the upper
+# tail; `both_sides_sum` reports a constant, and `_price` falls through to `gold < reported`, so its
+# price is the LOWER tail. The naive loss has no upper-tail cases at all on a peaked rubric, so an
+# upper-tail label there attributes a probability to an event the population does not contain.
 _OTHER_SIDE = {"under": "P(Y < ahat(X))", "over": "P(Y > ahat(X))",
-               "both_sides_sum": "P(Y > ahat(X))"}
+               "both_sides_sum": "P(Y < ahat(X))"}
+# The headline says how many tails the guarantee covers. Only the two one-sided families carry the
+# §6.2 claim; `both_sides_sum` bounds `P(Y != ahat(X))`, which the envelope discloses as "not a
+# one-sided severity guarantee in either direction" -- a summary calling it one-sided would contradict
+# the artefact it belongs to.
+_KIND = {"under": "one-sided", "over": "one-sided", "both_sides_sum": "two-sided"}
+# The same sentence has to name this gate's contribution per family, or the headline and the clause
+# contradict each other inside one artefact: for the naive loss the contribution is the disclosure
+# that it bounds neither tail alone, not a one-sided statement.
+_DELTA_CLAIM = {"under": "the automation rule and the one-sided statement",
+                "over": "the automation rule and the one-sided statement",
+                "both_sides_sum": "the automation rule and the disclosure that it bounds "
+                                  "P(Y != ahat(X)), neither tail alone"}
 _OPPOSITE = {"under": "over", "over": "under", "both_sides_sum": "under"}
 
 
@@ -146,6 +164,18 @@ class SeverityShapeMismatch(ValueError):
     rc 1, and the name keeps it greppable. It is not a `ReaderContractError`, which is deliberately
     NOT a `ValueError` so the reader's per-line quarantine cannot absorb a corpus refusal.
     """
+
+
+def _severity_level(delta: float) -> float:
+    """The joint confidence of the three bounds this gate publishes at `delta`.
+
+    One owner for the ASSIGNMENT as well as the arithmetic: the envelope line that states the claim
+    count and `SeverityCertificate.level` are the same call, so a budget at which `correction`
+    refuses to derive a probability cannot reach an artefact through one path and not the other. An
+    envelope that computed `1 - n * delta` itself printed "-0.20" beside bounds the same artefact
+    claimed were tested at a level the one owner would have raised on.
+    """
+    return joint_level({"alpha": delta, "beta": delta}, n_groups=1, n_claims=SEVERITY_N_CLAIMS)
 
 
 def _budget(name: str, value) -> float:
@@ -457,7 +487,7 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
         "finite-sample: bounds on CASES -- %d calibration cases over %d records, %d evaluation cases "
         "over %d records; %d claims at delta=%.3f, joint level %.2f by the rule: %s" % (
             n_case, len(run["cal"]), n_ev_case, len(run["ev"]), SEVERITY_N_CLAIMS, delta,
-            1.0 - SEVERITY_N_CLAIMS * delta, JOINT_LEVEL_RULE),
+            _severity_level(delta), JOINT_LEVEL_RULE),
         "the price of the rule is stated beside it, not inside it: %s <= %.6f at the same ahat, and "
         "the rule replaces the model's own level on <= %.6f of cases; both are separate claims at the "
         "same delta, which is why they are counted in the joint level" % (
@@ -734,10 +764,10 @@ class SeverityCertificate:
         Derived, and derived by the one owner of the simultaneous arithmetic (R-160): the severity gate
         does not restate `1 - n * delta`, it calls `correction.joint_level` with its own envelope count
         and both budgets equal to `delta`, which is what makes its number agree with the set shape's
-        instead of merely looking the same.
+        instead of merely looking the same. The envelope that states the claim count asks the same
+        function (`_severity_level`), so no printed level in this artefact has a second producer.
         """
-        return joint_level({"alpha": self.delta, "beta": self.delta}, n_groups=1,
-                           n_claims=SEVERITY_N_CLAIMS)
+        return _severity_level(self.delta)
 
     @classmethod
     def refused(cls, reason: Reason, alpha: float, delta: float, direction: str, n_cal: int,
@@ -752,20 +782,20 @@ class SeverityCertificate:
     def summary(self) -> str:
         side = _SIDE[self.direction]
         if self.feasible:
-            return ("one-sided severity certificate, direction=%s: %s <= %.6f at ahat=%s, tested at "
+            return ("%s severity certificate, direction=%s: %s <= %.6f at ahat=%s, tested at "
                     "delta=%.3f on %d calibration cases (alpha=%.3f is the risk target, not a "
                     "confidence); the price is %s <= %.6f at the same rule and the rule replaces the "
                     "model's own level on <= %.6f of cases; measured on %d held-out cases: %.6f; "
                     "joint level %.2f over %d claims at delta=%.3f; n_cal=%d n_eval=%d; "
                     "synthetic ordinal data with known answers (the offline archive carries no `score` "
                     "answers), and the construction is prior art -- Dey et al. NeurIPS 2023, Zhang et "
-                    "al. AAAI-26, Xu-Guo-Wei UAI 2023 (PMLR 216:2346-2355), ours being the automation "
-                    "rule and the one-sided statement"
-                    % (self.direction, side, self.bound, self.ahat, self.delta,
+                    "al. AAAI-26, Xu-Guo-Wei UAI 2023 (PMLR 216:2346-2355), ours being %s"
+                    % (_KIND[self.direction], self.direction, side, self.bound, self.ahat, self.delta,
                        self.meta.get("n_cal_cases", -1), self.alpha, _OTHER_SIDE[self.direction],
                        self.price_bound, self.override_bound,
                        self.meta.get("n_eval_cases", -1), self.measured_violation, self.level,
-                       SEVERITY_N_CLAIMS, self.delta, self.n_cal, self.n_eval))
+                       SEVERITY_N_CLAIMS, self.delta, self.n_cal, self.n_eval,
+                       _DELTA_CLAIM[self.direction]))
         return ("NOT_CERTIFIABLE: reason=%s for direction=%s at alpha=%.3f, delta=%.3f; n_cal=%d "
                 "n_eval=%d; %s" % (self.reason, self.direction, self.alpha, self.delta, self.n_cal,
                                    self.n_eval, self.meta.get("detail", "")))
