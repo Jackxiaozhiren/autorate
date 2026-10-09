@@ -682,6 +682,12 @@ def test_a_published_artefact_that_cannot_be_opened_is_the_same_drift_not_a_usag
             assert "Traceback" not in p.stderr, (how, p.stderr)
             assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, (how, p.stderr)
             assert "cannot be opened" in p.stderr, (how, p.stderr)
+            assert "[Errno" in p.stderr, (how, p.stderr)
+            assert "is not in this checkout" not in p.stderr, (how, p.stderr)
+            # The refusal may not characterise what stands at the path, because the two rows differ:
+            # under mode 000 the file is there, and under a directory it is not. Only the errno is
+            # true in both, so anything else the message asserts is a claim this run did not earn.
+            assert "the artefact is present" not in p.stderr, (how, p.stderr)
             assert "data/cert_laya.json" in p.stderr, (how, p.stderr)
             assert "report.CERTS" in p.stderr, (how, p.stderr)
             assert "re-derived" not in p.stdout, (how, p.stdout)

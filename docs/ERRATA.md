@@ -791,3 +791,13 @@ reddens the unopenable row, collapsing the two refusal branches reddens an absen
 appears twice in `cli.py` -- in `cmd_report` as well as `cmd_verify` -- and an anchor that matched only
 the first planted the mutation in a file the row never opens, so it reported a gate that had not turned
 red. The anchor now names the line after it.
+
+The re-review of that round caught the new message overreaching in the opposite direction. It closed with
+"the artefact is present", which is true of a mode-000 file and false of a directory standing in the
+artefact's place -- there the path is occupied by something that is not the artefact. The refusal now
+asserts only what the errno supports, and the rows that print it assert that too: `[Errno` must appear,
+`is not in this checkout` must not, and neither may the presence claim. That last assertion was watched
+red on the sentence it replaces, and the README clause "absent from the checkout, or present and
+unopenable" went with it for the same reason -- it is now "because nothing is at its path, or because the
+path itself refuses the open". A refusal about a checkout the tool cannot read is itself a published
+statement, and gets the same honesty test as the numbers.

@@ -78,7 +78,9 @@ def require_published(path, table: str) -> Path:
         raise PublishedArtefactUnavailable(
             "%s is declared published by %s and cannot be opened (%s), so the numbers re-derived "
             "from it cannot be reproduced at all. This is not a usage error -- no argument selected "
-            "this path, the table did, and the artefact is present." % (p, table, exc)) from exc
+            "this path, the table did -- and the errno is the whole of what this run knows about the "
+            "path: the read failed, and a certificate this checkout cannot read certifies nothing."
+            % (p, table, exc)) from exc
     return p
 
 

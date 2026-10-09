@@ -72,9 +72,10 @@ interpreter entirely.
 Exit codes: `0` certified, `3` `NOT_CERTIFIABLE`, `2` usage error -- an input this
 command was handed is wrong, whether you named its path or a default supplied it --
 `4` the committed state cannot reproduce what it publishes: a number that disagrees,
-or a published artefact this repository's own tables declare -- absent from the
-checkout, or present and unopenable. Two table-declared paths stay `2` by ruling
-rather than oversight: `data/records_feishu.jsonl` is `audit --records`' default, and
+or a published artefact this repository's own tables declare that this run cannot
+read -- because nothing is at its path, or because the path itself refuses the open.
+Two table-declared paths stay `2` by ruling rather than oversight:
+`data/records_feishu.jsonl` is `audit --records`' default, and
 no `data/inventory.md.json` alongside no corpus means there is nothing to verify
 against, which is a different statement from a published artefact that cannot be read.
 
