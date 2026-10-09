@@ -145,6 +145,164 @@ def test_the_curve_is_carried_in_the_row_so_no_prose_has_to_reproduce_it(laya_ch
     assert at_gate["bound"] == pytest.approx(r["bound"], abs=1e-12), at_gate
 
 
+# --- MAJ-1: §7.3's frontier must reach the artefact, not just the data structure -------------
+#
+# `frontier` has built this curve since the commit under review, three comments said the artefact
+# printed it, and `grep -c "curve\|lambda" docs/AUDIT.md` answered 0. The guards below are what make
+# those comments descriptions; they are also the guards that redden if the renderer starts computing
+# the curve itself instead of publishing the producer's numbers.
+
+_CURVE_KEYS = ("lambda", "implied", "automated", "erroneous", "coverage", "error", "bound")
+
+
+def _curve_rows(text: str) -> dict:
+    """Every rendered curve block, keyed by (backend, field), as the strings the artefact prints.
+
+    Parsed out of the text rather than compared to a whole-file literal, so a guard can name the
+    point that moved. The values stay strings: the assertion that matters is that the printed figure
+    IS the stored figure at the published precision, and re-reading it as a float would let a
+    different rounding pass.
+    """
+    blocks = {}
+    backend = None
+    field = None
+    for line in text.splitlines():
+        if line.startswith("## `"):
+            backend = line.strip("# ").strip("`")
+            field = None
+        elif "Risk-coverage curve for `" in line:
+            field = line.split("Risk-coverage curve for `")[1].split("`")[0]
+            blocks[(backend, field)] = []
+        elif field is not None and line.startswith("| `"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) != len(_CURVE_KEYS):
+                continue
+            blocks[(backend, field)].append(dict(
+                zip(_CURVE_KEYS, [cells[0].split(" ")[0].strip("`")] + cells[1:])))
+            if "(the gate above)" in cells[0]:
+                blocks[(backend, field)][-1]["is_gate"] = True
+        elif field is not None and line.startswith("- ") and blocks.get((backend, field)):
+            field = None
+    return blocks
+
+
+def test_the_artefact_prints_the_curve_for_every_field_and_backend(laya, jev):
+    """Red before this round's fix: the curve existed in the row and nowhere in the artefact.
+
+    Every published cell is compared to the figure `audit_fields` stored, formatted at the precision
+    the artefact uses -- so the guard reddens if the renderer drops a block, drops a point, or starts
+    printing a number the producer did not compute.
+    """
+    audits = {b: audit_fields(rs, gate=DEFAULT_GATE) for b, rs in (("laya", laya), ("jev", jev))}
+    parsed = _curve_rows(render_audit(audits))
+    assert set(parsed) == {(b, f) for b in sorted(audits) for f in sorted(audits[b])}, sorted(parsed)
+    for (backend, field), cells in sorted(parsed.items()):
+        stored = audits[backend][field]["curve"]
+        assert len(cells) == len(stored), (backend, field, len(cells), len(stored))
+        for cell, point in zip(cells, stored):
+            assert cell["lambda"] == "%.2f" % point["lambda"], (backend, field, cell, point)
+            assert cell["implied"] == "%.2f" % point["implied_error"], (backend, field, cell)
+            assert cell["automated"] == str(point["automated_cases"]), (backend, field, cell)
+            assert cell["erroneous"] == str(point["erroneous_cases"]), (backend, field, cell)
+            assert cell["coverage"] == _fmt_like(point["coverage"]), (backend, field, cell)
+            assert cell["error"] == _fmt_like(point["measured_error"]), (backend, field, cell)
+            assert cell["bound"] == _fmt_like(point["bound"]), (backend, field, cell, point)
+
+
+def _fmt_like(value) -> str:
+    """The artefact's own rendering of a stored figure: four decimals, or the dash for `None`."""
+    return "-" if value is None else "%.4f" % value
+
+
+def test_the_thinnest_point_of_the_published_curve_is_printed_not_hidden(laya, jev):
+    """The reviewer's named example: laya `answer_confidence` at `lambda = 0.99`.
+
+    That point automates nothing, so a renderer that showed only the informative end of the sweep
+    would drop it -- and dropping it is how a frontier becomes a headline again.
+    """
+    parsed = _curve_rows(render_audit({"laya": audit_fields(laya), "jev": audit_fields(jev)}))
+    last = parsed[("laya", "answer_confidence")][-1]
+    assert last["lambda"] == "0.99", last
+    assert (last["automated"], last["erroneous"]) == ("0", "0"), last
+    assert last["error"] == "-" and last["bound"] == "-", last
+
+
+def test_the_curve_block_names_the_denominator_of_every_ratio_it_prints(laya, jev):
+    """R-166's defect class, applied to this renderer: a ratio with no denominator is not a number.
+
+    The curve publishes three ratios per point. Each header here has to say which counts it divides,
+    or the reader is back to guessing whether 0.7823 bounds nine cases or twenty-seven rows.
+    """
+    text = render_audit({"laya": audit_fields(laya), "jev": audit_fields(jev)})
+    laya_cases = audit_fields(laya)["answer_confidence"]["n_cases"]
+    header = [l for l in text.splitlines() if l.startswith("| lambda |")][0]
+    assert "automated cases (of %d cases)" % laya_cases in header, header
+    assert "coverage (automated / %d cases)" % laya_cases in header, header
+    assert "measured error (wrong / automated cases)" in header, header
+    assert "CP upper (1-sided, `delta = %.2f`)" % DEFAULT_DELTA in header, header
+    assert "The unit is the CASE" in text, "the curve must keep saying what it counts"
+
+
+def test_the_curve_carries_the_delta_the_run_actually_used(laya_choice):
+    """MAJ-1's compounding detail: `frontier` used to hard-code `DEFAULT_DELTA` for its bounds.
+
+    Under `--delta 0.10` the header said 0.10 and the curve answered at 0.05, so the artefact
+    published two rubrics. This asks the run's own delta out of the curve, at the gate, against
+    `tails` -- and that the 0.05 figure is gone, not merely absent from one column.
+    """
+    rows = audit_fields(laya_choice, gate=0.85, delta=0.10)
+    text = render_audit({"laya": rows})
+    at_gate = [p for p in rows["answer_confidence"]["curve"] if p["lambda"] == 0.85][0]
+    assert at_gate["delta"] == 0.10, at_gate
+    assert at_gate["bound"] == pytest.approx(canonicalise_bound(
+        clopper_pearson_upper(5, 9, 0.10)), abs=1e-12), at_gate
+    assert "%.4f" % at_gate["bound"] in text, "the run's own bound never reached the artefact"
+    assert "`delta = 0.10`" in text, text[:600]
+    # The 0.05 one-sided answer for 5-of-9 is 0.8312, and it must not be anywhere in the curve. It
+    # DOES appear elsewhere in this artefact by design: the headline table's two-sided endpoint is
+    # the same owner called at `delta / 2`, so a 0.10 run publishes 0.8312 legitimately. The guard
+    # therefore reads the curve block, which is one-sided by construction.
+    default_at_gate = canonicalise_bound(clopper_pearson_upper(5, 9, DEFAULT_DELTA))
+    curve_cells = _curve_rows(text)[("laya", "answer_confidence")]
+    assert "%.4f" % default_at_gate not in [c["bound"] for c in curve_cells], curve_cells
+    assert curve_cells[3]["bound"] == "%.4f" % at_gate["bound"], curve_cells[3]
+    # `frontier` is a producer, not a reader of the module default: the parameter is the level, and
+    # it is the same producer whether the caller passes it positionally or by name.
+    assert [p["bound"] for p in frontier(laya_choice, ("answer_confidence",), DEFAULT_GRID, 0.10)] \
+        == [p["bound"] for p in
+            frontier(laya_choice, ("answer_confidence",), DEFAULT_GRID, delta=0.10)]
+    assert [p["delta"] for p in frontier(laya_choice, ("answer_confidence",), DEFAULT_GRID, 0.10)] \
+        == [0.10] * len(DEFAULT_GRID)
+
+
+def test_the_frontier_refuses_an_unusable_delta_as_a_usage_error(laya_choice):
+    """`frontier` is a public entry point, so its rubric check cannot be left to the caller.
+
+    An out-of-range `delta` used to reach `clopper_pearson_upper`, which raises `ValueError` from
+    `tails` -- rc 2 either way -- but the message named a binomial tail rather than the operator's
+    argument, and the same guard on the gate side has refused by name since the first round.
+    """
+    for bad in (0.0, 1.0, -0.5):
+        with pytest.raises(ValueError, match="delta"):
+            frontier(laya_choice, ("confidence",), DEFAULT_GRID, bad)
+
+
+def test_the_curve_covers_the_gate_the_run_published(laya_choice):
+    """A grid that does not name the gate would print a frontier the headline is not on.
+
+    `--gate 0.5` is an operator's question and `DEFAULT_GRID` does not contain 0.5, so
+    `audit_fields` adds it. Refusing to sweep the gate is the same defect as printing a curve the
+    table cannot be found in.
+    """
+    rows = audit_fields(laya_choice, gate=0.5)
+    lambdas = [p["lambda"] for p in rows["answer_confidence"]["curve"]]
+    assert 0.5 in lambdas, lambdas
+    assert lambdas == sorted(lambdas), lambdas
+    at_gate = [p for p in rows["answer_confidence"]["curve"] if p["lambda"] == 0.5][0]
+    assert at_gate["automated_cases"] == rows["answer_confidence"]["automated_cases"], at_gate
+
+
+
 def test_rendered_audit_contains_no_machine_path_and_no_unproduced_number(laya_choice):
     text = render_audit({"laya": audit_fields(laya_choice, gate=0.85)})
     assert "laya-0.3.20/" not in text or "research/benchmarks" in text
@@ -334,13 +492,28 @@ def test_the_renderer_shows_which_convention_is_doing_the_work(laya_choice, jev)
         {"laya": audit_fields(laya_choice, gate=0.85)})
 
 
-# --- obligation #31: the command names which `confidence` it used ----------------------------
+# --- the two `confidence`s: the artefact names upstream locations, not a ledger id -----------
 
 def test_the_output_names_which_confidence_definition_was_used(laya_choice):
+    """R-146: the two definitions are named by their UPSTREAM locations, never by a task id.
+
+    `docs/AUDIT.md` used to open its evidence-boundary bullet with "obligation #31 records that
+    upstream defines it two ways". The substance was right; the citation was wrong, because a reader
+    of a published artefact has no task list. This guard asks for the two places upstream defines the
+    name, for the place that fills the key the README's sentence reads, for that sentence's own
+    location -- and it refuses every ledger id back out, so putting the old string back reddens it
+    rather than matching it.
+    """
     rows = audit_fields(laya_choice, gate=0.85)
     text = render_audit({"laya": rows})
-    assert "obligation #31" in text
+    assert "laya/common.py:273" in text, "upstream's first definition must be openable, not quoted"
+    assert "laya/common.py:289" in text, "upstream's second definition must be openable too"
+    assert "laya/agent.py:684" in text, "which key upstream fills is the fact the gate turns on"
+    assert "laya/README.md:567-581" in text, "the sentence G2 is about needs its own location"
     assert "max(probs)" in text, "the answer scale's definition must be readable, not implied"
+    for ledger in ("obligation #", "#31", "R-121", "R-72", "R-146", "R-137"):
+        assert ledger not in text, "a published artefact cites upstream, not the task list: %s" % (
+            ledger)
     for field, r in rows.items():
         assert r["source"] in text, field
         assert r["case_rule"] in text, field
@@ -348,6 +521,36 @@ def test_the_output_names_which_confidence_definition_was_used(laya_choice):
         # read as", but the renderer published `source` only and `definition` was computed, stored in
         # the row dict, and dropped -- so this line is what makes the header's claim true.
         assert r["definition"] in text, (field, r["definition"])
+
+
+def test_the_artefact_says_which_row_answers_the_readme_s_own_sentence(laya, jev):
+    """MAJ-2: three multiples were published and none was tied to the sentence G2 names.
+
+    Upstream's README gates on the response key `confidence`, and `laya/agent.py:684` fills that key
+    from `confidence_from_probs` -- so the row answering the sentence verbatim is `confidence` (laya:
+    3.33x on 2 of 64 cases), while 3.70x belongs to `answer_confidence` (9 of 64), the same rule read
+    as `p_max = max(probs)`. Neither is quietly promoted to the other here: the guard asks for both,
+    each attached to its own field and its own denominator, and for the rows' OWN `informative`
+    verdicts -- jev's `confidence` row bounds under the implied error and laya's does not, so a
+    blanket "neither is certified" would be a claim about this corpus that this corpus contradicts.
+    """
+    audits = {b: audit_fields(rs) for b, rs in (("laya", laya), ("jev", jev))}
+    text = render_audit(audits)
+    hits = [l for l in text.splitlines() if l.startswith("- Which row answers the README")]
+    assert len(hits) == 1, hits
+    line = hits[0]
+    assert "verbatim is **`confidence`**" in line, line
+    literal, intended = audits["laya"]["confidence"], audits["laya"]["answer_confidence"]
+    assert "%.2fx on %d of %d automated cases" % (
+        literal["multiple"], literal["automated_cases"], literal["n_cases"]) in line, line
+    assert "%.2fx on %d of %d automated cases" % (
+        intended["multiple"], intended["automated_cases"], intended["n_cases"]) in line, line
+    assert "p_max = max(probs)" in line, "the second reading has to be named, not hinted"
+    assert "informative: **NO**" in line, "laya's rows refuse to bound, and the bullet must say so"
+    assert "informative: yes" in line, "jev bounds; a blanket refusal sentence would be false"
+    # The intended headline keeps its field name and its multiple is not softened into the other row.
+    assert "3.70x" in text and "3.33x" in text
+    assert "`answer_confidence`" in line and "`confidence`" in line
 
 
 # --- the case rule and the backend partition -------------------------------------------------
@@ -405,6 +608,59 @@ def test_rows_that_clear_the_gate_without_a_case_are_not_called_rows_below_it():
                         )["answer_confidence"]["note"].startswith("NOTHING_AUTOMATED")
 
 
+CURVE_TAMPERS = [
+    ("emptied the curve", lambda t: t["answer_confidence"].__setitem__("curve", [])),
+    ("dropped the gate point from the curve",
+     lambda t: t["answer_confidence"].__setitem__(
+         "curve", [p for p in t["answer_confidence"]["curve"] if p["lambda"] != 0.85])),
+    ("moved a curve point's bound",
+     lambda t: t["answer_confidence"]["curve"][3].__setitem__("bound", 0.5)),
+    ("stamped one curve point with a delta the row does not publish",
+     lambda t: t["answer_confidence"]["curve"][3].__setitem__("delta", 0.04)),
+    ("made the at-gate curve point disagree with the headline",
+     lambda t: t["answer_confidence"]["curve"][3].__setitem__("automated_cases", 12)),
+    ("inflated a curve point's coverage past its own denominator",
+     lambda t: t["answer_confidence"]["curve"][0].__setitem__("coverage", 1.5)),
+    ("published a curve measured at another run's delta",
+     lambda t: t["answer_confidence"].__setitem__("delta", 0.04)),
+]
+
+
+@pytest.mark.parametrize("label,mutate", [(t[0], t[1]) for t in CURVE_TAMPERS],
+                         ids=[t[0] for t in CURVE_TAMPERS])
+def test_check_audit_re_derives_the_curve_the_artefact_prints(audits, label, mutate):
+    """MAJ-1's second half: a published frontier is a published number, so it is policed.
+
+    The renderer prints `row["curve"]` verbatim, which makes every cell of it a figure this module is
+    responsible for. `check_audit` re-derives each point's bound from the point's own counts at the
+    row's own `delta`, refuses a point stamped with a different delta, and requires the at-gate point
+    to equal the headline row -- so a curve that disagrees with its own header is drift (rc 4), not a
+    drafting slip a reader has to catch. The control is the untouched-rows test below.
+    """
+    mutated = copy.deepcopy(audits)
+    mutate(mutated["laya"])
+    with pytest.raises(AuditDriftError):
+        check_audit(mutated)
+
+
+def test_a_row_without_a_curve_is_refused_by_name_not_by_keyerror(laya_choice):
+    """The renderer reads `row["curve"]`, and `KeyError` is not in `cli.main`'s catch: rc 1.
+
+    Refusing with `ValueError` keeps the exit-code contract the module documents, and names the row
+    that lost its frontier instead of naming a dict key.
+    """
+    rows = audit_fields(laya_choice, gate=0.85)
+    del rows["answer_confidence"]["curve"]
+    with pytest.raises(ValueError, match="no risk-coverage curve"):
+        render_audit({"laya": rows})
+    # Same for the grid sentence, which is read off the curves rather than off DEFAULT_GRID.
+    rows2 = audit_fields(laya_choice, gate=0.85)
+    for row in rows2.values():
+        row.pop("curve")
+    with pytest.raises(ValueError, match="risk-coverage curve"):
+        render_audit({"laya": rows2})
+
+
 def test_an_undeclared_field_name_is_a_usage_error_at_every_entry_point(laya_choice):
     """Defect 2a, red before the fix.
 
@@ -423,12 +679,34 @@ def test_an_undeclared_field_name_is_a_usage_error_at_every_entry_point(laya_cho
         frontier(laya_choice, ("typo",))
 
 
+def _headline_rows(text: str) -> list:
+    """The rows of the headline table, counted by the header they sit under.
+
+    The curve blocks publish seven-cell rows and the headline publishes eleven, so "exactly one field
+    row" has to be read off the table that claim belongs to now that the artefact prints both; counting
+    every line that starts with a back-quoted cell would test the frontier instead.
+    """
+    rows = []
+    inside = False
+    for line in text.splitlines():
+        if line.startswith("| field | read as |"):
+            inside = True
+            continue
+        if inside:
+            if not line.startswith("|"):
+                break
+            if len(line.strip().strip("|").split("|")) == 11 and line.startswith("| `"):
+                rows.append(line)
+    return rows
+
+
 def test_rendering_a_table_that_holds_a_subset_of_the_fields_does_not_crash(laya_choice):
     """Defect 2b, red before the fix: `KeyError: 'confidence'`, which reached the CLI as rc 1."""
     rows = audit_fields(laya_choice, fields=("answer_confidence",))
     text = render_audit({"laya": rows})
-    table = [l for l in text.splitlines() if l.startswith("| `")]
-    assert len(table) == 1 and table[0].startswith("| `answer_confidence`"), table
+    headline = _headline_rows(text)
+    assert len(headline) == 1 and headline[0].startswith("| `answer_confidence`"), headline
+    assert len(_curve_rows(text)[("laya", "answer_confidence")]) == len(DEFAULT_GRID)
     assert "3.70x" in text
     with pytest.raises(ValueError, match="cannot render"):
         render_audit({"laya": {"bogus": rows["answer_confidence"]}})
@@ -540,8 +818,30 @@ def test_the_artefact_is_re_derivable_and_carries_no_timestamp(tmp_path, by_back
     _cli([], tmp_path)
     written = (tmp_path / "a.md").read_text()
     assert written == first, "the file is the renderer's output, not a transcription of it"
+    # MAJ-3's test half, red before this round: this comparison was fresh-render-to-fresh-render, so
+    # `sed 's/| 3.70x |/| 9.99x |/' docs/AUDIT.md` left the whole suite green. The committed bytes
+    # are the published artefact, and they are what this assertion holds against now.
+    assert written == AUDIT_MD.read_text(), \
+        "the bytes `autorate audit` writes are not the bytes the repository commits"
     for token in ("/Users/", "/home/", "T00:00", "UTC"):
         assert token not in written, token
+
+
+def test_the_committed_artefact_is_what_this_revision_writes(by_backend):
+    """The published G2 numbers are re-derivable, and this is the guard that says so out loud.
+
+    Written as its own test rather than as a side effect of the determinism check above, because the
+    claim being policed is different: not "two renders agree" (they always did) but "the file in git
+    is the file this code produces". `autorate verify` re-derives the same equality in both of its
+    lanes; this test is the one that names the artefact when the renderer moves and nobody re-ran the
+    command.
+    """
+    committed = AUDIT_MD.read_text()
+    assert committed == render_audit(
+        {b: audit_fields(rs) for b, rs in sorted(by_backend.items())}), \
+        "committed docs/AUDIT.md is not what this revision renders"
+    assert committed.splitlines()[0] == ("# Audit: the gate the README instructs, measured against "
+                                         "what it implies"), committed.splitlines()[0]
 
 
 # --- R-121 at this module's producer: the precision a published bound is stored at -------------
