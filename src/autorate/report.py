@@ -41,7 +41,11 @@ MASSIVE_CERTIFICATES = {
 
 
 class PublishedArtefactUnavailable(RuntimeError):
-    """A file the publication tables declare is absent from this checkout, or there and unreadable.
+    """A file the publication tables declare is absent, there and unopenable, or there and unreadable.
+
+    The first two are raised by `require_published` and the third by `load_published`; they share a class
+    because the sentence they carry is the same one, and it is about who owns the path, not about what the
+    filesystem or the parser reported.
 
     It is a `RuntimeError` and not an `OSError` on purpose: `cli.main` maps `OSError` and `ValueError`
     onto the usage exit code, and usage is the false statement here. No argument selected this path --
@@ -84,6 +88,37 @@ def require_published(path, table: str) -> Path:
     return p
 
 
+def load_published(path, table: str, load):
+    """A table-declared artefact, put through both arms of the attribution repair.
+
+    `require_published` answers the filesystem: nothing at the path, or the path refusing the open. This
+    answers the contents. A published certificate whose JSON will not parse, a records file whose line is
+    not a record, a document that is not text -- in each case the bytes were read, so nothing about the
+    failure is an access failure, and each raised a `ValueError` from a loader that also serves
+    operator-supplied paths where "usage error" is the truth. The wrap belongs here and not inside
+    `read_certificate` or `load_records` for exactly that reason: those functions cannot tell whose path
+    they were handed, and the exit code has to.
+
+    Measured before this arm existed, a corrupted `data/cert_laya.json` left `verify` printing
+    `JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)` and
+    exiting 2 -- a message that names no file, about a file no argument named. The refusal quotes the
+    parser's own words for the same reason the access rows quote the errno: what this run knows is that
+    the parse raised, and where.
+
+    `load` is applied to the guarded `Path`, so `read_certificate`, `load_records` and `Path.read_text`
+    all fit it.
+    """
+    try:
+        return load(require_published(path, table))
+    except ValueError as exc:
+        raise PublishedArtefactUnavailable(
+            "%s is declared published by %s, was read here, and does not parse (%s), so the numbers "
+            "re-derived from it cannot be reproduced. This is not a usage error -- no argument selected "
+            "this path, the table did, and no argument can repair it: the bytes at a published path "
+            "belong to this checkout, not to the caller. What is in parentheses is the parser's own "
+            "report of where the read stopped." % (path, table, exc)) from exc
+
+
 def load_records(path: Path) -> dict:
     by_backend: dict = {}
     for line in Path(path).read_text().splitlines():
@@ -104,16 +139,16 @@ def massive_certificates() -> dict:
 
     One owner for the read path, so the gate's re-derivation below and anything that quotes these
     artefacts cannot end up opening two different sets of files. The read is strict: an artefact this
-    checkout does not hold, or holds but cannot open, raises, because a certificate the tool cannot read
-    is not the same statement as a certificate that agrees with nothing -- and it raises as
-    `PublishedArtefactUnavailable`, naming the table that declared the path, because "usage error" would
-    blame the operator for a checkout this package wrote.
+    checkout does not hold, or holds but cannot open, or holds as bytes that do not parse, raises, because
+    a certificate the tool cannot read is not the same statement as a certificate that agrees with nothing
+    -- and it raises as `PublishedArtefactUnavailable`, naming the table that declared the path, because
+    "usage error" would blame the operator for a checkout this package wrote.
     """
     out = {}
     for label, (records_path, cert_path) in sorted(MASSIVE_CERTIFICATES.items()):
-        stored = read_certificate(require_published(cert_path, "report.MASSIVE_CERTIFICATES"))
-        rows = require_published(records_path, "report.MASSIVE_CERTIFICATES")
-        out[label] = (load_records(rows).get(stored.backend, []), stored)
+        stored = load_published(cert_path, "report.MASSIVE_CERTIFICATES", read_certificate)
+        rows = load_published(records_path, "report.MASSIVE_CERTIFICATES", load_records)
+        out[label] = (rows.get(stored.backend, []), stored)
     return out
 
 

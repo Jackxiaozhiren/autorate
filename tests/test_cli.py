@@ -552,6 +552,79 @@ def test_a_missing_input_is_a_usage_error_not_a_traceback(tmp_path):
     assert p.stderr.strip(), "a usage error that prints nothing is not diagnosable"
 
 
+def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_error(tmp_path):
+    """A table-declared artefact this checkout CAN open and cannot READ: content, not access.
+
+    Measured before this row existed, on a scratch checkout with one published file corrupted:
+    `data/cert_laya.json` with invalid JSON exited 2 with `JSONDecodeError: Expecting property name
+    enclosed in double quotes`, and so did a corrupt `data/records_massive_sw.jsonl`. That is the same
+    false attribution the two rows above retired, in its fourth and least visible form. No argument
+    selected the path -- the table did -- and no argument can repair it either: the bytes this repository
+    committed are the defect. rc 2's documented meaning is "an input this command was handed is wrong",
+    so the code reports the tree's failure as the operator's, on the one artefact class a reader is most
+    likely to be handed by a broken release.
+
+    The refusal therefore names the table, quotes the parser's own words, and goes to `4`, whose clause
+    is "the committed state cannot reproduce what it publishes". It must not borrow the access rows'
+    wording: bytes that parse-failed were opened, so "cannot be opened" would be false, and nothing
+    vanished, so "is not in this checkout" would be false too.
+    """
+    cases = [
+        ("data/cert_laya.json", "report.CERTS", "{not a certificate", False),
+        ("data/cert_massive_de_laya.json", "report.MASSIVE_CERTIFICATES", "{not a certificate", False),
+        ("data/records_massive_sw.jsonl", "report.MASSIVE_CERTIFICATES", "not a record line\n", False),
+        # Not text at all: the document loop compares bytes verbatim rather than parsing them, so the
+        # only way this site can fail to read is a decode error -- which is a ValueError, and belongs
+        # to the same class as a certificate whose JSON will not parse.
+        ("docs/RESULTS.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
+    ]
+    for rel, table, corrupt, needs_snapshot in cases:
+        work = tmp_path / rel.replace("/", "-").replace(".", "-")
+        (work / "data").mkdir(parents=True)
+        shutil.copytree(REPO / "docs", work / "docs")
+        stage_published(work)
+        if needs_snapshot:
+            shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
+        (work / rel).write_bytes(corrupt if isinstance(corrupt, bytes) else corrupt.encode())
+        p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+        assert p.returncode == 4, (rel, p.returncode, p.stdout, p.stderr)
+        assert "Traceback" not in p.stderr, (rel, p.stderr)
+        assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, (rel, p.stderr)
+        assert rel in p.stderr, (rel, p.stderr)
+        assert table in p.stderr, (rel, p.stderr)
+        assert "does not parse" in p.stderr, (rel, p.stderr)
+        assert "cannot be opened" not in p.stderr, (rel, p.stderr)
+        assert "is not in this checkout" not in p.stderr, (rel, p.stderr)
+        assert "re-derived" not in p.stdout, (rel, p.stdout)
+
+
+def test_a_malformed_artefact_on_a_path_the_operator_supplied_is_still_a_usage_error(tmp_path):
+    """The boundary the content arm must not cross: the same bad bytes, a path from argv or a default.
+
+    Green on arrival, and it is the row that keeps the fix in the right place. If the refusal lived
+    inside `read_certificate` or `load_records` rather than at the sites the publication tables declare,
+    both rows below would turn rc 4: a typo in a `--cert` argument and a malformed
+    `audit --records` default are inputs this command was handed, which is exactly what `2` is for.
+    Same file type, same broken contents, different owner of the path, different exit code.
+    """
+    bad = tmp_path / "bad-cert.json"
+    bad.write_text("{not a certificate")
+    g = run("gate", str(REPO / "data" / "records_feishu.jsonl"), "--cert", str(bad))
+    assert g.returncode == 2, (g.returncode, g.stdout, g.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in g.stderr, g.stderr
+
+    work = tmp_path / "bad-default-records"
+    (work / "data").mkdir(parents=True)
+    shutil.copytree(REPO / "docs", work / "docs")
+    stage_published(work)
+    shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
+    (work / "data" / "records_feishu.jsonl").write_text("not a record line\n")
+    p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in p.stderr, p.stderr
+    assert "re-derived" not in p.stdout, p.stdout
+
+
 def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_path):
     """`verify` says "usage error" about a file no argument selected.
 
@@ -724,9 +797,20 @@ def test_a_supervised_per_ask_gold_is_a_non_zero_refusal_not_a_malformed_line(tm
     assert "quarantined:" not in p.stdout, p.stdout
 
 
-def test_a_stored_certificate_that_violates_its_shape_is_a_usage_error(tmp_path):
-    # The brief's own Step-2 tamper: feasible with an empty envelope. Certificate raises
-    # ValueError, which used to escape as rc 1 with a traceback and no DRIFT row.
+def test_a_stored_certificate_that_violates_its_shape_is_drift_on_a_published_path(tmp_path):
+    """The brief's own Step-2 tamper, now told apart by whose path it was read from.
+
+    Originally a single assertion that this tamper exits 2 rather than escaping as rc 1 with a traceback
+    and no DRIFT row -- a real guarantee about a hole in the exit-code contract, and it still holds on the
+    row below, where the path came from argv.
+
+    R-176 moved the `verify` row to `4`. The certificate this run reads is the one `report.CERTS` declares
+    published; its bytes are in the commit, no argument selected the path, and no argument can repair it.
+    `2` says "an input this command was handed is wrong" about an input nobody was handed, which is the
+    same false attribution the missing and unopenable rows retired. So the rc-1 hole is now closed by a
+    named refusal rather than by a usage code, and the two rows together pin the axis that decides which:
+    ownership of the path, not the class of the exception.
+    """
     for d in ("data", "docs"):
         shutil.copytree(REPO / d, tmp_path / d)
     cert = tmp_path / "data" / "cert_jev.json"
@@ -735,8 +819,20 @@ def test_a_stored_certificate_that_violates_its_shape_is_a_usage_error(tmp_path)
     cert.write_text(json.dumps(doc, sort_keys=True))
     assert doc["envelope"] == [], "tampering did not land"
     p = run("verify", cwd=tmp_path)
-    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, p.stderr
+    assert "data/cert_jev.json" in p.stderr, p.stderr
+    assert "report.CERTS" in p.stderr, p.stderr
+    assert "does not parse" in p.stderr, p.stderr
     assert "envelope" in p.stderr, p.stderr
+    assert "Traceback" not in p.stderr, p.stderr
+    assert "re-derived" not in p.stdout, p.stdout
+
+    same = run("gate", str(REPO / "data" / "records_feishu.jsonl"), "--cert", str(cert))
+    assert same.returncode == 2, (same.returncode, same.stdout, same.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in same.stderr, same.stderr
+    assert "envelope" in same.stderr, same.stderr
+    assert "Traceback" not in same.stderr, same.stderr
 
 
 def test_the_inventory_names_a_command_the_cli_actually_has(tmp_path):

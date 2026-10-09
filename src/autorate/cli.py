@@ -13,7 +13,7 @@ from .inventory import corpus_label, inventory, write_inventory
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
 from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, SEED,
-                     build_report, certify_all, load_records, read_certificate, require_published,
+                     build_report, certify_all, load_published, load_records, read_certificate,
                      rederive_massive, write_report)
 
 EXIT_CERTIFIED = 0
@@ -538,7 +538,7 @@ def cmd_verify(args) -> int:
 
     records = load_records(Path(RECORDS))
     for backend, path in sorted(CERTS.items()):
-        stored = read_certificate(require_published(path, "report.CERTS"))
+        stored = load_published(path, "report.CERTS", read_certificate)
         # the real comparison: re-derive the certificate from the committed records
         fresh = certify_choice(records.get(backend, []), alpha=stored.alpha,
                                beta=stored.beta, delta=stored.delta,
@@ -556,8 +556,8 @@ def cmd_verify(args) -> int:
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:
-        here = require_published(path, "cli.PUBLISHED_DOCS")
-        expect("%s byte-identical" % path, render(inv, records), here.read_text())
+        expect("%s byte-identical" % path, render(inv, records),
+               load_published(path, "cli.PUBLISHED_DOCS", Path.read_text))
 
     if source == FROM_CORPUS:
         for d in inv["digests"]:

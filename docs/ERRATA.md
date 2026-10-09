@@ -801,3 +801,36 @@ red on the sentence it replaces, and the README clause "absent from the checkout
 unopenable" went with it for the same reason -- it is now "because nothing is at its path, or because the
 path itself refuses the open". A refusal about a checkout the tool cannot read is itself a published
 statement, and gets the same honesty test as the numbers.
+
+The fourth pass found the guard's remaining blind spot by asking the opposite question: not "what if the
+path refuses?" but "what if the file is there and wrong?". Measured on a scratch checkout before this
+change, a `data/cert_laya.json` holding `{not a certificate` left `verify` printing `JSONDecodeError:
+Expecting property name enclosed in double quotes: line 1 column 2 (char 1)` and exiting `2` -- a message
+that names no file, about a file no argument named -- and a corrupt `data/records_massive_sw.jsonl` did
+the same. `load_published(path, table, load)` therefore wraps the read rather than the open, and it is
+wired at all four sites that read a table-declared artefact: the feishu certificate loop and the document
+loop in `cmd_verify`, and both reads of `report.massive_certificates()`. A site left unwired is the same
+bug wearing a different filename, so the sites are enumerated rather than sampled. The refusal says "was
+read here, and does not parse", quotes the parser's own words in parentheses, and claims nothing the
+observation does not support -- it does not say the artefact is present, which is round 2's finding, and
+it does not say the file could not be opened, which is false for bytes that were opened, read and then
+rejected.
+
+The wrap lives at the sites and not inside `read_certificate` or `load_records` for the reason the whole
+chain keeps returning to: those functions cannot tell whose path they were handed, and whose path owns the
+answer is what the exit code encodes. That placement is pinned, not prose. The row
+`test_a_malformed_artefact_on_a_path_the_operator_supplied_is_still_a_usage_error` expects `2` and the
+label absent for a malformed `--cert` argument and a malformed `audit --records` default, and of the six
+falsification arms it is reddened by exactly one: the arm that moves the wrap into `read_certificate`.
+The other five leave it green, so the row discriminates where the guard sits and not merely that a guard
+exists.
+
+Re-attributing a ruling already in this file, and saying so rather than editing history: the row written
+as `test_a_stored_certificate_that_violates_its_shape_is_a_usage_error` tampered a committed certificate
+down to `"envelope": []` and expected `2`. It was correct when the guard covered only access, because an
+empty envelope was a `ValueError` from the parser and the parser was outside the guard. Under the content
+arm the same tamper is a published artefact that does not parse, so it is `4` -- the tree, not the
+operator, is what disagrees with the published numbers -- and the row's name and assertions changed to
+say that, keeping its `2` where `2` still belongs by reaching the same broken bytes through `gate --cert`,
+a path the operator typed. No assertion was dropped in the re-write: the old row's every claim survives on
+one of the two paths, and the two paths are what make the claim precise.
