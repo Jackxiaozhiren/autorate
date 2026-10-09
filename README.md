@@ -69,8 +69,10 @@ The `uv run --frozen` prefix is not decoration: the console script is not on `PA
 after `uv sync`, and a bare `pytest` on this machine resolves to a different
 interpreter entirely.
 
-Exit codes: `0` certified, `3` `NOT_CERTIFIABLE`, `2` usage error, `4` reproduced
-number does not match the published one.
+Exit codes: `0` certified, `3` `NOT_CERTIFIABLE`, `2` usage error -- an input that
+came from an argument, and nothing else -- `4` the committed state cannot reproduce
+what it publishes: a number that disagrees, or a published artefact whose path this
+repository's own tables declare rather than the command line.
 
 `snapshot` and `export-feishu` read the corpus: pass `--root`, set
 `AUTORATE_FEISHU_ROOT`, or place the checkout as a sibling of this repo

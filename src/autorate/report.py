@@ -40,6 +40,35 @@ MASSIVE_CERTIFICATES = {
 }
 
 
+class PublishedArtefactAbsent(RuntimeError):
+    """A file the publication tables declare is not in this checkout.
+
+    It is a `RuntimeError` and not an `OSError` on purpose: `cli.main` maps `OSError` and `ValueError`
+    onto the usage exit code, and usage is the false statement here. No argument selected this path --
+    the table did -- so the tree, not the operator, is what disagrees with the published numbers. The
+    CLI gives it its own arm and its own code for that reason; a class raised anywhere else would
+    escape as rc 1, outside the documented 0/2/3/4 contract.
+    """
+
+
+def require_published(path, table: str) -> Path:
+    """The Path for an artefact a publication table names, or a refusal that says which table.
+
+    `verify`'s contract is to re-derive what this repository publishes, so an absent artefact is the
+    loudest form of that contract failing -- louder than a digit that disagrees, because nothing about
+    it can be reproduced. The read stays strict (this is not a fallback-to-empty situation); only the
+    attribution is being repaired, which is the sentence `docs/ERRATA.md` disclosed on 2026-10-08.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise PublishedArtefactAbsent(
+            "%s is declared published by %s and is not in this checkout, so the numbers re-derived "
+            "from it cannot be reproduced at all. This is not a usage error -- no argument selected "
+            "this path, the table did -- and it is not a value that disagrees either: the artefact "
+            "itself is absent." % (p, table))
+    return p
+
+
 def load_records(path: Path) -> dict:
     by_backend: dict = {}
     for line in Path(path).read_text().splitlines():
@@ -61,12 +90,14 @@ def massive_certificates() -> dict:
     One owner for the read path, so the gate's re-derivation below and anything that quotes these
     artefacts cannot end up opening two different sets of files. The read is strict: a missing artefact
     raises, because a certificate the tool cannot open is not the same statement as a certificate that
-    agrees with nothing.
+    agrees with nothing -- and it raises as `PublishedArtefactAbsent`, naming the table that declared
+    the path, because "usage error" would blame the operator for a checkout this package wrote.
     """
     out = {}
     for label, (records_path, cert_path) in sorted(MASSIVE_CERTIFICATES.items()):
-        stored = read_certificate(Path(cert_path))
-        out[label] = (load_records(Path(records_path)).get(stored.backend, []), stored)
+        stored = read_certificate(require_published(cert_path, "report.MASSIVE_CERTIFICATES"))
+        rows = require_published(records_path, "report.MASSIVE_CERTIFICATES")
+        out[label] = (load_records(rows).get(stored.backend, []), stored)
     return out
 
 

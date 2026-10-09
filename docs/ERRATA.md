@@ -723,3 +723,41 @@ The gap between the lanes is still exactly 35 checks -- the 9 upstream `SOURCE.j
 snapshot keys -- because the row the widening added reads only the committed records file, which is the
 same corpus-independent reason the pin arm exists. `README.md` now quotes 96 and 131 and lists
 `docs/AUDIT.md` among what a 96 run proves; the rows above this one keep the figures they measured.
+
+## 2026-10-09 — a missing published certificate reported a usage error for a file nobody passed
+
+The 2026-10-08 entry above disclosed this rather than fixing it, and the disclosure is still accurate
+about what the tool did: with a published certificate absent, `verify` surfaced a bare
+`FileNotFoundError` and `cli.main` mapped it onto the usage exit code. Fixed here, because this is a
+`cli.py` lane and `cli.py` is fenced one lane at a time.
+
+The attribution was the defect, not the non-zero exit. `2` is the code the README reserves for "an input
+you gave me is wrong", and the only inputs `verify` takes are the ones in its own tables --
+`report.CERTS`, `report.MASSIVE_CERTIFICATES`, `cli.PUBLISHED_DOCS`. A checkout missing
+`data/cert_massive_de_laya.json` is not a mistake the operator made; it is the committed state
+contradicting what it publishes, which is the sentence `4` already carries. So the refusal is a
+dedicated exception class (`report.PublishedArtefactAbsent`, a `RuntimeError` and pointedly not an
+`OSError`, because the tuple that maps `OSError` onto `2` is what swallowed the honest statement in the
+first place), raised by `report.require_published` at the four read paths a published artefact has, and
+mapped by its own arm in `main` onto `4`. The message names the path, names the table that declared it,
+and says what is not being claimed: no argument selected this path, and no value disagreed -- the
+artefact itself is absent.
+
+Two boundaries, both pinned by tests rather than by intention. `read_certificate` was NOT widened: a
+certificate path that came from `--cert` or from `compare` is the operator's to fix and still exits `2`
+(`test_a_certificate_path_the_operator_supplied_is_still_a_usage_error`, green on arrival, and it goes
+red if the refusal is moved into the shared reader). And `data/inventory.md.json` keeps its usage-error
+refusal in `_inventory`: with no corpus and no snapshot there is nothing to verify against, which is a
+different statement from a published artefact that is missing from a checkout that publishes it. The
+test that had pinned that behaviour is unchanged.
+
+Red first on the feishu certificate: the assertion read `assert 2 == 4` with stderr
+`FileNotFoundError: [Errno 2] No such file or directory: 'data/cert_laya.json'`. The other three read
+paths were covered after the fix, so each is falsified by a mutation instead: reverting one site to a
+bare `Path` reddens exactly its own row (`data/cert_laya.json`, `data/cert_massive_de_laya.json`,
+`data/records_massive_sw.jsonl`, `docs/RESULTS.md`), mapping the arm onto `EXIT_USAGE` reddens the test,
+deleting the arm at all escapes as `rc 1`, and widening `read_certificate` reddens the boundary test.
+Seven arms, each restored byte-identically by sha256.
+
+No published number moved: the gate's denominators are a function of artefacts being present, and on a
+complete tree this lane adds no comparison and removes none.

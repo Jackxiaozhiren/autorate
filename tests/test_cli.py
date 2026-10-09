@@ -552,6 +552,68 @@ def test_a_missing_input_is_a_usage_error_not_a_traceback(tmp_path):
     assert p.stderr.strip(), "a usage error that prints nothing is not diagnosable"
 
 
+def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_path):
+    """`verify` says "usage error" about a file no argument selected.
+
+    Disclosed rather than fixed in `docs/ERRATA.md` (2026-10-08): with a published certificate absent
+    the gate surfaced a bare `FileNotFoundError` mapped onto rc 2, whose only readable content is an
+    errno and a relative path. That attribution is false twice over. It is not a usage error -- the
+    path comes from the tables that state which artefacts this repository publishes, and nothing the
+    operator typed selects it. And rc 2 is the code the README reserves for "your inputs are wrong",
+    while the true statement is the one rc 4 already carries: the committed state cannot reproduce its
+    own published numbers.
+
+    One row per read path, because there are four and they are four different lines of code: the feishu
+    certificate loop in `cmd_verify`, `report.massive_certificates()`'s certificate read, its records
+    read, and the document loop. A refusal added to one of them and missing from the other three would
+    pass a test that only had the first row.
+    """
+    cases = [
+        ("data/cert_laya.json", "report.CERTS", False),
+        ("data/cert_massive_de_laya.json", "report.MASSIVE_CERTIFICATES", False),
+        ("data/records_massive_sw.jsonl", "report.MASSIVE_CERTIFICATES", False),
+        # First in `PUBLISHED_DOCS`, so this row refuses on it and not on the `data/inventory.md`
+        # beside it that this scratch tree also lacks: whichever missing file the gate reaches first
+        # is the one the refusal is allowed to name.
+        ("docs/RESULTS.md", "cli.PUBLISHED_DOCS", True),
+    ]
+    for rel, table, needs_snapshot in cases:
+        work = tmp_path / rel.replace("/", "-").replace(".", "-")
+        (work / "data").mkdir(parents=True)
+        shutil.copytree(REPO / "docs", work / "docs")
+        stage_published(work)
+        if needs_snapshot:
+            shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
+        (work / rel).unlink()
+        p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+        assert p.returncode == 4, (rel, p.returncode, p.stdout, p.stderr)
+        assert "Traceback" not in p.stderr, (rel, p.stderr)
+        assert "MISSING PUBLISHED" in p.stderr, (rel, p.stderr)
+        assert rel in p.stderr, (rel, p.stderr)
+        assert table in p.stderr, (rel, p.stderr)
+        # The refusal must not be delivered as a reproduction result: there is no `re-derived` line
+        # to read, and a printed denominator from a run that never got to the arithmetic would be a
+        # second claim about a tree we know is broken.
+        assert "re-derived" not in p.stdout, (rel, p.stdout)
+
+
+def test_a_certificate_path_the_operator_supplied_is_still_a_usage_error(tmp_path):
+    """The boundary the named refusal must not cross: a path from argv is the operator's to fix.
+
+    Green on arrival -- this is the arm that keeps the change honest, not the fix's proof. If the
+    named refusal were put inside `read_certificate` instead of at the two published-artefact read
+    sites, both rows below would turn rc 4 and blame the reproduction gate for a typo in a command
+    line. Same file type, same missing file, different owner of the path, different exit code.
+    """
+    absent = tmp_path / "absent.json"
+    g = run("gate", str(REPO / "data" / "records_feishu.jsonl"), "--cert", str(absent))
+    assert g.returncode == 2, (g.returncode, g.stdout, g.stderr)
+    assert "MISSING PUBLISHED" not in g.stderr, g.stderr
+    c = run("compare", str(absent), str(REPO / "data" / "cert_jev.json"))
+    assert c.returncode == 2, (c.returncode, c.stdout, c.stderr)
+    assert "MISSING PUBLISHED" not in c.stderr, c.stderr
+
+
 def test_a_supervised_per_ask_gold_is_a_non_zero_refusal_not_a_malformed_line(tmp_path):
     """I-2: the R-14 per-ask-gold tripwire is a policy refusal, not an unreadable line.
 

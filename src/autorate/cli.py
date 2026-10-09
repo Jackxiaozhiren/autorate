@@ -12,8 +12,9 @@ from .gate import Gate
 from .inventory import corpus_label, inventory, write_inventory
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, RECORDS, SEED, build_report,
-                     certify_all, load_records, read_certificate, rederive_massive, write_report)
+from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, PublishedArtefactAbsent, RECORDS, SEED,
+                     build_report, certify_all, load_records, read_certificate, require_published,
+                     rederive_massive, write_report)
 
 EXIT_CERTIFIED = 0
 EXIT_NOT_CERTIFIABLE = 3
@@ -537,7 +538,7 @@ def cmd_verify(args) -> int:
 
     records = load_records(Path(RECORDS))
     for backend, path in sorted(CERTS.items()):
-        stored = read_certificate(Path(path))
+        stored = read_certificate(require_published(path, "report.CERTS"))
         # the real comparison: re-derive the certificate from the committed records
         fresh = certify_choice(records.get(backend, []), alpha=stored.alpha,
                                beta=stored.beta, delta=stored.delta,
@@ -555,7 +556,8 @@ def cmd_verify(args) -> int:
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:
-        expect("%s byte-identical" % path, render(inv, records), path.read_text())
+        here = require_published(path, "cli.PUBLISHED_DOCS")
+        expect("%s byte-identical" % path, render(inv, records), here.read_text())
 
     if source == FROM_CORPUS:
         for d in inv["digests"]:
@@ -681,6 +683,21 @@ def main(argv=None) -> int:
         # out of the quarantine accounting entirely.
         print("%s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return EXIT_USAGE
+    except PublishedArtefactAbsent as exc:
+        # A file that this package's own publication tables declare is not in the checkout. It is not
+        # EXIT_USAGE: the operator passed no path, so nothing they typed is wrong -- what is wrong is
+        # the committed state, and the code for "the repository cannot reproduce what it publishes"
+        # is EXIT_DRIFT. Falling through the tuple below instead was the disclosure in
+        # `docs/ERRATA.md` (2026-10-08): a bare `FileNotFoundError` printed an errno and a relative
+        # path and let `verify` call a missing certificate a usage error.
+        # The refusal is deliberately not delivered through `expect`: a run that cannot open the
+        # artefact has no comparisons to count, and printing `re-derived 83 /84` from a tree that
+        # never reached the arithmetic would publish a denominator this run did not earn.
+        # `data/inventory.md.json` stays a usage error (`_inventory`'s own raise, pinned by
+        # test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error): there the environment supplies
+        # nothing at all to verify against, which is a different statement from this one.
+        print("MISSING PUBLISHED ARTEFACT: %s" % exc, file=sys.stderr)
+        return EXIT_DRIFT
     except ArithmeticError as exc:
         # Both raise sites protected by this clause are invariants about our own arithmetic:
         # `tails` refuses to publish a Clopper-Pearson bound beaten by its own data, and the reader
