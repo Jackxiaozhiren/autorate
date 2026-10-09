@@ -88,35 +88,51 @@ def require_published(path, table: str) -> Path:
     return p
 
 
+def read_json(path):
+    """The committed JSON at a published path, as one call, so the guard can be handed it."""
+    return json.loads(Path(path).read_text())
+
+
 def load_published(path, table: str, load):
     """A table-declared artefact, put through both arms of the attribution repair.
 
     `require_published` answers the filesystem: nothing at the path, or the path refusing the open. This
     answers the contents. A published certificate whose JSON will not parse, a records file whose line is
-    not a record, a document that is not text -- in each case the bytes were read, so nothing about the
-    failure is an access failure, and each raised a `ValueError` from a loader that also serves
-    operator-supplied paths where "usage error" is the truth. The wrap belongs here and not inside
-    `read_certificate` or `load_records` for exactly that reason: those functions cannot tell whose path
-    they were handed, and the exit code has to.
+    not a record, a document that is not text, a snapshot whose shape this build does not accept -- in
+    each case the bytes were read, so nothing about the failure is an access failure, and each raised a
+    `ValueError` from a loader that also serves operator-supplied paths where "usage error" is the truth.
+    The wrap belongs here and not inside `read_certificate` or `load_records` for exactly that reason:
+    those functions cannot tell whose path they were handed, and the exit code has to.
 
     Measured before this arm existed, a corrupted `data/cert_laya.json` left `verify` printing
     `JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)` and
     exiting 2 -- a message that names no file, about a file no argument named. The refusal quotes the
-    parser's own words for the same reason the access rows quote the errno: what this run knows is that
-    the parse raised, and where.
+    reader's own words for the same reason the access rows quote the errno: what this run knows is that
+    the read gave up, and where it gave up.
 
-    `load` is applied to the guarded `Path`, so `read_certificate`, `load_records` and `Path.read_text`
-    all fit it.
+    It therefore does not name the mechanism. "does not parse" was the first wording and it over-reached
+    in the same direction round 2 retired: the tamper that empties a certificate's `envelope` parses
+    perfectly, and what refuses it is this build's own shape rules -- measured, the parenthetical reads
+    "every certificate needs a non-empty envelope of assumptions". A decode failure, a parser complaint
+    and a rejected shape are three different claims, and the refusal states none of them as fact.
+
+    One asymmetry to keep in mind when adding a site: `load` is applied to the guarded `Path`, so
+    `read_certificate`, `load_records`, `Path.read_text` and `read_json` all fit it -- and a `load` that
+    raises a policy refusal of its own would be swallowed here, because such a refusal is a `ValueError`
+    too. No wrapped loader raises one today; the row that pins the absent snapshot at `2` is the one that
+    would fire if that changed.
     """
     try:
         return load(require_published(path, table))
     except ValueError as exc:
         raise PublishedArtefactUnavailable(
-            "%s is declared published by %s, was read here, and does not parse (%s), so the numbers "
-            "re-derived from it cannot be reproduced. This is not a usage error -- no argument selected "
-            "this path, the table did, and no argument can repair it: the bytes at a published path "
-            "belong to this checkout, not to the caller. What is in parentheses is the parser's own "
-            "report of where the read stopped." % (path, table, exc)) from exc
+            "%s is declared published by %s, was read here, and what was found is not the artefact that "
+            "table publishes (%s), so the numbers re-derived from it cannot be reproduced. This is not a "
+            "usage error -- no argument selected this path, the table did, and no argument can repair it: "
+            "the bytes at a published path belong to this checkout, not to the caller. What is in "
+            "parentheses is the reader's own report of where it gave up, which may be a decode failure, a "
+            "parser's complaint or a shape this build does not accept; the refusal does not guess which."
+            % (path, table, exc)) from exc
 
 
 def load_records(path: Path) -> dict:

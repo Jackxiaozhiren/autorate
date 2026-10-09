@@ -834,3 +834,55 @@ operator, is what disagrees with the published numbers -- and the row's name and
 say that, keeping its `2` where `2` still belongs by reaching the same broken bytes through `gate --cert`,
 a path the operator typed. No assertion was dropped in the re-write: the old row's every claim survives on
 one of the two paths, and the two paths are what make the claim precise.
+
+Round 4 re-attributes two claims made above in round 3, in the same way -- by leaving the sentences standing
+and recording what was found afterwards, rather than editing the entry into looking wiser than it was.
+
+The first is the site count. "All four sites that read a table-declared artefact" was the enumeration this
+entry gave, and it was four short: `report.INVENTORY_JSON` is read at two more places, `cli.py`'s
+`expect_snapshot_is_current` and `_inventory`, and neither argument selects those paths. The reviewer found
+it by asking the question the paragraph above had asked of the open, but of the *count*: which reads does
+the guard not touch? Measured on a scratch checkout before the fix, a committed `data/inventory.md.json`
+holding `{not json` left `verify` printing `JSONDecodeError: Expecting property name enclosed in double
+quotes: line 1 column 2 (char 1)` and exiting `2` -- the same false attribution, a file no argument named
+described as an input the command was handed, and the reason the earlier rounds kept enumerating rather
+than sampling: a list is checkable and an impression is not. The count is now six, and it is derived from
+the source (`grep -c` of the wrap's call sites) rather than remembered here.
+
+The second is the wording of the refusal. It said the artefact "does not parse", and that over-reached in the
+direction of the parser: the corruption this guard catches is not always a parse failure. Measured on the
+same tamper round 3 retired to `4` -- a committed certificate with `"envelope": []` -- the bytes parse
+perfectly, and what the run prints is the shape refusal, "every certificate needs a non-empty envelope of
+assumptions". A document whose bytes are not UTF-8 prints a decode error. The message therefore now says
+that what was found "is not the artefact that table publishes", quotes the reader's own words in
+parentheses, and states plainly that it does not guess which of the three it was. The parenthetical is the
+evidence; the sentence around it is only allowed to claim that a read completed and was rejected. The rows
+that pin the message pin the absence too -- `assert "does not parse" not in ...` -- so the retired
+over-claim cannot come back as a regression.
+
+The paragraph above also credited the boundary row with pinning "a malformed `audit --records` default" for
+the content arm. What existed at that moment was a `verify` run against a malformed default records file; the
+README's own residual names `audit`, and the row did not run it. Round 4 adds the `audit` block, which was
+green on arrival -- the residue of a claim that had outrun its pin, not a defect that had been hiding. What
+is still *not* pinned is `compare`'s malformed-content case: it reaches the same unwrapped `load_records`,
+so `compare` is asserted for the access form (an absent certificate is `2`, in
+`test_a_certificate_path_the_operator_supplied_is_still_a_usage_error`) and not for the content form, and
+the boundary row now says so in its docstring instead of leaving a reader to find out from a green suite.
+
+With the sixth site wired, the README's residual shrinks from two table-declared paths to one:
+`data/records_feishu.jsonl`, because `audit --records` takes it as a default an operator can name and
+repair. `data/inventory.md.json` splits rather than moving wholesale: a *missing* snapshot alongside no
+corpus is still `2`, because "nothing to verify against" is a true statement about an absence and the
+`UsageError` that makes it is raised before the wrap, exactly where the brief fences it; a snapshot that is
+present and will not load is `4`, like any other published artefact. That split is the third falsification
+arm's job -- routing the absence through the content guard reddens the `2` row, and only that row.
+
+The falsification pass found the round's last gap by making a prediction about its own instrument. Arm D6
+wraps `audit`'s records read in the guard, and the pass expected that to redden both the content row and
+`test_the_default_records_path_is_still_a_usage_error`; the second stayed green, because that row runs
+`verify`. So the README's residual names a command whose access behaviour no row policed -- measured, `audit`
+with `data/records_feishu.jsonl` unlinked prints `FileNotFoundError: [Errno 2] No such file or directory:
+'data/records_feishu.jsonl'` and exits `2`, which is the right attribution but was, until this paragraph,
+only a habit. The row now runs `audit` too, and D6 reddens both rows. Nothing published was wrong; the pin
+that made it non-negotiable was missing, and it was the instrument's failed expectation that exposed it
+rather than a review of the prose.

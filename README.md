@@ -74,12 +74,15 @@ command was handed is wrong, whether you named its path or a default supplied it
 `4` the committed state cannot reproduce what it publishes: a number that disagrees,
 or a published artefact this repository's own tables declare that this run cannot
 read -- because nothing is at its path, because the path itself refuses the open, or
-because what is there does not parse: a corrupt certificate, a records line that is
-not a record, a document that is not text, a certificate stored in a shape this build
-does not read. Two table-declared paths stay `2` by ruling rather than oversight,
-absent or unreadable alike: `data/records_feishu.jsonl` is `audit --records`' default, and
-no `data/inventory.md.json` alongside no corpus means there is nothing to verify
-against, which is a different statement from a published artefact that cannot be read.
+because what is there is not the artefact that table publishes: a corrupt certificate,
+a records line that is not a record, a document that is not text, a certificate stored
+in a shape this build does not read, a committed inventory snapshot that will not load.
+One table-declared path stays `2` by ruling rather than oversight:
+`data/records_feishu.jsonl` is `audit --records`' default, absent or unreadable alike.
+A missing `data/inventory.md.json` alongside no corpus is `2` for a reason the refusal
+does not cover -- there is nothing to verify against, which is a different statement
+from a published artefact that cannot be read -- while a snapshot that is present and
+will not load is `4` like any other published artefact.
 
 `snapshot` and `export-feishu` read the corpus: pass `--root`, set
 `AUTORATE_FEISHU_ROOT`, or place the checkout as a sibling of this repo

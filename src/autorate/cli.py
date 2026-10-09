@@ -14,7 +14,7 @@ from .readers.feishu_zh import ReaderContractError
 from .records import Record
 from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, SEED,
                      build_report, certify_all, load_published, load_records, read_certificate,
-                     rederive_massive, write_report)
+                     read_json, rederive_massive, write_report)
 
 EXIT_CERTIFIED = 0
 EXIT_NOT_CERTIFIABLE = 3
@@ -65,7 +65,7 @@ def expect_snapshot_is_current(expect, inv: dict) -> None:
     if not path.exists():
         expect("%s committed" % INVENTORY_JSON, path.exists(), True)
         return
-    committed = json.loads(path.read_text())
+    committed = load_published(path, "report.INVENTORY_JSON", read_json)
     for key in sorted(set(inv) | set(committed)):
         if key in SNAPSHOT_MACHINE_KEYS:
             continue
@@ -399,7 +399,7 @@ def _inventory() -> tuple:
     cached = Path(INVENTORY_JSON)
     if not cached.exists():
         raise UsageError("no corpus and no committed %s: nothing to verify against" % cached)
-    return json.loads(cached.read_text()), FROM_SNAPSHOT
+    return load_published(cached, "report.INVENTORY_JSON", read_json), FROM_SNAPSHOT
 
 
 def cmd_snapshot(args) -> int:
@@ -711,9 +711,11 @@ def main(argv=None) -> int:
         print("INVARIANT: %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return EXIT_DRIFT
     except (OSError, ValueError) as exc:
-        # OSError: an input path that is not there. ValueError: a stored certificate that
-        # violates its own shape rules. Both are "the inputs are wrong", and both used to
-        # escape as a traceback with rc 1 -- outside the documented 0/2/3/4 contract.
+        # OSError: an input path that is not there. ValueError: bytes an operator-supplied path --
+        # `--cert`, `compare`, the `--records` default -- hands over that this build cannot read. Both
+        # are "the input this command was handed is wrong", and both used to escape as a traceback with
+        # rc 1, outside the documented 0/2/3/4 contract. The same failure on a path a publication table
+        # declares is NOT here: `PublishedArtefactUnavailable` above owns it, at 4.
         print("%s: %s" % (type(exc).__name__, exc), file=sys.stderr)
         return EXIT_USAGE
 

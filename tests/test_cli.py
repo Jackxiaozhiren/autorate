@@ -514,6 +514,11 @@ def test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error(tmp_path):
     r = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     assert "nothing to verify against" in r.stderr, r.stderr
+    # The absent snapshot is the one statement about this path that stays a usage error, and no argument
+    # can name it either. It is also the pin that fires if the content guard is ever routed over the
+    # missing-file branch: `load_published` catches `ValueError`, `UsageError` is a `ValueError`
+    # subclass, and a snapshot the tree does not have would be reported as a snapshot the tree corrupts.
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in r.stderr, r.stderr
 
 
 def test_a_mixed_subject_certificate_gates_nothing():
@@ -592,20 +597,84 @@ def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_
         assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, (rel, p.stderr)
         assert rel in p.stderr, (rel, p.stderr)
         assert table in p.stderr, (rel, p.stderr)
-        assert "does not parse" in p.stderr, (rel, p.stderr)
+        assert "is not the artefact that table publishes" in p.stderr, (rel, p.stderr)
+        assert "does not parse" not in p.stderr, (rel, p.stderr)
         assert "cannot be opened" not in p.stderr, (rel, p.stderr)
         assert "is not in this checkout" not in p.stderr, (rel, p.stderr)
         assert "re-derived" not in p.stdout, (rel, p.stdout)
 
 
+def test_a_corrupt_committed_inventory_snapshot_is_the_same_drift_not_a_usage_error(tmp_path):
+    """The fifth table-declared read, which round 3 enumerated past.
+
+    Round 3 listed the sites by table and wired four; the review of that round found the fifth,
+    `_inventory`'s read of the committed snapshot. Measured on the round-3 tip, replacing
+    `data/inventory.md.json` with `{not json` left `verify` exiting 2 with a bare `JSONDecodeError:
+    Expecting property name enclosed in double quotes` naming no file -- the failure that round's own
+    RED retired, still live on the path no argument can name.
+
+    This is the case the README's residual cannot host. No CLI flag takes a snapshot path: `verify` and
+    `report` accept none, and `audit --records` defaults to the records file, so the rationale that
+    keeps `data/records_feishu.jsonl` at `2` -- a default you could have named -- has nothing to
+    transfer to. And "no corpus and no committed inventory: nothing to verify against" is the statement
+    of a MISSING snapshot; bytes that were read and rejected are the sentence's own contrast clause, "a
+    published artefact that cannot be read", which belongs at `4`.
+    """
+    work = tmp_path / "corrupt-snapshot"
+    (work / "data").mkdir(parents=True)
+    shutil.copytree(REPO / "docs", work / "docs")
+    stage_published(work)
+    (work / "data" / "inventory.md.json").write_text("{not json")
+    p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+    assert p.returncode == 4, (p.returncode, p.stdout, p.stderr)
+    assert "Traceback" not in p.stderr, p.stderr
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, p.stderr
+    assert "data/inventory.md.json" in p.stderr, p.stderr
+    assert "report.INVENTORY_JSON" in p.stderr, p.stderr
+    assert "is not the artefact that table publishes" in p.stderr, p.stderr
+    assert "does not parse" not in p.stderr, p.stderr
+    assert "cannot be opened" not in p.stderr, p.stderr
+    # The usage sentence must not survive onto this path: it is the absent snapshot's, and a run that
+    # read the file and rejected it does not know that the file is missing.
+    assert "nothing to verify against" not in p.stderr, p.stderr
+    assert "re-derived" not in p.stdout, p.stdout
+
+
+def test_the_corpus_present_snapshot_leg_refuses_corrupt_bytes_the_same_way(tmp_path, monkeypatch):
+    """The same committed file, read by the other leg: `expect_snapshot_is_current`, corpus only.
+
+    Called directly rather than as a corpus-gated end-to-end row because the condition is the bytes at
+    one path, and a row that skipped whenever the vendored corpus is absent would leave this site
+    policed by prose. `verify`'s ordering means the end-to-end lane reaches the certificate tables
+    first anyway, so the leg needs its own call to be reachable at all.
+    """
+    from autorate.cli import expect_snapshot_is_current
+    from autorate.report import PublishedArtefactUnavailable
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "inventory.md.json").write_text("{not json")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(PublishedArtefactUnavailable) as caught:
+        expect_snapshot_is_current(lambda label, actual, wanted: None, {"digests": []})
+    message = str(caught.value)
+    assert "data/inventory.md.json" in message, message
+    assert "report.INVENTORY_JSON" in message, message
+    assert "is not the artefact that table publishes" in message, message
+    assert "cannot be opened" not in message, message
+    assert "is not in this checkout" not in message, message
+
+
 def test_a_malformed_artefact_on_a_path_the_operator_supplied_is_still_a_usage_error(tmp_path):
     """The boundary the content arm must not cross: the same bad bytes, a path from argv or a default.
 
-    Green on arrival, and it is the row that keeps the fix in the right place. If the refusal lived
-    inside `read_certificate` or `load_records` rather than at the sites the publication tables declare,
-    both rows below would turn rc 4: a typo in a `--cert` argument and a malformed
-    `audit --records` default are inputs this command was handed, which is exactly what `2` is for.
-    Same file type, same broken contents, different owner of the path, different exit code.
+    Green on arrival for its first two blocks, and it is the row that keeps the fix in the right place.
+    If the refusal lived inside `read_certificate` or `load_records` rather than at the sites the
+    publication tables declare, all three reads below would turn rc 4: a typo in a `--cert` argument, and
+    the malformed default records file as `verify` reads it and as `audit` reads it, are inputs this
+    command was handed, which is exactly what `2` is for. Same file type, same broken contents, different
+    owner of the path, different exit code. `compare` is deliberately not asserted here -- it reaches the
+    same unwrapped `load_records`, and the round-3 ERRATA paragraph that claimed a row pinned its
+    malformed-content case over-claimed and is corrected in round 4.
     """
     bad = tmp_path / "bad-cert.json"
     bad.write_text("{not a certificate")
@@ -623,6 +692,14 @@ def test_a_malformed_artefact_on_a_path_the_operator_supplied_is_still_a_usage_e
     assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
     assert "PUBLISHED ARTEFACT UNAVAILABLE" not in p.stderr, p.stderr
     assert "re-derived" not in p.stdout, p.stdout
+
+    # The command the README actually names for this residual. Round 3's prose said `audit --records`
+    # and its row only ran `verify`; the claim and the pin now agree. Green on arrival, and the arm that
+    # wraps this read in the content guard is what proves it can fail.
+    a = run("audit", cwd=work)
+    assert a.returncode == 2, (a.returncode, a.stdout, a.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in a.stderr, a.stderr
+    assert "Traceback" not in a.stderr, a.stderr
 
 
 def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_path):
@@ -694,12 +771,19 @@ def test_a_certificate_path_the_operator_supplied_is_still_a_usage_error(tmp_pat
 
 
 def test_the_default_records_path_is_still_a_usage_error(tmp_path):
-    """The third boundary the README states: `verify` reads `report.RECORDS` outside the guard.
+    """The third boundary the README states, on both of its arms: the records file the operator can name.
 
     Green on arrival, and it keeps the refusal's scope honest from the other side of the fence. The
     guard covers the artefacts whose absence contradicts a publication; `data/records_feishu.jsonl` is
-    `audit --records`' default, so a checkout without it is reported as the unreadable input it is,
-    not as drift. Wiring `require_published` over that read is the mutation this row exists to catch.
+    `audit --records`' default, so a checkout without it is reported as the unreadable input it is, not
+    as drift. Wiring `require_published` over that read is the mutation this row exists to catch.
+
+    It ran `verify` alone until round 4's falsification pass tried to predict its behaviour: the README's
+    residual names `audit`, and `audit` was the command nobody pinned for the access arm. Measured on a
+    scratch checkout, `audit` with the file unlinked prints `FileNotFoundError: [Errno 2] No such file or
+    directory: 'data/records_feishu.jsonl'` and exits `2` -- the correct attribution, and previously only
+    a habit. The block below is what makes it a guarantee, and the arm that wraps `audit`'s read reddens
+    it along with the content row.
     """
     work = tmp_path / "no-default-records"
     (work / "data").mkdir(parents=True)
@@ -711,6 +795,11 @@ def test_the_default_records_path_is_still_a_usage_error(tmp_path):
     assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
     assert "PUBLISHED ARTEFACT UNAVAILABLE" not in p.stderr, p.stderr
     assert "re-derived" not in p.stdout, p.stdout
+
+    a = run("audit", cwd=work)
+    assert a.returncode == 2, (a.returncode, a.stdout, a.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in a.stderr, a.stderr
+    assert "Traceback" not in a.stderr, a.stderr
 
 
 def test_a_published_artefact_that_cannot_be_opened_is_the_same_drift_not_a_usage_error(tmp_path):
@@ -823,7 +912,8 @@ def test_a_stored_certificate_that_violates_its_shape_is_drift_on_a_published_pa
     assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, p.stderr
     assert "data/cert_jev.json" in p.stderr, p.stderr
     assert "report.CERTS" in p.stderr, p.stderr
-    assert "does not parse" in p.stderr, p.stderr
+    assert "is not the artefact that table publishes" in p.stderr, p.stderr
+    assert "does not parse" not in p.stderr, p.stderr
     assert "envelope" in p.stderr, p.stderr
     assert "Traceback" not in p.stderr, p.stderr
     assert "re-derived" not in p.stdout, p.stdout
