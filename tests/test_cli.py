@@ -954,6 +954,22 @@ def group_files(tmp_path_factory):
     return root, mixed, clear, plain
 
 
+@pytest.fixture(scope="module")
+def dark_file(tmp_path_factory):
+    """One slice of 140 unlabelled cases -- above the floor, so it reaches the certifier.
+
+    CONSTRUCTED. The 140 cases are the whole point: below the floor the size branch prints the held
+    count and never touches the denominator this file is about, so a smaller fixture could not
+    exercise the line at all.
+    """
+    from _records import choice_record
+
+    root = tmp_path_factory.mktemp("dark")
+    records = [choice_record(id="dark-%d" % i, gold=None, predicted="opt0",
+                             u=(i % 97) / 100.0, slices={"family": "dark"}) for i in range(140)]
+    return _write(root / "dark.jsonl", records), root / "dark.json"
+
+
 def test_groups_on_the_cli_reaches_the_mondrian_surface_and_rc_follows_the_worst_slice(group_files):
     """`--groups` is the user's door to spec 8.1, and the exit code is the worst slice's verdict."""
     _root, mixed, clear, _plain = group_files
@@ -990,12 +1006,22 @@ def test_every_rendered_slice_line_matches_the_artefact_that_was_written(group_f
     out = _root / "rendered.json"
     result = run("certify", str(mixed), "--groups", "family", "--out", str(out), "--seed", "7")
     doc = json.loads(out.read_text())
+    census = {row["group"]: row for row in doc["slice_census"]}
     lines = [line for line in result.stdout.splitlines() if line.startswith("  slice ")]
     assert len(lines) == doc["n_groups"], lines
     for line in lines:
         name = line.split("slice ", 1)[1].split(" ", 1)[0]
         stated_n = int(line.split("(n=", 1)[1].split(" cases)", 1)[0])
-        assert stated_n == doc["slice_cases"][name], (line, doc["slice_cases"])
+        # Two different denominators, chosen by WHICH branch produced the verdict: the size floor is
+        # stated in terms of the cases the slice HOLDS (its own reason string prints that number), and
+        # a certifier verdict -- feasible or refused -- is stated in terms of the cases the certifier
+        # was actually handed. Asserting one field for both would let either renderer slide.
+        if name in {row["group"] for row in doc["refused_by_size"]}:
+            assert stated_n == doc["slice_cases"][name], (line, doc["slice_cases"])
+        else:
+            assert "eligible_cases" in census[name], (line, census[name])
+            assert stated_n == census[name]["eligible_cases"], (line, census[name])
+            assert stated_n <= doc["slice_cases"][name], (line, census[name])
         certified = "autorate" in line
         assert certified is doc["per_group"][name]["feasible"], line
         if certified:
@@ -1005,6 +1031,106 @@ def test_every_rendered_slice_line_matches_the_artefact_that_was_written(group_f
                            if row["group"] == name), None)
             assert stated is not None, (name, doc["worst_claim"]["refusals"])
             assert "NOT CERTIFIED -- " + stated in line, (line, stated)
+
+
+@pytest.fixture(scope="module")
+def partly_labelled_files(tmp_path_factory):
+    """Two slices whose HOLDINGS and ELIGIBLE CASES differ, one above the floor and one below.
+
+    CONSTRUCTED. The all-or-nothing `dark` slice cannot tell the two renderers apart on the floor
+    branch: this file makes `cases` and `eligible_cases` disagree inside BOTH branches, so a line that
+    picked the wrong one for a branch is checkable rather than merely unlikely.
+    """
+    from _records import choice_record
+    from autorate.records import Record
+
+    root = tmp_path_factory.mktemp("partly")
+    unlabelled = lambda name, count: [choice_record(id="%s-u%d" % (name, j), gold=None,
+                                                    predicted="opt0", u=(j % 97) / 100.0,
+                                                    slices={"family": name})
+                                       for j in range(count)]
+    part = _clean("part", 120) + unlabelled("part", 20)
+    dim = _clean("dim", 30, start=7) + unlabelled("dim", 10)
+    # A third cause for the SAME gap in the printed denominator: `foreign` is fully labelled, and its
+    # cases still never reach a CHOICE certifier because they answer another question. A sentence that
+    # attributed every gap to a missing gold label would lie on this row.
+    foreign = _clean("foreign", 130, start=11) + [
+        Record(id="foreign-n%d" % j, qtype="noul", backend="synthetic", repeat=0,
+               options=("false", "true"), probs=(0.2, 0.8), gold="true", predicted="true",
+               case_id=None, slices={"family": "foreign"}, scores={}, seed=1, u=0.5, meta={})
+        for j in range(30)]
+    return _write(root / "partly.jsonl", part + dim + foreign), root / "partly.json"
+
+
+def test_a_partly_labelled_slice_prints_the_certifier_count_and_the_floor_keeps_the_holding(
+        partly_labelled_files):
+    """The two branches state two denominators, and the gap is said in words on the same line.
+
+    `part` holds 140 cases and is handed 120; `dim` holds 40 and is refused BY THE FLOOR, whose own
+    reason string names 40. A renderer that used one denominator everywhere would print 30 for `dim`
+    -- a refusal of a slice that "only had 30 cases", when the floor is priced on holdings -- or 140
+    for `part`, which is the G2/F-5 defect at the non-extreme size the real corpus actually has.
+    """
+    path, out = partly_labelled_files
+    result = run("certify", str(path), "--groups", "family", "--out", str(out), "--seed", "7")
+    assert result.returncode == 3, (result.stdout, result.stderr)
+    text = result.stdout
+    lines = {line.split("slice ", 1)[1].split(" ", 1)[0]: line
+             for line in text.splitlines() if line.startswith("  slice ")}
+    assert set(lines) == {"part", "dim", "foreign"}, text
+    assert "slice part (n=120 cases)" in lines["part"], lines["part"]
+    assert "n=140" not in lines["part"], lines["part"]
+    assert "-- 20 of the slice's 140 cases never reached the rule (20 records carry no gold label)" \
+        in lines["part"], lines["part"]
+    assert "slice dim (n=40 cases)" in lines["dim"], lines["dim"]
+    assert "n=30" not in lines["dim"], lines["dim"]
+    assert "never reached the rule" not in lines["dim"], lines["dim"]
+    assert "dim(n=40)" in text, text
+    assert "slice foreign (n=130 cases)" in lines["foreign"], lines["foreign"]
+    assert "n=160" not in lines["foreign"], lines["foreign"]
+    assert "-- 30 of the slice's 160 cases never reached the rule (30 records answer another " \
+        "question type)" in lines["foreign"], lines["foreign"]
+    assert "no gold label" not in lines["foreign"], lines["foreign"]
+    doc = json.loads(out.read_text())
+    census = {row["group"]: row for row in doc["slice_census"]}
+    assert (census["part"]["cases"], census["part"]["eligible_cases"],
+            census["part"]["kept"], census["part"]["skipped_no_gold"]) == (140, 120, 120, 20), \
+        census["part"]
+    assert (census["dim"]["cases"], census["dim"]["eligible_cases"],
+            census["dim"]["kept"]) == (40, 30, 30), census["dim"]
+    assert (census["foreign"]["cases"], census["foreign"]["eligible_cases"],
+            census["foreign"]["skipped_no_gold"],
+            census["foreign"]["skipped_wrong_qtype"]) == (160, 130, 0, 30), census["foreign"]
+    assert doc["slice_cases"] == {"part": 140, "dim": 40, "foreign": 160}, doc["slice_cases"]
+    assert doc["slice_eligible_cases"] == {"part": 120, "dim": 30,
+                                           "foreign": 130}, doc["slice_eligible_cases"]
+
+
+def test_a_slice_with_no_labelled_cases_prints_the_denominator_the_certifier_was_handed(dark_file):
+    """The `n` on a certifier's slice line is the cases it could READ, not the cases on disk.
+
+    Measured before the fix: the line read `slice dark (n=140 cases)` for a certificate built from an
+    empty population -- `certify_groups` hands `certify_choice` the `kept` records, and all 140 of
+    these were dropped for lacking gold. A reader comparing that `n` with the refusal had to conclude
+    the rule refused 140 labelled cases; it refused zero. The census keeps `cases` 140 because the
+    floor is priced on holdings, so the two numbers must appear together or one of them is a lie.
+    """
+    path, out = dark_file
+    result = run("certify", str(path), "--groups", "family", "--out", str(out), "--seed", "7")
+    assert result.returncode == 3, (result.stdout, result.stderr)
+    text = result.stdout
+    assert "slice dark (n=0 cases): NOT CERTIFIED -- no labelled choice records to calibrate on" \
+        in text, text
+    assert "n=140 cases" not in text, text
+    assert "-- 140 of the slice's 140 cases never reached the rule (140 records carry no gold " \
+           "label)" in text, text
+    assert "refused by size" not in text, text
+    doc = json.loads(out.read_text())
+    row = next(entry for entry in doc["slice_census"] if entry["group"] == "dark")
+    assert "eligible_cases" in row, row
+    assert (row["cases"], row["eligible_cases"], row["kept"]) == (140, 0, 0), row
+    assert doc["slice_cases"] == {"dark": 140}, doc["slice_cases"]
+    assert doc["slice_eligible_cases"] == {"dark": 0}, doc
 
 
 def test_an_undeclared_group_key_exits_2_through_the_cli_and_names_the_keys_the_batch_states(

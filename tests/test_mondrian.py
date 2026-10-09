@@ -593,6 +593,12 @@ def test_a_slice_whose_records_all_lack_gold_is_named_in_the_census_not_filtered
     row = next(entry for entry in run.slice_census if entry["group"] == "dark")
     assert row["records"] == 140 and row["kept"] == 0
     assert row["skipped_no_gold"] == 140, row
+    # The verdict was always right; the DENOMINATOR was the defect. `cases` is what the slice holds
+    # and what the floor is priced on; `eligible_cases` is what the certifier was handed, and a slice
+    # line that prints only the first reads as "140 labelled cases were refused".
+    assert "eligible_cases" in row, row
+    assert row["eligible_cases"] == 0, row
+    assert run.slice_eligible_cases["dark"] == 0, run.slice_eligible_cases
     assert run.per_group["dark"].feasible is False
     assert run.per_group["dark"].reason == "no_gold_labels"
     assert "dark" in run.meta["slices_declared_but_empty"], run.meta
@@ -650,8 +656,8 @@ def test_the_artefact_serialises_with_the_correction_stated(cert):
     """
     payload = cert.to_dict()
     for key in ("n_groups", "corrected_alpha", "corrected_delta", "corrected_beta", "n_claims",
-                "level", "refused_by_size", "slice_census", "per_group", "pooled", "worst_claim",
-                "envelope"):
+                "level", "refused_by_size", "slice_census", "slice_cases", "slice_eligible_cases",
+                "per_group", "pooled", "worst_claim", "envelope"):
         assert key in payload, key
     assert payload["level"] == pytest.approx(1.0 - payload["n_claims"] * cert.delta)
     assert payload["refused_by_size"][0]["group"] == "tiny"

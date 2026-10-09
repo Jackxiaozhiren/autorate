@@ -227,19 +227,42 @@ def _print_slices(cert) -> None:
     Printed from the certificates themselves and the worst-of-G artefact, in census order. A slice
     refused by the size floor is named with its case count, because §8.1's whole claim is that the
     thin slices are refused BY NAME -- a summary that only counts them is the averaging this tool is
-    supposed to refuse.
+    supposed to refuse. A verdict produced by the certifier is named with the cases THAT RULE WAS
+    HANDED, and the difference is stated in words on the same line, so the count and the reason
+    cannot describe two different populations (G2/F-5).
     """
     claim = cert.worst_claim
     by_group_name = {row["group"]: row for row in claim["refusals"]}
+    # Which branch produced the verdict, read from the artefact's own size-floor list rather than from
+    # `reason`: a certifier CAN refuse the population it was handed with `n_below_min` too (a slice
+    # holding 140 cases of which 10 are labelled passes the floor and then has 10 cases split), and
+    # that refusal is stated in terms of the cases it could read, not the cases on disk.
+    by_floor = {row["group"] for row in cert.refused_by_size}
+    rows = {row["group"]: row for row in cert.slice_census}
     for name, slice_cert in cert.per_group.items():
-        n_cases = cert.slice_cases[name]
+        held = cert.slice_cases[name]
+        n_cases = held if name in by_floor else cert.slice_eligible_cases[name]
+        gap = ""
+        if n_cases != held:
+            # Each number keeps its OWN unit: the difference is in cases (the certification unit) and
+            # the drop counts are per record, so one sentence naming both is the only version that
+            # cannot be read as a case count of unlabelled rows. `wrong_qtype` is the other cause a
+            # slice can lose cases to, and attributing it to labels would be a false confession.
+            row = rows[name]
+            causes = []
+            if row["skipped_no_gold"]:
+                causes.append("%d records carry no gold label" % row["skipped_no_gold"])
+            if row["skipped_wrong_qtype"]:
+                causes.append("%d records answer another question type" % row["skipped_wrong_qtype"])
+            gap = " -- %d of the slice's %d cases never reached the rule (%s)" % (
+                held - n_cases, held, ", ".join(causes))
         if slice_cert.feasible:
-            print("  slice %s (n=%d cases): autorate %.3f, conditional error <= %.3f, level %.4f"
+            print("  slice %s (n=%d cases): autorate %.3f, conditional error <= %.3f, level %.4f%s"
                   % (name, n_cases, slice_cert.autorate, slice_cert.conditional_error_bound,
-                     slice_cert.level))
+                     slice_cert.level, gap))
         else:
             why = by_group_name.get(name, {}).get("why", slice_cert.meta.get("detail", "refused"))
-            print("  slice %s (n=%d cases): NOT CERTIFIED -- %s" % (name, n_cases, why))
+            print("  slice %s (n=%d cases): NOT CERTIFIED -- %s%s" % (name, n_cases, why, gap))
     if cert.refused_by_size:
         print("  refused by size (below %d cases, the two halves of the split this rule certifies "
               "on): %s" % (cert.meta["min_cases_per_slice"],

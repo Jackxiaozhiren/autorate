@@ -422,6 +422,16 @@ class GroupsCertificate:
         return {row["group"]: row["cases"] for row in self.slice_census}
 
     @property
+    def slice_eligible_cases(self) -> dict:
+        """Group name -> the CASES THE CERTIFIER WAS HANDED, read from the same census rows.
+
+        The sibling of `slice_cases`, and derived the same way for the same reason: a rendered slice
+        line has to say which of the two numbers it is stating, and the two must be reconstructible
+        from one artefact rather than from a map somebody kept beside it.
+        """
+        return {row["group"]: row["eligible_cases"] for row in self.slice_census}
+
+    @property
     def thinnest(self):
         """The slice with the fewest independent CASES -- the one the census can refuse first."""
         return min(self.slice_census, key=lambda row: (row["cases"], str(row["group"])))["group"]
@@ -472,6 +482,8 @@ class GroupsCertificate:
             # 1 through the real CLI before this line was rendered, which is outside the 0/2/3/4
             # contract. Values may be tuples (they serialize as lists); keys may not.
             "slice_cases": {str(name): n_cases for name, n_cases in self.slice_cases.items()},
+            "slice_eligible_cases": {str(name): n for name, n
+                                     in self.slice_eligible_cases.items()},
             # `str(name)` is not cosmetic: `by_group` names a one-key slice by its value and a
             # multi-key slice by a tuple, and a tuple is not a JSON object key. One rendering rule,
             # applied to every map keyed by a group, so the two cannot disagree about what a slice
@@ -541,8 +553,13 @@ def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, d
     for name, members in slices.items():
         kept, dropped = _eligible(members)
         n_cases = len({case_key(r) for r in members})
+        # The population the certifier is actually handed below, counted in the same unit. `cases` is
+        # the slice's HOLDING and is what the floor is priced on; `eligible_cases` is what a slice's
+        # bound rests on, and printing only the first tells a reader 140 labelled cases were refused
+        # when the certificate was built from zero of them (G2/F-5 of the Plan B3 Task 2 review).
+        n_eligible_cases = len({case_key(r) for r in kept})
         census.append({"group": name, "cases": n_cases, "records": len(members),
-                       "kept": len(kept), **dropped})
+                       "kept": len(kept), "eligible_cases": n_eligible_cases, **dropped})
         detail_meta = {"groups_declared": declared, "n_eval_cases": n_cases,
                        "min_cases_per_slice": floor, "backend": backend}
         if size_floor(n_cases, floor):
