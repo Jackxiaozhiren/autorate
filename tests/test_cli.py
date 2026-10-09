@@ -559,8 +559,9 @@ def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_pat
     the gate surfaced a bare `FileNotFoundError` mapped onto rc 2, whose only readable content is an
     errno and a relative path. That attribution is false twice over. It is not a usage error -- the
     path comes from the tables that state which artefacts this repository publishes, and nothing the
-    operator typed selects it. And rc 2 is the code the README reserves for "your inputs are wrong",
-    while the true statement is the one rc 4 already carries: the committed state cannot reproduce its
+    operator typed selects it. And rc 2 is the code README gives to an input the command was
+    handed, while the true statement is the one rc 4 already carries: the committed state cannot
+    reproduce its
     own published numbers.
 
     One row per read path, because there are four and they are four different lines of code: the feishu
@@ -588,9 +589,14 @@ def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_pat
         p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
         assert p.returncode == 4, (rel, p.returncode, p.stdout, p.stderr)
         assert "Traceback" not in p.stderr, (rel, p.stderr)
-        assert "MISSING PUBLISHED" in p.stderr, (rel, p.stderr)
+        assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, (rel, p.stderr)
         assert rel in p.stderr, (rel, p.stderr)
         assert table in p.stderr, (rel, p.stderr)
+        # The two refusals the guard can raise say different things, and a reader acts on the
+        # difference: restoring a file is not the same repair as fixing a permission. Without this
+        # line the absent rows would still pass if the guard collapsed into one "cannot be opened"
+        # branch and announced a checkout as present-but-broken.
+        assert "is not in this checkout" in p.stderr, (rel, p.stderr)
         # The refusal must not be delivered as a reproduction result: there is no `re-derived` line
         # to read, and a printed denominator from a run that never got to the arithmetic would be a
         # second claim about a tree we know is broken.
@@ -601,17 +607,86 @@ def test_a_certificate_path_the_operator_supplied_is_still_a_usage_error(tmp_pat
     """The boundary the named refusal must not cross: a path from argv is the operator's to fix.
 
     Green on arrival -- this is the arm that keeps the change honest, not the fix's proof. If the
-    named refusal were put inside `read_certificate` instead of at the two published-artefact read
-    sites, both rows below would turn rc 4 and blame the reproduction gate for a typo in a command
+    named refusal were put inside `read_certificate` instead of at the sites the publication tables
+    declare, both rows below would turn rc 4 and blame the reproduction gate for a typo in a command
     line. Same file type, same missing file, different owner of the path, different exit code.
     """
     absent = tmp_path / "absent.json"
     g = run("gate", str(REPO / "data" / "records_feishu.jsonl"), "--cert", str(absent))
     assert g.returncode == 2, (g.returncode, g.stdout, g.stderr)
-    assert "MISSING PUBLISHED" not in g.stderr, g.stderr
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in g.stderr, g.stderr
     c = run("compare", str(absent), str(REPO / "data" / "cert_jev.json"))
     assert c.returncode == 2, (c.returncode, c.stdout, c.stderr)
-    assert "MISSING PUBLISHED" not in c.stderr, c.stderr
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in c.stderr, c.stderr
+
+
+def test_the_default_records_path_is_still_a_usage_error(tmp_path):
+    """The third boundary the README states: `verify` reads `report.RECORDS` outside the guard.
+
+    Green on arrival, and it keeps the refusal's scope honest from the other side of the fence. The
+    guard covers the artefacts whose absence contradicts a publication; `data/records_feishu.jsonl` is
+    `audit --records`' default, so a checkout without it is reported as the unreadable input it is,
+    not as drift. Wiring `require_published` over that read is the mutation this row exists to catch.
+    """
+    work = tmp_path / "no-default-records"
+    (work / "data").mkdir(parents=True)
+    shutil.copytree(REPO / "docs", work / "docs")
+    stage_published(work)
+    shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
+    (work / "data" / "records_feishu.jsonl").unlink()
+    p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+    assert p.returncode == 2, (p.returncode, p.stdout, p.stderr)
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" not in p.stderr, p.stderr
+    assert "re-derived" not in p.stdout, p.stdout
+
+
+def test_a_published_artefact_that_cannot_be_opened_is_the_same_drift_not_a_usage_error(tmp_path):
+    """The gate cannot READ a file its own tables declare: a directory in its place, or a mode that
+    refuses the open. Measured before this row existed -- both exited 2, the first with
+    `IsADirectoryError: [Errno 21] Is a directory: 'data/cert_laya.json'`, the second with
+    `PermissionError: [Errno 13] Permission denied: 'data/cert_laya.json'`.
+
+    Those are the same misattribution the row above retired, one step further along: the path is
+    still the table's and not the operator's, and a checkout whose published certificate cannot be
+    opened reproduces nothing, which is the sentence `4` carries. So `require_published` opens the
+    file it vouches for rather than only stat-ing it, and the class and the printed label say
+    `unavailable` instead of `absent` -- neither may claim the file has gone when it is present and
+    unreadable.
+
+    The permission row is skipped, not weakened, where the environment can read a mode-000 file: a
+    runner executing as root cannot produce the condition, and a row asserting a refusal the OS will
+    not raise is a red that proves nothing about the product.
+    """
+    for how in ("directory", "unreadable"):
+        work = tmp_path / how
+        (work / "data").mkdir(parents=True)
+        shutil.copytree(REPO / "docs", work / "docs")
+        stage_published(work)
+        shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
+        target = work / "data" / "cert_laya.json"
+        if how == "directory":
+            target.unlink()
+            target.mkdir()
+        else:
+            target.chmod(0)
+            try:
+                target.read_bytes()
+            except OSError:
+                pass
+            else:
+                target.chmod(0o644)
+                pytest.skip("this environment reads a mode-000 file, so the condition cannot be made")
+        try:
+            p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+            assert p.returncode == 4, (how, p.returncode, p.stdout, p.stderr)
+            assert "Traceback" not in p.stderr, (how, p.stderr)
+            assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, (how, p.stderr)
+            assert "cannot be opened" in p.stderr, (how, p.stderr)
+            assert "data/cert_laya.json" in p.stderr, (how, p.stderr)
+            assert "report.CERTS" in p.stderr, (how, p.stderr)
+            assert "re-derived" not in p.stdout, (how, p.stdout)
+        finally:
+            target.chmod(0o755 if target.is_dir() else 0o644)
 
 
 def test_a_supervised_per_ask_gold_is_a_non_zero_refusal_not_a_malformed_line(tmp_path):

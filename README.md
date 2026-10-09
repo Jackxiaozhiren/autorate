@@ -69,10 +69,14 @@ The `uv run --frozen` prefix is not decoration: the console script is not on `PA
 after `uv sync`, and a bare `pytest` on this machine resolves to a different
 interpreter entirely.
 
-Exit codes: `0` certified, `3` `NOT_CERTIFIABLE`, `2` usage error -- an input that
-came from an argument, and nothing else -- `4` the committed state cannot reproduce
-what it publishes: a number that disagrees, or a published artefact whose path this
-repository's own tables declare rather than the command line.
+Exit codes: `0` certified, `3` `NOT_CERTIFIABLE`, `2` usage error -- an input this
+command was handed is wrong, whether you named its path or a default supplied it --
+`4` the committed state cannot reproduce what it publishes: a number that disagrees,
+or a published artefact this repository's own tables declare -- absent from the
+checkout, or present and unopenable. Two table-declared paths stay `2` by ruling
+rather than oversight: `data/records_feishu.jsonl` is `audit --records`' default, and
+no `data/inventory.md.json` alongside no corpus means there is nothing to verify
+against, which is a different statement from a published artefact that cannot be read.
 
 `snapshot` and `export-feishu` read the corpus: pass `--root`, set
 `AUTORATE_FEISHU_ROOT`, or place the checkout as a sibling of this repo

@@ -40,8 +40,8 @@ MASSIVE_CERTIFICATES = {
 }
 
 
-class PublishedArtefactAbsent(RuntimeError):
-    """A file the publication tables declare is not in this checkout.
+class PublishedArtefactUnavailable(RuntimeError):
+    """A file the publication tables declare is absent from this checkout, or there and unreadable.
 
     It is a `RuntimeError` and not an `OSError` on purpose: `cli.main` maps `OSError` and `ValueError`
     onto the usage exit code, and usage is the false statement here. No argument selected this path --
@@ -54,18 +54,31 @@ class PublishedArtefactAbsent(RuntimeError):
 def require_published(path, table: str) -> Path:
     """The Path for an artefact a publication table names, or a refusal that says which table.
 
-    `verify`'s contract is to re-derive what this repository publishes, so an absent artefact is the
-    loudest form of that contract failing -- louder than a digit that disagrees, because nothing about
-    it can be reproduced. The read stays strict (this is not a fallback-to-empty situation); only the
-    attribution is being repaired, which is the sentence `docs/ERRATA.md` disclosed on 2026-10-08.
+    `verify`'s contract is to re-derive what this repository publishes, so an artefact it cannot read
+    is the loudest form of that contract failing -- louder than a digit that disagrees, because nothing
+    about it can be reproduced. The read stays strict (this is not a fallback-to-empty situation); only
+    the attribution is being repaired, which is the sentence `docs/ERRATA.md` disclosed on 2026-10-08.
+
+    The file is opened rather than stat-ed, because a directory in its place and a mode that refuses
+    the read are the same misattribution as an absent artefact: measured on a stat-only guard they
+    reached the `OSError` arm and reported a usage error for the table's own path. Nothing is read
+    through this handle -- the caller still owns the parse.
     """
     p = Path(path)
-    if not p.exists():
-        raise PublishedArtefactAbsent(
+    try:
+        with p.open("rb"):
+            pass
+    except FileNotFoundError as exc:
+        raise PublishedArtefactUnavailable(
             "%s is declared published by %s and is not in this checkout, so the numbers re-derived "
             "from it cannot be reproduced at all. This is not a usage error -- no argument selected "
             "this path, the table did -- and it is not a value that disagrees either: the artefact "
-            "itself is absent." % (p, table))
+            "itself is absent." % (p, table)) from exc
+    except OSError as exc:
+        raise PublishedArtefactUnavailable(
+            "%s is declared published by %s and cannot be opened (%s), so the numbers re-derived "
+            "from it cannot be reproduced at all. This is not a usage error -- no argument selected "
+            "this path, the table did, and the artefact is present." % (p, table, exc)) from exc
     return p
 
 
@@ -88,10 +101,11 @@ def massive_certificates() -> dict:
     """`{label: (records, stored certificate)}` for every published MASSIVE artefact, read from the tree.
 
     One owner for the read path, so the gate's re-derivation below and anything that quotes these
-    artefacts cannot end up opening two different sets of files. The read is strict: a missing artefact
-    raises, because a certificate the tool cannot open is not the same statement as a certificate that
-    agrees with nothing -- and it raises as `PublishedArtefactAbsent`, naming the table that declared
-    the path, because "usage error" would blame the operator for a checkout this package wrote.
+    artefacts cannot end up opening two different sets of files. The read is strict: an artefact this
+    checkout does not hold, or holds but cannot open, raises, because a certificate the tool cannot read
+    is not the same statement as a certificate that agrees with nothing -- and it raises as
+    `PublishedArtefactUnavailable`, naming the table that declared the path, because "usage error" would
+    blame the operator for a checkout this package wrote.
     """
     out = {}
     for label, (records_path, cert_path) in sorted(MASSIVE_CERTIFICATES.items()):

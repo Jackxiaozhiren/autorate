@@ -731,22 +731,26 @@ about what the tool did: with a published certificate absent, `verify` surfaced 
 `FileNotFoundError` and `cli.main` mapped it onto the usage exit code. Fixed here, because this is a
 `cli.py` lane and `cli.py` is fenced one lane at a time.
 
-The attribution was the defect, not the non-zero exit. `2` is the code the README reserves for "an input
-you gave me is wrong", and the only inputs `verify` takes are the ones in its own tables --
+The attribution was the defect, not the non-zero exit. `2` is the code README gives to an input the
+command was handed, and the only inputs `verify` takes are the ones in its own tables --
 `report.CERTS`, `report.MASSIVE_CERTIFICATES`, `cli.PUBLISHED_DOCS`. A checkout missing
 `data/cert_massive_de_laya.json` is not a mistake the operator made; it is the committed state
 contradicting what it publishes, which is the sentence `4` already carries. So the refusal is a
-dedicated exception class (`report.PublishedArtefactAbsent`, a `RuntimeError` and pointedly not an
+dedicated exception class (`report.PublishedArtefactUnavailable`, a `RuntimeError` and pointedly not an
 `OSError`, because the tuple that maps `OSError` onto `2` is what swallowed the honest statement in the
 first place), raised by `report.require_published` at the four read paths a published artefact has, and
 mapped by its own arm in `main` onto `4`. The message names the path, names the table that declared it,
 and says what is not being claimed: no argument selected this path, and no value disagreed -- the
 artefact itself is absent.
 
-Two boundaries, both pinned by tests rather than by intention. `read_certificate` was NOT widened: a
+Three boundaries, each pinned by a test rather than by intention. `read_certificate` was NOT widened: a
 certificate path that came from `--cert` or from `compare` is the operator's to fix and still exits `2`
 (`test_a_certificate_path_the_operator_supplied_is_still_a_usage_error`, green on arrival, and it goes
-red if the refusal is moved into the shared reader). And `data/inventory.md.json` keeps its usage-error
+red if the refusal is moved into the shared reader). `data/records_feishu.jsonl` is read by `verify`
+straight from `report.RECORDS` and stays `2` on the same grounds -- it is `audit --records`' default, so
+its missing-file sentence belongs to the audit command, and the row that pins it is
+`test_the_default_records_path_is_still_a_usage_error`, also green on arrival. And
+`data/inventory.md.json` keeps its usage-error
 refusal in `_inventory`: with no corpus and no snapshot there is nothing to verify against, which is a
 different statement from a published artefact that is missing from a checkout that publishes it. The
 test that had pinned that behaviour is unchanged.
@@ -761,3 +765,29 @@ Seven arms, each restored byte-identically by sha256.
 
 No published number moved: the gate's denominators are a function of artefacts being present, and on a
 complete tree this lane adds no comparison and removes none.
+
+The first review of this change found the same misattribution one step further along, and the guard was
+widened rather than the prose caveated. A stat-only check refuses an absent file and then hands off, so
+an artefact that is present but unopenable still reached the `OSError` arm and still called the table's
+own path a usage error: with a directory standing in for `data/cert_laya.json` the gate exited `2` on
+`IsADirectoryError: [Errno 21] Is a directory`, and with the file at mode `000` it exited `2` on
+`PermissionError: [Errno 13] Permission denied`. Both were measured before the guard changed, and both
+are rows of `test_a_published_artefact_that_cannot_be_opened_is_the_same_drift_not_a_usage_error` now.
+`require_published` therefore opens the file it vouches for instead of only stat-ing it -- it reads
+nothing through the handle, the caller still owns the parse -- and the class and the printed label are
+`PublishedArtefactUnavailable` / `PUBLISHED ARTEFACT UNAVAILABLE` rather than `Absent` / `MISSING`,
+because a message that says "the file has gone" is false for a file the OS will not open. The two
+refusals are pinned apart by their own message assertions, one on each side: the absent rows require `is
+not in this checkout` and the unopenable rows require `cannot be opened`, so collapsing the two branches
+into one cannot pass either. The permission row skips itself where the environment can read a mode-000
+file (a runner executing as root cannot produce the condition, and a row asserting a refusal the OS will
+not raise is a red that proves nothing); on this machine it ran.
+
+The second pass was falsified the same way as the first, four arms, each restored byte-identically by
+sha256 and followed by a green control over all four rows: reverting the guard to a bare `exists()`
+reddens the unopenable row, collapsing the two refusal branches reddens an absent row, wiring
+`require_published` over the `report.RECORDS` read reddens the boundary row, and mapping the arm onto
+`EXIT_USAGE` reddens both refusal rows. One of those arms needed a second attempt: the `RECORDS` read
+appears twice in `cli.py` -- in `cmd_report` as well as `cmd_verify` -- and an anchor that matched only
+the first planted the mutation in a file the row never opens, so it reported a gate that had not turned
+red. The anchor now names the line after it.
