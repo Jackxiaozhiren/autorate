@@ -93,6 +93,65 @@ def read_json(path):
     return json.loads(Path(path).read_text())
 
 
+# The shape this build's own readers demand of the committed inventory snapshot, declared once. Every name
+# below is measured rather than chosen: a survey at `da2a401` mutated ONE property of the committed
+# `data/inventory.md.json` at a time and ran `verify` corpus-less, and these are exactly the keys whose
+# removal raised a `KeyError` or a `TypeError` out of a renderer, while the unmodified control printed
+# `re-derived 96 /96 values` and exited 0.
+#
+# The keys that are NOT here are not accidents. `n_shards`, `feasible_at_0.25` and the five
+# `reader_lines_*` counters are read with `.get()` or not read at all, so removing one leaves a value that
+# disagrees rather than a crash, and the byte comparison already answers that at `4`. Demanding them would
+# make the loader refuse a checkout whose snapshot this build can read -- a contract is the minimum the
+# readers need, not the maximum the producer happens to write.
+INVENTORY_TOP_KEYS = ("corpus_options", "digests", "families", "gaps", "label_counts",
+                      "lines_by_mode_backend", "provenance", "reader_lines_read", "repeats",
+                      "source", "unique_ids", "upstream_audit_rc", "upstream_audit_stdout_tail")
+INVENTORY_DIGEST_KEYS = ("match",)
+INVENTORY_OPTION_KEYS = ("basis", "bound_width_at_0.05", "feasible_at_0.10", "id", "n_independent",
+                         "n_rows", "note", "unit")
+
+
+def _require_rows(doc, list_key, row_keys):
+    """Every row of one snapshot list must be a mapping carrying the keys the renderers index."""
+    rows = doc[list_key]
+    if not isinstance(rows, list):
+        raise ValueError("%s must be a list, found %s" % (list_key, type(rows).__name__))
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError("%s[%d] must be a JSON object, found %s" % (list_key, i,
+                                                                        type(row).__name__))
+        missing = sorted(set(row_keys) - set(row))
+        if missing:
+            raise ValueError("%s[%d] has no %s, which this build indexes"
+                             % (list_key, i, ", ".join(missing)))
+
+
+def read_inventory_snapshot(path):
+    """The committed inventory snapshot, rejected before a renderer can crash on its shape.
+
+    `json.loads` accepts anything JSON, and this file is not read by a gate that then asks a question of
+    the value: `verify` hands it to the renderers as the inventory itself whenever no corpus is present,
+    and they index it. Measured, ten one-property mutations of the committed file left `verify` exiting
+    `1` with a bare `TypeError: list indices must be integers or slices, not str` or `KeyError: 'digests'`
+    naming no file -- the same misattribution round 3 and round 4 retired for the decode failures, arriving
+    through the contents rather than through the bytes, and the one exit code the contract forbids outright.
+
+    So the shape is refused here, as a `ValueError`, which is the signal `load_published` already answers
+    with the named refusal and exit `4`. A wrong shape is not an access failure and not an operator's
+    input: no argument selects this path, `report.INVENTORY_JSON` does.
+    """
+    doc = read_json(path)
+    if not isinstance(doc, dict):
+        raise ValueError("a JSON object was expected at this path, found %s" % type(doc).__name__)
+    missing = sorted(set(INVENTORY_TOP_KEYS) - set(doc))
+    if missing:
+        raise ValueError("no %s, which this build indexes" % ", ".join(missing))
+    _require_rows(doc, "digests", INVENTORY_DIGEST_KEYS)
+    _require_rows(doc, "corpus_options", INVENTORY_OPTION_KEYS)
+    return doc
+
+
 def load_published(path, table: str, load):
     """A table-declared artefact, put through both arms of the attribution repair.
 
@@ -117,10 +176,15 @@ def load_published(path, table: str, load):
     and a rejected shape are three different claims, and the refusal states none of them as fact.
 
     One asymmetry to keep in mind when adding a site: `load` is applied to the guarded `Path`, so
-    `read_certificate`, `load_records`, `Path.read_text` and `read_json` all fit it -- and a `load` that
-    raises a policy refusal of its own would be swallowed here, because such a refusal is a `ValueError`
-    too. No wrapped loader raises one today; the row that pins the absent snapshot at `2` is the one that
-    would fire if that changed.
+    `read_certificate`, `load_records`, `Path.read_text` and `read_inventory_snapshot` all fit it -- and
+    any `ValueError` a loader raises is absorbed here and re-raised as drift. That is right for a SHAPE
+    refusal and wrong for a POLICY one, and the two are now both live: `read_inventory_snapshot` raises a
+    `ValueError` by design, because a snapshot whose keys this build indexes are missing is the
+    checkout's own defect, and `test_the_shape_contract_demands_exactly_the_keys_this_build_indexes`
+    pins that list in both directions. A refusal that means "the caller handed me a bad input" must never
+    be raised by a wrapped loader, because this arm would promote it to exit `4` and say the tree is
+    broken when the argument is; such a refusal belongs in a function this table does not call, and the
+    rows that pin an operator-supplied path at `2` are the ones that would fire if that line were crossed.
     """
     try:
         return load(require_published(path, table))

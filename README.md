@@ -76,9 +76,12 @@ or a published artefact this repository's own tables declare that this run canno
 read -- because nothing is at its path, because the path itself refuses the open, or
 because what is there is not the artefact that table publishes: a corrupt certificate,
 a records line that is not a record, a document that is not text, a certificate stored
-in a shape this build does not read, a committed inventory snapshot that will not load.
+in a shape this build does not read, a committed inventory snapshot that will not load
+or is not the mapping its renderers index.
 One table-declared path stays `2` by ruling rather than oversight:
-`data/records_feishu.jsonl` is `audit --records`' default, absent or unreadable alike.
+`data/records_feishu.jsonl` is the default every command reads -- `verify` and `report`
+with no flag, `audit --records` with one -- absent or unreadable alike, and a default is
+something its operator can name and repair.
 A missing `data/inventory.md.json` alongside no corpus is `2` for a reason the refusal
 does not cover -- there is nothing to verify against, which is a different statement
 from a published artefact that cannot be read -- while a snapshot that is present and

@@ -571,7 +571,7 @@ def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_
 
     The refusal therefore names the table, quotes the parser's own words, and goes to `4`, whose clause
     is "the committed state cannot reproduce what it publishes". It must not borrow the access rows'
-    wording: bytes that parse-failed were opened, so "cannot be opened" would be false, and nothing
+    wording: bytes that were read and rejected were opened, so "cannot be opened" would be false, and nothing
     vanished, so "is not in this checkout" would be false too.
     """
     cases = [
@@ -662,6 +662,155 @@ def test_the_corpus_present_snapshot_leg_refuses_corrupt_bytes_the_same_way(tmp_
     assert "is not the artefact that table publishes" in message, message
     assert "cannot be opened" not in message, message
     assert "is not in this checkout" not in message, message
+
+
+def test_a_committed_snapshot_that_parses_but_is_not_the_shape_this_build_reads_is_drift(tmp_path):
+    """Round 4's docstring promised this row's behaviour and round 4's wiring did not deliver it.
+
+    `load_published`'s own text listed "a snapshot whose shape this build does not accept" as one of the
+    four content failures the arm answers. Measured at `da2a401`, it was the one item on that list with no
+    mechanism behind it: `read_json` is `json.loads`, so anything it returns is handed to the renderers,
+    and the renderers index. A survey that mutated ONE property of the committed snapshot at a time and ran
+    `verify` corpus-less found ten shapes that escape as rc 1 -- a `TypeError` for a top-level array or
+    string, a `KeyError` for `digests`, `unique_ids`, `upstream_audit_stdout_tail`, `id`, `match` -- while
+    the unmodified control printed `re-derived 96 /96 values` and exited 0. rc 1 is the one exit code this
+    project's contract forbids absolutely, and the defect is the checkout's: no argument named the file.
+
+    These six plants are the classes that survey named, one per assertion rather than one per key, and each
+    must land on `4` with the same refusal the parse failures get. The list is not decorative: `families`
+    replaced by a string exits 4 on its own, because the byte comparison catches it -- which is why this row
+    tests the shapes the byte comparison is reached *through*, not merely the shapes that differ.
+    """
+    base = json.loads((REPO / "data" / "inventory.md.json").read_text())
+
+    def mutate(fn):
+        # One property of a snapshot that passes differs per plant, so a plant that lands on 4 for a
+        # second reason (an unrelated drift) cannot be mistaken for the shape rule working.
+        return json.dumps(fn(json.loads(json.dumps(base))))
+
+    plants = [
+        ("top level is an array", mutate(lambda d: [])),
+        ("top level is a string", mutate(lambda d: "just a string")),
+        ("top level is an empty object", mutate(lambda d: {})),
+        ("digest rows lost the key the renderer indexes", mutate(
+            lambda d: dict(d, digests=[{k: v for k, v in row.items() if k != "match"}
+                                       for row in d["digests"]]))),
+        ("option rows are strings", mutate(
+            lambda d: dict(d, corpus_options=["a string"] * len(d["corpus_options"])))),
+        ("option rows lost `id`", mutate(
+            lambda d: dict(d, corpus_options=[{k: v for k, v in row.items() if k != "id"}
+                                              for row in d["corpus_options"]]))),
+    ]
+    for why, text in plants:
+        work = tmp_path / "shape"
+        (work / "data").mkdir(parents=True, exist_ok=True)
+        shutil.copytree(REPO / "docs", work / "docs", dirs_exist_ok=True)
+        stage_published(work)
+        shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
+        (work / "data" / "inventory.md.json").write_text(text)
+        p = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
+        assert p.returncode == 4, (why, p.returncode, p.stdout, p.stderr)
+        assert "Traceback" not in p.stderr, (why, p.stderr)
+        for leak in ("KeyError", "TypeError", "AttributeError"):
+            assert leak not in p.stderr, (why, leak, p.stderr)
+        assert "PUBLISHED ARTEFACT UNAVAILABLE" in p.stderr, (why, p.stderr)
+        assert "data/inventory.md.json" in p.stderr, (why, p.stderr)
+        assert "report.INVENTORY_JSON" in p.stderr, (why, p.stderr)
+        assert "is not the artefact that table publishes" in p.stderr, (why, p.stderr)
+        assert "re-derived" not in p.stdout, (why, p.stdout)
+
+
+def test_the_shape_contract_demands_exactly_the_keys_this_build_indexes(tmp_path):
+    """The two directions a shape rule needs, run in one process over the committed artefact.
+
+    A guard that demands keys nobody reads is as wrong as one that demands nothing: it would refuse a
+    checkout whose snapshot is fine, and it would let the contract rot silently in the other direction. So
+    every key in the declared list gets a removal that must be refused, naming the key; every key of the
+    real snapshot OUTSIDE the list gets the same removal and must be accepted, with the returned document
+    still carrying all the others. Which keys belong to which class was measured by the one-variable survey
+    in the row above, not chosen here: the 13 refused keys are the ones whose absence raised a `KeyError`
+    from a renderer, and the tolerated ones are read with `.get()` or not read at all.
+
+    The third assertion is the satisfiability check: the committed file must load. A contract no artefact
+    satisfies is a gate that only ever refuses.
+    """
+    from autorate.report import INVENTORY_DIGEST_KEYS, INVENTORY_OPTION_KEYS, INVENTORY_TOP_KEYS
+    from autorate.report import read_inventory_snapshot
+
+    # The loader's list, checked against the measurement that produced it rather than against itself. The
+    # two loops below derive BOTH directions from `INVENTORY_TOP_KEYS`, so on their own they can only prove
+    # the list is internally consistent: demanding one key too many simply moves that key from the tolerated
+    # loop to the refused one and the row stays green. Measured -- the first falsification pass planted
+    # `sum_tolerance` into the required tuple and all three rows passed. This literal is the survey's
+    # transcription, and it is the assertion that makes an over-reach visible.
+    MEASURED_INDEXED_KEYS = ("corpus_options", "digests", "families", "gaps", "label_counts",
+                             "lines_by_mode_backend", "provenance", "reader_lines_read", "repeats",
+                             "source", "unique_ids", "upstream_audit_rc", "upstream_audit_stdout_tail")
+    assert INVENTORY_TOP_KEYS == MEASURED_INDEXED_KEYS, (INVENTORY_TOP_KEYS, MEASURED_INDEXED_KEYS)
+
+    real = json.loads((REPO / "data" / "inventory.md.json").read_text())
+    assert read_inventory_snapshot(REPO / "data" / "inventory.md.json") == real
+
+    required = sorted(set(INVENTORY_TOP_KEYS) | set(INVENTORY_DIGEST_KEYS) | set(INVENTORY_OPTION_KEYS))
+    universe = (set(real)
+                | {k for row in real["corpus_options"] for k in row}
+                | {k for row in real["digests"] for k in row})
+    assert set(required) <= universe, (sorted(set(required) - universe),)
+
+    for key in INVENTORY_TOP_KEYS:
+        doc = json.loads(json.dumps(real))
+        del doc[key]
+        path = tmp_path / ("top-%s.json" % key)
+        path.write_text(json.dumps(doc))
+        with pytest.raises(ValueError) as caught:
+            read_inventory_snapshot(path)
+        assert key in str(caught.value), (key, str(caught.value))
+
+    for key in sorted(set(real) - set(INVENTORY_TOP_KEYS)):
+        doc = json.loads(json.dumps(real))
+        del doc[key]
+        path = tmp_path / ("tolerated-%s.json" % key)
+        path.write_text(json.dumps(doc))
+        loaded = read_inventory_snapshot(path)
+        assert key not in loaded, (key, sorted(loaded))
+        assert set(loaded) == set(doc), (key, sorted(loaded), sorted(doc))
+
+    for label, list_key, row_keys in (("digest", "digests", INVENTORY_DIGEST_KEYS),
+                                      ("option", "corpus_options", INVENTORY_OPTION_KEYS)):
+        for key in row_keys:
+            doc = json.loads(json.dumps(real))
+            doc[list_key] = [{k: v for k, v in row.items() if k != key} for row in doc[list_key]]
+            path = tmp_path / ("%s-row-%s.json" % (label, key))
+            path.write_text(json.dumps(doc))
+            with pytest.raises(ValueError) as caught:
+                read_inventory_snapshot(path)
+            assert key in str(caught.value), (label, key, str(caught.value))
+
+
+def test_the_corpus_present_leg_refuses_a_snapshot_that_is_not_a_json_object(tmp_path, monkeypatch):
+    """The other reader of the same file, whose crash is an `AttributeError` rather than an index error.
+
+    `expect_snapshot_is_current` unions `set(inv)` with `set(committed)` and then calls
+    `committed.get(key)`, so a top-level array or string does not raise at the read -- it raises one
+    statement later, and `AttributeError: 'list' object has no attribute 'get'` left the corpus-present lane
+    at rc 1 while the corpus-less lane was already being repaired. Measured at `da2a401` with the vendored
+    corpus in place: `[]` and `"x"` both exit 1, while `{}` exits 4 as a drift because `.get()` returns
+    `None` and the comparison then disagrees. That asymmetry is why this row plants the two objects that
+    crash and not the empty mapping, which the gate already answers correctly.
+    """
+    from autorate.cli import expect_snapshot_is_current
+    from autorate.report import PublishedArtefactUnavailable
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    for text in ("[]", '"x"'):
+        (tmp_path / "data" / "inventory.md.json").write_text(text)
+        with pytest.raises(PublishedArtefactUnavailable) as caught:
+            expect_snapshot_is_current(lambda label, actual, wanted: None, {"digests": []})
+        message = str(caught.value)
+        assert "data/inventory.md.json" in message, (text, message)
+        assert "report.INVENTORY_JSON" in message, (text, message)
+        assert "is not the artefact that table publishes" in message, (text, message)
 
 
 def test_a_malformed_artefact_on_a_path_the_operator_supplied_is_still_a_usage_error(tmp_path):

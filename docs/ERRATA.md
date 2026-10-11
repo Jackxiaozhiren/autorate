@@ -886,3 +886,72 @@ with `data/records_feishu.jsonl` unlinked prints `FileNotFoundError: [Errno 2] N
 only a habit. The row now runs `audit` too, and D6 reddens both rows. Nothing published was wrong; the pin
 that made it non-negotiable was missing, and it was the instrument's failed expectation that exposed it
 rather than a review of the prose.
+
+## 2026-10-11 — the content arm documented a shape rule it did not have, and ten snapshots escaped as rc 1
+
+Round 4's `load_published` docstring listed four content failures the arm answers, the fourth being "a
+snapshot whose shape this build does not accept". The loader behind it was `read_json`, which is
+`json.loads`: it accepts anything JSON and hands the result to the renderers, and the renderers index. So the
+claim was the one item on that list with no mechanism, and the round's re-review found what that costs -- a
+committed `data/inventory.md.json` that parses but has the wrong shape leaves `verify` at `1`, the one exit
+code this project's contract forbids outright.
+
+Measured before the repair, by mutating ONE property of the committed snapshot at a time and running the
+corpus-less lane. The unmodified control printed `re-derived 96 /96 values` and exited `0`. Ten plants
+exited `1`:
+
+| plant | what the run leaked |
+|---|---|
+| top level is an array | `TypeError: list indices must be integers or slices, not str` |
+| top level is a string | `TypeError: string indices must be integers, not 'str'` |
+| top level is an empty object | `KeyError: 'digests'` from `report.build_report` |
+| `digests` key absent | `KeyError: 'digests'` |
+| `digests` is a string | `TypeError: string indices must be integers, not 'str'` |
+| `digests` rows lost `match` | `KeyError: 'match'` |
+| `digests` rows are strings | `TypeError` |
+| `unique_ids` absent | `KeyError: 'unique_ids'` |
+| `upstream_audit_stdout_tail` absent | `KeyError: 'upstream_audit_stdout_tail'` |
+| `corpus_options` rows lost `id`, or are strings | `KeyError: 'id'`, `TypeError` |
+
+Two more measurements set the boundary of the rule rather than guessing at it. Removing `families`, `gaps`,
+the five `reader_lines_*` counters, `n_shards` or `feasible_at_0.25` did not crash -- those exit `4` as
+ordinary drift, because the renderers reach them with `.get()` or do not reach them at all -- and in the
+corpus-present lane every mutation of the `digests` rows exits `4`, because
+`expect_snapshot_is_current` compares the whole value before anything indexes into it. So the shape contract
+is exactly the keys whose absence crashes: thirteen at the top level, `match` in a digest row, eight in a
+corpus-option row. Declaring more would refuse a checkout this build can read; declaring fewer leaves rc 1.
+
+The repair puts that contract in `report.py` as `read_inventory_snapshot`, wired at the two sites that read
+the committed snapshot through `load_published`, so a shape refusal is raised where the shape is known and
+becomes exit `4` with the named refusal. `_inventory`'s absent-snapshot `UsageError` is untouched: an absence
+is a different statement, and that path has a default the operator can supply.
+
+Two findings about the instruments came out of the falsification pass and belong here rather than in a commit
+message. First, the row that checks the contract derives both of its directions from the same production
+list, so it can only prove the list is self-consistent: the first pass planted `sum_tolerance` into the
+required tuple -- demanding a key the build tolerates -- and all three rows stayed green. The row now also
+asserts the list against the measured names above, which is what makes an over-reach visible. Second, the
+arm that unwires the corpus-present leg left the end-to-end row green, because the corpus-less lane reads the
+snapshot through `_inventory` and never reaches `expect_snapshot_is_current` at all -- the ordering fact round
+4 recorded in that row's own docstring, restated as a wrong prediction this pass caught.
+
+Corrections to the 2026-10-09 entry, which this file keeps as written above: the recipe it cited to count the
+wired sites returns seven lines, not six, because the pattern matches `def load_published` alongside the six
+calls -- the correct statement is six call sites, seven matching lines. Its claim that "the rows that pin the
+message pin the absence too" is true of three of the four boundary rows; the corpus-present leg row asserts
+the content refusal only, and no absence. And it numbers the D4 arm as "the third"; it is the fourth.
+
+One disclosure the round-4 brief left unreconciled: `test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error`
+was edited although the brief fenced that file region byte-unchanged. The edit strengthens the row (it adds
+assertions about the refusal the round wired), it does not relax one, and the boundary rows that keep the
+absent case at `2` are unchanged. The README's `4` clause now names the snapshot shape among the content
+failures, and its `2` residual says what it covers for every command rather than for `audit` alone.
+
+Post-repair, the same three plants re-run in the corpus-present lane, because the paragraph above describes
+the behaviour before the loader existed and a reader needs the current attribution: a top-level array and an
+empty mapping now both exit `4` with the named refusal naming `data/inventory.md.json` and
+`report.INVENTORY_JSON` -- the empty mapping used to reach `4` as *drift*, which was the right code for the
+wrong reason, since a document with none of the thirteen keys this build indexes is not a value that
+disagrees -- while a snapshot that carries all of them with different contents still exits `4` as
+`DRIFT: snapshot corpus_options: recomputed …`. The shape arm answers shape and the comparison still answers
+values; neither swallowed the other.
