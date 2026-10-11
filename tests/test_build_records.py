@@ -1090,8 +1090,14 @@ def _fake_worker(tmp_path, payloads, name="fake_python.py"):
 
 
 def _driver(tmp_path, cache=None, pin=None, python=None, extra=(), out="records.jsonl",
-            upstream=None):
-    """The real entry point, as a process, with the model stage planted."""
+            upstream=None, force=True):
+    """The real entry point, as a process, with the model stage planted.
+
+    Several rows drive the same `tmp_path` twice on purpose -- a control run then a claiming run,
+    over the same destination -- so the harness passes `--force`: it is the operator who means to
+    replace the file. A caller that wants the overwrite refusal itself sets `force=False`; the
+    refusal is not the behaviour of the tool being softened here, only of this fixture's intent.
+    """
     if upstream is None:
         upstream, _ = _planted_upstream(tmp_path)
     report_path = Path(upstream) / "research" / "eval" / "planted_report.json"
@@ -1101,6 +1107,8 @@ def _driver(tmp_path, cache=None, pin=None, python=None, extra=(), out="records.
            "--out", str(tmp_path / out),
            "--upstream", str(upstream),
            "--python", str(python if python is not None else tmp_path / "no_worker.py")]
+    if force:
+        cmd += ["--force"]
     cmd += list(extra)
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "PLANTC_PARITY_REPORT": str(report_path)}
     return subprocess.run(cmd, capture_output=True, text=True, cwd=str(REPO), env=env)
@@ -1806,3 +1814,98 @@ def test_the_refusals_are_not_value_errors_so_no_wider_catch_can_file_them():
     assert not issubclass(ParityError, BuildError), \
         "the parity verdict must never be caught by the clause that maps 4"
     assert not issubclass(UsageRefusal, BuildError)
+
+
+def test_an_upstream_softmax_that_cannot_import_numpy_is_a_named_refusal(monkeypatch):
+    """#67: the parity path called the harness's `softmax_t` with no numeric-stack wrapper.
+
+    Reproduced on the real tree with `/opt/homebrew/opt/python@3.12/bin/python3.12`, which has no
+    numpy: the run exited **1** with a traceback out of `check_payload`, while this module's own
+    docstring lists "no numpy" as an `IncompleteBuildError` case. The metric path already names that
+    refusal; the parity path was the one place that called code it does not own and let the import
+    error through. rc 1 is the outcome this tool says is unreachable.
+    """
+    from tools.build_records import PARITY, IncompleteBuildError, check_payload
+
+    class _NoNumericStack:
+        @staticmethod
+        def softmax_t(values, temperature):
+            raise ModuleNotFoundError("No module named 'numpy'")
+
+    # The probe payload, driven the way `build` drives it (same stage, same per_lang), so the call
+    # reaches the upstream comparison instead of tripping an earlier shape check.
+    with pytest.raises(IncompleteBuildError) as excinfo:
+        check_payload(_probe(), PARITY["lang"], "probe", PARITY["per_lang"], _NoNumericStack())
+    message = str(excinfo.value)
+    assert "numpy" in message, message[:300]
+    assert "ModuleNotFoundError" in message, message[:300]
+
+
+def test_the_driver_refuses_to_overwrite_an_existing_artefact_before_it_works(tmp_path, monkeypatch):
+    """#67: `--out` replaced a file without confirmation, and the parity sibling's name makes it
+    easy to aim at the published records file. The guard has to run before the build, because a
+    guard that fires after the scoring pass has protected nothing the operator did not already lose.
+    """
+    from tools import build_records as br
+
+    out = tmp_path / "records_certified.jsonl"
+    out.write_text("PRECIOUS CERTIFIED ROWS\n")
+    ran = []
+    monkeypatch.setattr(br, "build", lambda args: ran.append("build") or 0)
+
+    rc = br.main(["--cache", str(tmp_path), "--out", str(out)])
+    assert rc == br.EXIT_USAGE, (rc, out.read_text())
+    assert not ran, "the build ran anyway, so the refusal came after the work it was meant to skip"
+    assert out.read_text() == "PRECIOUS CERTIFIED ROWS\n"
+
+    rc = br.main(["--cache", str(tmp_path), "--out", str(out), "--force"])
+    assert rc == 0, rc
+    assert ran == ["build"], "with --force the build must proceed"
+
+
+def test_the_parity_control_is_protected_by_the_same_guard(tmp_path, monkeypatch):
+    """The two destinations are separate regimes; the sibling default must not be able to clobber
+    a file the operator did not name, so the guard covers `--out-parity` too and says which one."""
+    from tools import build_records as br
+
+    parity = tmp_path / "records_parity.jsonl"
+    parity.write_text("PRECIOUS PARITY CONTROL\n")
+    ran = []
+    monkeypatch.setattr(br, "build", lambda args: ran.append("build") or 0)
+
+    rc = br.main(["--cache", str(tmp_path), "--out", str(tmp_path / "fresh.jsonl"),
+                  "--out-parity", str(parity)])
+    assert rc == br.EXIT_USAGE, rc
+    assert not ran
+    assert parity.read_text() == "PRECIOUS PARITY CONTROL\n"
+
+
+def test_the_real_process_refuses_a_second_run_at_the_same_destination(tmp_path):
+    """The overwrite guard on the documented invocation path, in a process, not only in `main`.
+
+    The harness above runs twice per test by intent; this row is the case where that intent is
+    absent, and the second run must be refused before it writes. `--force` is then the only way
+    through, which is the point of having a flag rather than a warning line nobody reads.
+    """
+    first = _ok_driver(tmp_path)
+    assert first.returncode == 0, (first.returncode, first.stderr[-400:])
+    out = tmp_path / "records.jsonl"
+    assert out.exists(), "the first run wrote nothing, so the second has no destination to refuse"
+    written = out.read_text()
+
+    cache, pin = _planted_root(tmp_path, langs=("en",))
+    upstream, _ = _planted_upstream(tmp_path)
+    # The same language set the first run used. `--langs` defaults to `en,de,sw`, and both a missing
+    # shard pin and the overwrite guard answer rc 2, so an unasserted message here would let a
+    # different usage error satisfy `returncode == 2`; the message is the assertion, the code is not.
+    asked = ("--langs", "en", "--per-lang", "2")
+    second = _driver(tmp_path, cache=cache, pin=pin, upstream=upstream, extra=asked, force=False)
+    assert second.returncode == 2, (second.returncode, second.stderr[-500:])
+    assert "refusing to overwrite" in second.stderr, second.stderr[-500:]
+    assert out.read_text() == written, "the refused run still changed the artefact"
+
+    # No third run here. Driving a successful `--force` build through a real process needs the planted
+    # worker interpreter that `_ok_driver` builds and does not hand back, and reconstructing that
+    # private fixture to prove a half this file already covers elsewhere would be a test reading its own
+    # plumbing: `test_the_driver_refuses_to_overwrite_an_existing_artefact_before_it_works` asserts
+    # `main` proceeds with `--force`, and the first run above is a real process writing a real file.

@@ -933,6 +933,22 @@ def run_model_stage(args, upstream: Path, lang: str, stage: str, per_lang: int,
     return data
 
 
+def _upstream_softmax(upstream_module, values, temperature):
+    """Call the harness's own `softmax_t`, naming a missing numeric stack the way the metric path does.
+
+    Measured: a build layer run by an interpreter without numpy exited **1** with a traceback out of
+    `check_payload`, while this module's docstring lists "no numpy" as an `IncompleteBuildError` case and
+    the metric call beside it already names that refusal. rc 1 is the outcome this tool says is
+    unreachable, and the parity gate was the one place it called code it does not own unwrapped.
+    """
+    try:
+        return [float(x) for x in upstream_module.softmax_t(values, temperature)]
+    except ImportError as exc:
+        raise IncompleteBuildError("upstream's softmax_t could not import its numeric stack: %s: %s "
+                                   "(run the build layer with `uv run --frozen python ...`, the "
+                                   "interpreter that has numpy)" % (type(exc).__name__, exc)) from exc
+
+
 def check_payload(payload: dict, lang: str, stage: str, per_lang: int,
                   upstream_module, asked_chunk_size: int | None = None) -> dict:
     """A model stage answers for itself: right language, right size, arrays that line up.
@@ -1090,7 +1106,7 @@ def check_payload(payload: dict, lang: str, stage: str, per_lang: int,
                                  % (lang, stage, regime, worst, i, SOFTMAX_TOL))
         if upstream_module is not None:
             for i in range(limit):
-                theirs = [float(x) for x in upstream_module.softmax_t(value_sets[i], temps[i])]
+                theirs = _upstream_softmax(upstream_module, value_sets[i], temps[i])
                 worst = max(abs(a - b) for a, b in zip(theirs, rows[i]))
                 if worst > SOFTMAX_TOL:
                     raise DriftError("%s/%s regime=%s: the payload's probs_probe is not what "
@@ -1729,7 +1745,28 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--lang", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--stage", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--summary", default=None, help="write the measured facts of this run here")
+    ap.add_argument("--force", action="store_true", help="replace an existing --out or "
+                    "--out-parity file; without it the driver refuses before it works")
     return parser
+
+
+def _refuse_existing_destinations(args):
+    """Refuse to replace an existing artefact unless `--force` was passed, before the build starts.
+
+    Both destinations of one pass are separate regimes of the same run, and `--out-parity` defaults to a
+    sibling name, so a mistyped `--out` can point straight at a published records file. The guard runs in
+    `main`, not in `build`, so nothing expensive has happened by the time it speaks.
+    """
+    if args.force:
+        return
+    out, out_parity = artefact_paths(args.out, args.out_parity)
+    existing = sorted({str(path) for path in (out, out_parity)
+                       if path is not None and path.exists()})
+    if existing:
+        raise UsageRefusal("refusing to overwrite %s: pass --force to replace it (the certified and "
+                           "parity regimes are separate files and --out-parity defaults to a sibling "
+                           "of --out, so a mistyped destination is easy to aim at a real artefact)"
+                           % ", ".join(existing))
 
 
 def main(argv=None) -> int:
@@ -1748,6 +1785,7 @@ def main(argv=None) -> int:
             return worker_main(args)
         if args.out is None:
             raise UsageRefusal("--out is required unless --worker is set")
+        _refuse_existing_destinations(args)
         return build(args)
     except ParityError as exc:
         print("NOT CERTIFIABLE: %s" % exc, file=sys.stderr)
