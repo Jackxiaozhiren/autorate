@@ -896,30 +896,41 @@ claim was the one item on that list with no mechanism, and the round's re-review
 committed `data/inventory.md.json` that parses but has the wrong shape leaves `verify` at `1`, the one exit
 code this project's contract forbids outright.
 
-Measured before the repair, by mutating ONE property of the committed snapshot at a time and running the
-corpus-less lane. The unmodified control printed `re-derived 96 /96 values` and exited `0`. Ten plants
-exited `1`:
+Measured twice before the repair, each time mutating ONE property of the committed snapshot at a time and
+running the corpus-less lane, with the unmodified file in the same table as a control -- it printed
+`re-derived 96 /96 values` and exited `0`. The plant tables live in the task report; the numbers are quoted
+here because they are what the contract is made of.
 
-| plant | what the run leaked |
-|---|---|
-| top level is an array | `TypeError: list indices must be integers or slices, not str` |
-| top level is a string | `TypeError: string indices must be integers, not 'str'` |
-| top level is an empty object | `KeyError: 'digests'` from `report.build_report` |
-| `digests` key absent | `KeyError: 'digests'` |
-| `digests` is a string | `TypeError: string indices must be integers, not 'str'` |
-| `digests` rows lost `match` | `KeyError: 'match'` |
-| `digests` rows are strings | `TypeError` |
-| `unique_ids` absent | `KeyError: 'unique_ids'` |
-| `upstream_audit_stdout_tail` absent | `KeyError: 'upstream_audit_stdout_tail'` |
-| `corpus_options` rows lost `id`, or are strings | `KeyError: 'id'`, `TypeError` |
+The coarse pass (`f17b-shape-survey.py`) planted ten shapes and all ten exited `1`: the top level as an array
+(`TypeError: list indices must be integers or slices, not str`), as a string, and as an empty object
+(`KeyError: 'digests'` from `report.build_report`); `digests` as a string, as a list of empty objects
+(`KeyError: 'match'`), and as a list of strings; `unique_ids` and `upstream_audit_stdout_tail` removed; and
+`corpus_options` as a list of empty objects (`KeyError: 'id'`) or as a string.
 
-Two more measurements set the boundary of the rule rather than guessing at it. Removing `families`, `gaps`,
-the five `reader_lines_*` counters, `n_shards` or `feasible_at_0.25` did not crash -- those exit `4` as
-ordinary drift, because the renderers reach them with `.get()` or do not reach them at all -- and in the
-corpus-present lane every mutation of the `digests` rows exits `4`, because
-`expect_snapshot_is_current` compares the whole value before anything indexes into it. So the shape contract
-is exactly the keys whose absence crashes: thirteen at the top level, `match` in a digest row, eight in a
-corpus-option row. Declaring more would refuse a checkout this build can read; declaring fewer leaves rc 1.
+The key-by-key pass (`f17c-rowkey-survey.py`) then removed one key at a time from every place this build reads,
+and its three counts are what set the boundary: **24 plants exited `1`, 7 exited `4`, and 15 exited `0`** (the
+16th zero line is the control). The `1`s are thirteen top-level keys, eight fields of a `corpus_options` row,
+one field of a `digests` row, and the mutations that make a row not a mapping. The `4`s -- removed, and answered
+as drift instead of crashing -- are `reader_lines_by_mode`, `reader_lines_dropped_not_ok`,
+`reader_lines_filtered`, `reader_lines_malformed`, `reader_lines_quarantined_only`, and the two option fields
+`n_shards` and `feasible_at_0.25`. The `0`s are the twelve top-level keys nothing here reads
+(`audit_interpreter`, `lines_malformed`, `lines_malformed_by_backend`, `lines_outside_mode_counts`,
+`lines_quarantined_only`, `lines_refused_not_ok`, `manifest_declared_cases`, `per_ask_gold`,
+`probs_not_closing`, `reader_quarantined`, `sum_tolerance`, `upstream_audit_stderr_tail`) plus the three
+`digests` fields `path`, `actual` and `expected`, which the corpus-less lane never reaches.
+
+**A sentence in this entry's first draft was wrong and is retracted here.** It said that removing `families`
+and `gaps` "did not crash" and put them in the same class as those five `reader_lines_*` counters. Measured, and
+contradicted by the coarse pass's own list above, both are indexed with `[...]` and their absence raises
+`KeyError` -- which is why they belong to the thirteen required keys. It is corrected rather than left standing,
+because a boundary paragraph that disagrees with the counts in its own entry is worse than one that admits the
+error, and because the code was right while the prose about it was not.
+
+In the corpus-present lane (`f17d-present-lane-survey.py`) every `digests`-row mutation exits `4`, because
+`expect_snapshot_is_current` compares the whole value before anything indexes into it; only a top level that is
+not a mapping reached `1` there. So the shape contract is exactly the keys whose absence crashes: thirteen at
+the top level, `match` in a digest row, eight in a corpus-option row. Declaring more would refuse a checkout
+this build can read; declaring fewer leaves rc 1.
 
 The repair puts that contract in `report.py` as `read_inventory_snapshot`, wired at the two sites that read
 the committed snapshot through `load_published`, so a shape refusal is raised where the shape is known and
