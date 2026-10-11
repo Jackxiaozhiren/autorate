@@ -7,12 +7,16 @@ import sys
 from pathlib import Path
 
 from .audit import DEFAULT_DELTA, DEFAULT_GATE, audit_fields, check_audit, render_audit
+# The published rubric (#62): `verify` and `certify` default to these numbers, and the CLI is a
+# consumer, not an owner. `DEFAULT_DELTA` comes from `audit` because the audit sub-command prints the
+# audit's own help sentence; every other rubric flag reads `certificate` directly.
+from .certificate import ALPHA, BETA, DELTA, METHOD, SEED
 from .certify_choice import certify_choice
 from .gate import Gate
 from .inventory import corpus_label, inventory, write_inventory
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (ALPHA, BETA, CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, SEED,
+from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS,
                      build_report, certify_all, load_published, load_records, read_certificate,
                      read_inventory_snapshot, rederive_massive, write_report)
 
@@ -628,9 +632,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--mode")
     c.add_argument("--alpha", type=float, default=ALPHA)
     c.add_argument("--beta", type=float, default=BETA)
-    c.add_argument("--delta", type=float, default=0.05)
+    c.add_argument("--delta", type=float, default=DELTA)
     c.add_argument("--seed", type=int, default=SEED)
-    c.add_argument("--method", default="aps", choices=("aps", "lac"),
+    c.add_argument("--method", default=METHOD, choices=("aps", "lac"),
                    help="the nonconformity that sizes the set; lac is the comparison arm")
     c.add_argument("--groups", action="append", metavar="KEY[,KEY...]",
                    help="group-conditional (Mondrian) certification over these declared slice keys "

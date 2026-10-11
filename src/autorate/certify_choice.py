@@ -32,7 +32,16 @@ from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 from .case_count import Verdict, case_key, count_outcome
-from .certificate import (CANONICALISED_BOUND_FIELDS, N_CLAIMS, Certificate, Reason,
+# The rubric is IMPORTED here and never restated (#62, R-187). The two floors used to be declared in
+# this module, in `certify_score.py` and in `certify_threshold.py`, and the diagnostic grid in this
+# module and in `certify_score.py` as two textually identical expressions -- five copies of three
+# numbers, with no row that could notice one of them moving. `MIN_CASES_PER_SLICE` below stays,
+# because it is a derived fact (the two halves of the split this rule certifies on) and not a
+# restatement of one. `SPLIT_SEED_DEFAULT` is the library default for a shuffle and is deliberately
+# NOT `SEED`, the published rubric's 7: the two are separate promises, and a seed that changes
+# re-rolls the partition every published bound was measured on.
+from .certificate import (ALPHA, BETA, CANONICALISED_BOUND_FIELDS, DELTA, DIAGNOSTIC_GRID, METHOD,
+                          MIN_CAL, MIN_EVAL, N_CLAIMS, SPLIT_SEED_DEFAULT, Certificate, Reason,
                           canonicalise_bound)
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
 from .correction import (GROUP_FLOOR_MESSAGE, corrected_delta, group_alpha, group_beta,
@@ -40,9 +49,6 @@ from .correction import (GROUP_FLOOR_MESSAGE, corrected_delta, group_alpha, grou
 from .groups import by_group
 from .tails import bound_width, clopper_pearson_upper
 
-MIN_CAL = 60
-MIN_EVAL = 60
-DIAGNOSTIC_GRID = tuple(round(0.01 * i, 2) for i in range(1, 30))
 _BASE_ENVELOPE = (
     "exchangeability within group assumed; no group conditioning applied",
     "marginal certificate only - not group-conditional",
@@ -70,7 +76,7 @@ def _eligible(records: Sequence):
     return kept, dropped
 
 
-def split_cal(records: Sequence, seed: int = 0):
+def split_cal(records: Sequence, seed: int = SPLIT_SEED_DEFAULT):
     """Split by CASE, not by record.
 
     A random record-level split put repeats of the same case in both halves: measured on
@@ -143,8 +149,8 @@ def _outcome(ev, qhat, method):
     return observed
 
 
-def certify_choice(records: Sequence, alpha: float = 0.05, beta: float = 0.05,
-                   delta: float = 0.05, seed: int = 0, method: str = "aps",
+def certify_choice(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
+                   delta: float = DELTA, seed: int = SPLIT_SEED_DEFAULT, method: str = METHOD,
                    grid: Optional[Sequence[float]] = None,
                    groups: Optional[Sequence[str]] = None):
     """Certify the automation rate the coverage level `1 - alpha` buys, under budget `beta`.
@@ -497,8 +503,10 @@ class GroupsCertificate:
         return json.dumps(self.to_dict(), indent=indent, sort_keys=True, ensure_ascii=False)
 
 
-def certify_groups(records: Sequence, alpha: float = 0.05, beta: float = 0.05, delta: float = 0.05,
-                   seed: int = 0, method: str = "aps", groups: Sequence[str] = ("family",),
+def certify_groups(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
+                   delta: float = DELTA,
+                   seed: int = SPLIT_SEED_DEFAULT, method: str = METHOD,
+                   groups: Sequence[str] = ("family",),
                    floor: int = MIN_CASES_PER_SLICE,
                    grid: Optional[Sequence[float]] = None) -> GroupsCertificate:
     """Group-conditional (Mondrian) certification with the simultaneous correction applied (spec 8.1).

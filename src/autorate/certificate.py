@@ -9,14 +9,68 @@ from __future__ import annotations
 import json
 from dataclasses import MISSING, asdict, dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Optional
+
+
+# --- the published rubric: one owner for the numbers every certificate is measured at --------
+#
+# Before this mapping existed, alpha/beta/seed lived in `report.py` (a module whose name says
+# prose), delta had three statements (`audit.DEFAULT_DELTA`, `cli`'s `--delta` default and the
+# certifier signatures), the two sample floors had three declarations and the diagnostic grid two,
+# and no row said that what the suites reuse IS the published rubric. R-184 measured the consumers
+# and kept the conclusion: reuse is not attribution, so an import cannot notice the day the value
+# stops being the promise. Everything below is that one promise; consumers import these names and
+# `test_no_module_inside_the_fence_redeclares_a_rubric_name_it_could_import` makes restating one of
+# them expensive rather than silent.
+#
+# Why a mapping AND names. The mapping is the declaration -- the only place any of these values is
+# written as a literal -- and the names are what the consumers import, because a key string spelled
+# two ways is the same defect in a new costume. It is a read-only view: a consumer that wrote
+# `PUBLISHED_RUBRIC["alpha"] = ...` would move every published number in its own process without
+# touching a file, and no gate could see it happen.
+#
+# What is deliberately NOT here. `audit.DEFAULT_GATE` (0.85) is the gate G2 compares against and
+# `audit.DEFAULT_GRID` is the audit's risk-coverage frontier: five points chosen to bracket that
+# gate, not the 29-point coverage sweep a certificate publishes as `meta.diagnostic_curve`. They
+# have another owner and another denominator, and substituting one grid for the other leaves every
+# name plausible while changing which curve was measured.
+PUBLISHED_RUBRIC = MappingProxyType({
+    "alpha": 0.05,        # the set gate's coverage level: certify at 1 - alpha
+    "beta": 0.05,         # P(wrong | automated)
+    "delta": 0.05,        # the level each of the N_CLAIMS published bounds is tested at
+    "seed": 7,            # the split the published artefacts were made on, not the library default
+    "method": "aps",      # the nonconformity the published certificates were measured with
+    "unit": "case",       # the certification unit: the CASE, never the row (R-36/R-44)
+    "n_claims": 3,        # conditional bound, marginal bound, autorate interval
+    "min_cal": 60,        # the smallest calibration half any bound in the family can be informative
+    "min_eval": 60,       # ...and the evaluation half
+    "grid": tuple(round(0.01 * i, 2) for i in range(1, 30)),
+})
+
+# The names above, spelled once. `SPLIT_SEED_DEFAULT` is the other half of a pair that must not be
+# collapsed: the certifiers' own signature default is 0 (a library default, for a caller who has not
+# chosen a split), while the published rubric's seed is 7. They are two facts, not one value typed
+# twice -- the split is a shuffle over sorted case keys, so a seed that changes re-rolls the
+# partition and moves every bound that was measured on it. Pinning both, and pinning that they
+# differ, is `test_the_published_seed_and_the_library_split_default_stay_apart_on_purpose`.
+ALPHA = PUBLISHED_RUBRIC["alpha"]
+BETA = PUBLISHED_RUBRIC["beta"]
+DELTA = PUBLISHED_RUBRIC["delta"]
+SEED = PUBLISHED_RUBRIC["seed"]
+METHOD = PUBLISHED_RUBRIC["method"]
+UNIT = PUBLISHED_RUBRIC["unit"]
+MIN_CAL = PUBLISHED_RUBRIC["min_cal"]
+MIN_EVAL = PUBLISHED_RUBRIC["min_eval"]
+DIAGNOSTIC_GRID = PUBLISHED_RUBRIC["grid"]
+SPLIT_SEED_DEFAULT = 0
 
 
 # A feasible certificate makes exactly this many claims, each tested at `delta`:
 # the conditional error bound, the marginal error bound, and the automation-rate
 # interval. The published joint level is 1 - N_CLAIMS * delta by the union bound, and
-# the count lives here so no caller can restate it differently.
-N_CLAIMS = 3
+# the count lives in the rubric mapping so no caller can restate it differently.
+N_CLAIMS = PUBLISHED_RUBRIC["n_claims"]
 
 # --- the precision a published number is stored at -------------------------------
 #
@@ -243,9 +297,9 @@ class Certificate:
 
     @classmethod
     def refused(cls, reason: Reason, alpha: float, beta: float, n_cal: int, n_eval: int,
-                detail: str, meta: Optional[dict] = None, delta: float = 0.05,
+                detail: str, meta: Optional[dict] = None, delta: float = DELTA,
                 backend: Optional[str] = None,
-                method: str = "aps") -> "Certificate":
+                method: str = METHOD) -> "Certificate":
         # `method` is a rubric field: compare() treats it as one, and a refusal that
         # reports "aps" while the caller asked for LAC records a rule it never ran.
         return cls(

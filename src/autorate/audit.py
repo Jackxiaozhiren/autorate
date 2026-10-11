@@ -85,14 +85,20 @@ from __future__ import annotations
 from typing import Callable, Optional, Sequence
 
 from .case_count import Verdict, case_key, count_outcome
-from .certificate import canonicalise_bound
+# `DEFAULT_DELTA` is the published rubric's delta under the name this module's callers and
+# `tests/test_audit.py` already use (#62): it is imported, not restated, because the level every
+# bound is tested at had three statements here, in `cli.py` and in the certifier signatures.
+# `UNIT` is the certification unit the header sentence below prints, so the sentence and the rubric
+# cannot disagree about which denominator a bound was computed over.
+from .certificate import DELTA as DEFAULT_DELTA, UNIT, canonicalise_bound
 from .records import max_confidence
 from .scales import scale_attribution
 from .tails import clopper_pearson_upper
 
-# The gate and level G2 names, and the level every other bound in this repository is published at.
+# The gate G2 compares against. The bound LEVEL is not declared here any more -- see the import
+# above -- and neither is the rubric's grid: `DEFAULT_GRID` below is the audit's own risk-coverage
+# frontier, a different object from `certificate.DIAGNOSTIC_GRID` with a different denominator.
 DEFAULT_GATE = 0.85
-DEFAULT_DELTA = 0.05
 
 # The grid `frontier` sweeps and the artefact prints, in the one place both read it: a second
 # literal would let the curve and the sentence describing it disagree about which grid ran.
@@ -893,7 +899,9 @@ def render_audit(audits: dict) -> str:
         "- bound level: exact Clopper-Pearson, one-sided at `delta = %.2f`, plus the two-sided "
         "upper endpoint (the same owner called at `delta / 2`); owned by "
         "`tails.clopper_pearson_upper`, never recomputed here" % delta,
-        "- certification unit: the CASE, never the row. `%s`" % CASE_RULE,
+        # Rendered from the rubric's own unit name, so this sentence cannot claim a denominator the
+        # published rubric does not use. `upper()` keeps the committed bytes exactly as they were.
+        "- certification unit: the %s, never the row. `%s`" % (UNIT.upper(), CASE_RULE),
         confidence_bullet,
         curve_bullet,
         "",
@@ -968,8 +976,8 @@ def render_audit(audits: dict) -> str:
             lines += [
                 "",
                 "  Risk-coverage curve for `%s` -- the same population re-measured at every "
-                "`lambda` on the grid, at this run's `delta = %.2f`. The unit is the CASE, and every "
-                "ratio names the denominator it divides:" % (field, row["delta"]),
+                "`lambda` on the grid, at this run's `delta = %.2f`. The unit is the %s, and every "
+                "ratio names the denominator it divides:" % (field, row["delta"], UNIT.upper()),
                 "",
                 "| lambda | implied error (`1 - lambda`) | automated cases (of %d cases) | "
                 "of those, wrong | coverage (automated / %d cases) | measured error "

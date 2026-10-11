@@ -12,7 +12,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .certificate import Certificate
+# ALPHA, BETA and SEED are IMPORTED, not declared here (#62): they are the published rubric, and
+# this module renders documents about it rather than owning it. `tests/test_correction.py` and
+# `tests/test_mondrian.py` keep reading them off this module, and the AST guard
+# `test_no_module_inside_the_fence_redeclares_a_rubric_name_it_could_import` is what keeps that
+# reuse honest: an import keeps working, a re-typed literal goes red.
+from .certificate import ALPHA, BETA, Certificate, SEED
 from .certify_choice import certify_choice
 from .records import Record
 from .tails import clopper_pearson_upper
@@ -20,9 +25,6 @@ from .tails import clopper_pearson_upper
 RECORDS = "data/records_feishu.jsonl"
 CERTS = {"laya": "data/cert_laya.json", "jev": "data/cert_jev.json"}
 INVENTORY_JSON = "data/inventory.md.json"
-ALPHA = 0.05
-BETA = 0.05
-SEED = 7
 # The budgets the archived corpus is certified at. beta is deliberately loose: the
 # evaluation half is ~96 records, and a tighter budget would only be honest about a
 # claim this corpus cannot make at all.

@@ -1861,3 +1861,270 @@ def test_a_records_row_that_is_not_an_object_is_a_usage_error_and_never_rc_1(tmp
         clean = tmp_path / "clean_again.jsonl"
         clean.write_text(good.read_text())
         assert run("certify", str(clean), "--out", str(tmp_path / "c.json")).returncode == 0
+
+
+# --- #62: one owner for the published rubric (amendments items 6 and 9) --------------------
+#
+# R-184 measured the consumers before writing these rows: `tests/test_correction.py` and
+# `tests/test_mondrian.py` do `from autorate.report import ALPHA, BETA`, `tests/test_audit.py`
+# imports `DEFAULT_DELTA` from `audit.py`, and three suites import `MIN_CAL`/`MIN_EVAL`/
+# `DIAGNOSTIC_GRID` from the certifiers. The values are therefore NOT unconsumed, and a green suite
+# proves nothing about ownership because every one of those imports reads whichever module the suite
+# happened to name. What was missing is a row saying these ARE the published rubric, and a single
+# owner for delta (three statements: `audit.py:95`, `cli.py`'s `--delta` default, `certify_choice`'s
+# signature default), for the floors (three) and for the diagnostic grid (two).
+#
+# The guards below are AST guards, not value guards, on purpose. A value guard written as
+# `report.ALPHA == 0.05` cannot tell an import from a re-declared literal, because at the published
+# rubric both sides are the same number; that is R-54's green-on-arrival class ("alpha == beta ==
+# 0.05 at the published rubric, so gating on the wrong symbol passes every test at the defaults").
+# Only the binding form distinguishes "imports the owner" from "restates the owner's value", so
+# these rows read the source and check how each name is bound.
+
+RUBRIC_KEYS = ("alpha", "beta", "delta", "seed", "method", "unit", "n_claims", "min_cal",
+               "min_eval", "grid")
+# Names a consumer may only ever IMPORT. `DEFAULT_DELTA` is on the list because it is `audit.py`'s
+# alias for the same number, and an alias re-declared as a literal is the same defect wearing a
+# different name.
+RUBRIC_NAMES = ("ALPHA", "BETA", "DELTA", "SEED", "METHOD", "UNIT", "N_CLAIMS", "MIN_CAL",
+                "MIN_EVAL", "DIAGNOSTIC_GRID", "DEFAULT_DELTA", "PUBLISHED_RUBRIC")
+SRC = REPO / "src" / "autorate"
+# The modules this task's fence owns and can therefore fix. `certify_score.py` and
+# `certify_threshold.py` are deliberately absent: they still carry their own copies, which is the
+# BLOCKED item in the report, and `test_the_two_out_of_fence_certifiers_...` pins them instead.
+RUBRIC_CONSUMERS = ("report.py", "cli.py", "audit.py", "certify_choice.py")
+
+
+def _module_bindings(path):
+    """Names bound at module level, split into imports and assignments, from the parsed source."""
+    tree = __import__("ast").parse(path.read_text(encoding="utf-8"))
+    imported, assigned = set(), {}
+    for node in tree.body:
+        if isinstance(node, (__import__("ast").Import, __import__("ast").ImportFrom)):
+            for alias in node.names:
+                imported.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, __import__("ast").Assign):
+            for target in node.targets:
+                if isinstance(target, __import__("ast").Name):
+                    assigned.setdefault(target.id, node)
+        elif isinstance(node, __import__("ast").AnnAssign) and isinstance(node.target,
+                                                                          __import__("ast").Name):
+            assigned.setdefault(node.target.id, node)
+    return imported, assigned
+
+
+def _default_nodes(path, flags):
+    """Every `(flag, lineno, default-node)` pair an `add_argument` call passes, as written."""
+    tree = __import__("ast").parse(path.read_text(encoding="utf-8"))
+    out = []
+    for node in __import__("ast").walk(tree):
+        if not (isinstance(node, __import__("ast").Call) and isinstance(node.func,
+                                                                        __import__("ast").Attribute)
+                and node.func.attr == "add_argument"):
+            continue
+        if not node.args or not isinstance(node.args[0], __import__("ast").Constant):
+            continue
+        flag = node.args[0].value
+        if flag not in flags:
+            continue
+        for kw in node.keywords:
+            if kw.arg == "default":
+                out.append((flag, node.lineno, kw.value))
+    return out
+
+
+def test_the_published_rubric_is_one_mapping_that_names_every_number_it_publishes():
+    """The mapping is the owner, and it holds exactly the ten names #62 and R-187 listed.
+
+    The values are transcribed from `c8ec8f8` as measured BEFORE the move (`pre-delete-equality.txt`
+    in the evidence directory): alpha/beta/seed from `report.py:23-25`, delta from `audit.py:95` and
+    `cli.py:631` and `certify_choice`'s signature, n_claims from `certificate.py:19`, the floors from
+    `certify_choice.py:43-44` / `certify_score.py:69-70` / `certify_threshold.py:65-66`, the grid from
+    the two textually identical `DIAGNOSTIC_GRID` expressions. They are literals here on purpose: a
+    pin that read them back out of the owner would certify only that the owner equals itself, and the
+    one claim this row exists to keep is that MOVING the declaration moved no value.
+    """
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    assert set(PUBLISHED_RUBRIC) == set(RUBRIC_KEYS), sorted(PUBLISHED_RUBRIC)
+    assert PUBLISHED_RUBRIC["alpha"] == 0.05
+    assert PUBLISHED_RUBRIC["beta"] == 0.05
+    assert PUBLISHED_RUBRIC["delta"] == 0.05
+    assert PUBLISHED_RUBRIC["seed"] == 7
+    assert PUBLISHED_RUBRIC["method"] == "aps"
+    assert PUBLISHED_RUBRIC["unit"] == "case", "the case, never the row (R-36/R-44)"
+    assert PUBLISHED_RUBRIC["n_claims"] == 3
+    assert PUBLISHED_RUBRIC["min_cal"] == 60
+    assert PUBLISHED_RUBRIC["min_eval"] == 60
+    assert PUBLISHED_RUBRIC["grid"] == tuple(round(0.01 * i, 2) for i in range(1, 30))
+
+    from autorate import certificate
+    for key, name in (("n_claims", "N_CLAIMS"), ("min_cal", "MIN_CAL"), ("min_eval", "MIN_EVAL"),
+                      ("grid", "DIAGNOSTIC_GRID"), ("alpha", "ALPHA"), ("beta", "BETA"),
+                      ("delta", "DELTA"), ("seed", "SEED"), ("method", "METHOD"),
+                      ("unit", "UNIT")):
+        assert getattr(certificate, name) == PUBLISHED_RUBRIC[key], name
+
+
+def test_the_owner_mapping_holds_one_literal_and_every_derived_name_reads_from_it():
+    """`certificate.py` may declare the values, but only inside the mapping.
+
+    The derived names are convenience bindings for consumers; if one of them carried its own literal
+    the module would have two owners of the same number and the mapping would be decoration.
+    """
+    ast = __import__("ast")
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    _imported, assigned = _module_bindings(SRC / "certificate.py")
+    assert "PUBLISHED_RUBRIC" in assigned, "the owner is not declared in the owner's module"
+    derived = {n: node for n, node in assigned.items()
+               if n in RUBRIC_NAMES and n != "PUBLISHED_RUBRIC"}
+    for name, node in derived.items():
+        assert isinstance(node.value, ast.Subscript), (
+            "%s re-declares a rubric value instead of reading PUBLISHED_RUBRIC" % name)
+        base = node.value.value
+        assert isinstance(base, ast.Name) and base.id == "PUBLISHED_RUBRIC", ast.dump(node)
+        assert isinstance(node.value.slice, ast.Constant), ast.dump(node)
+        assert node.value.slice.value in RUBRIC_KEYS, node.value.slice.value
+    for key in RUBRIC_KEYS:
+        assert PUBLISHED_RUBRIC[key] is not None, key
+
+
+def test_no_module_inside_the_fence_redeclares_a_rubric_name_it_could_import():
+    """Every consumer binds rubric names by IMPORT; a re-declared literal is the defect.
+
+    This is the row R-184 says does not exist today. Before the move it is red for four modules at
+    once -- `report.py` declares ALPHA/BETA/SEED, `audit.py` declares DEFAULT_DELTA,
+    `certify_choice.py` declares MIN_CAL/MIN_EVAL/DIAGNOSTIC_GRID -- and it stays red if any of them
+    restates a value later, which is exactly the drift an `==` pin cannot see while both sides agree.
+    """
+    offenders = {}
+    for module in RUBRIC_CONSUMERS:
+        _imported, assigned = _module_bindings(SRC / module)
+        restated = sorted(n for n in assigned if n in RUBRIC_NAMES)
+        if restated:
+            offenders[module] = [
+                "%s:%d" % (n, assigned[n].lineno) for n in restated]
+    assert offenders == {}, "rubric names re-declared instead of imported: %s" % offenders
+
+
+def test_every_cli_rubric_flag_defaults_to_the_owner_name_and_not_a_literal():
+    """`--alpha/--beta/--delta/--seed/--method` default to imported names, never typed numbers.
+
+    Red on arrival at `c8ec8f8` for the two flags that were literals (`--delta default=0.05`,
+    `--method default="aps"`), and green once they read the owner. The value half of the claim is
+    checked through the real parser, because a flag renamed but left at the wrong number would pass
+    the AST half alone.
+    """
+    ast = __import__("ast")
+    from autorate.certificate import PUBLISHED_RUBRIC
+    from autorate.cli import build_parser
+
+    expected = {"--alpha": "ALPHA", "--beta": "BETA", "--delta": ("DELTA", "DEFAULT_DELTA"),
+                "--seed": "SEED", "--method": "METHOD"}
+    seen = set()
+    for module in RUBRIC_CONSUMERS:
+        for flag, lineno, node in _default_nodes(SRC / module, set(expected)):
+            assert isinstance(node, ast.Name), "%s:%d %s still defaults to a literal" % (
+                module, lineno, flag)
+            want = expected[flag]
+            want = (want,) if isinstance(want, str) else want
+            assert node.id in want, "%s:%d %s reads %s, not %s" % (module, lineno, flag,
+                                                                   node.id, want)
+            seen.add(flag)
+    assert seen == set(expected), "a rubric flag stopped being registered: %s" % (
+        sorted(set(expected) - seen))
+
+    ns = build_parser().parse_args(["certify", "records.jsonl"])
+    assert (ns.alpha, ns.beta, ns.delta, ns.seed, ns.method) == (
+        PUBLISHED_RUBRIC["alpha"], PUBLISHED_RUBRIC["beta"], PUBLISHED_RUBRIC["delta"],
+        PUBLISHED_RUBRIC["seed"], PUBLISHED_RUBRIC["method"]), vars(ns)
+    audit_ns = build_parser().parse_args(["audit"])
+    assert audit_ns.delta == PUBLISHED_RUBRIC["delta"], vars(audit_ns)
+
+
+def test_the_certificates_rubric_fields_are_a_subset_of_the_owner():
+    """`cli.RUBRIC_FIELDS` names what a certificate stamps; every one is owned by the mapping.
+
+    The list itself stays in `cli.py` -- it is the comparison surface of `compare`, not a value --
+    but a field added there without a rubric owner is the second half of the same defect, so the
+    subset relation is pinned.
+    """
+    from autorate.certificate import PUBLISHED_RUBRIC
+    from autorate.cli import RUBRIC_FIELDS
+
+    assert set(RUBRIC_FIELDS) <= set(PUBLISHED_RUBRIC), (
+        sorted(set(RUBRIC_FIELDS) - set(PUBLISHED_RUBRIC)))
+
+
+def test_the_published_rubric_cannot_be_edited_through_the_mapping_by_a_consumer():
+    """A consumer that wrote `PUBLISHED_RUBRIC["alpha"] = ...` would move every published number
+    in the same process, silently and without a file change. The mapping is therefore a read-only
+    view, and this row is the guard that says so.
+    """
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    with pytest.raises(TypeError):
+        PUBLISHED_RUBRIC["alpha"] = 0.10
+    assert PUBLISHED_RUBRIC["alpha"] == 0.05, "the mapping was mutated by the row meant to refuse it"
+
+
+def test_audit_default_grid_stays_the_frontier_and_is_never_the_diagnostic_grid():
+    """`audit.DEFAULT_GRID` is the audit's risk-coverage frontier: a DIFFERENT object (R-187).
+
+    The rubric's `grid` is the 29-point diagnostic sweep the certifiers walk. Substituting one for
+    the other keeps both names looking right and changes which curve a certificate publishes, so the
+    separation is asserted as a fact about the objects and as a fact about the certifier's behaviour.
+    """
+    from autorate.audit import DEFAULT_GRID
+    from autorate.certificate import PUBLISHED_RUBRIC
+    from autorate.certify_choice import certify_choice
+
+    assert DEFAULT_GRID == (0.0, 0.3, 0.6, 0.85, 0.99), DEFAULT_GRID
+    assert PUBLISHED_RUBRIC["grid"] != DEFAULT_GRID, "the frontier was substituted for the sweep"
+    assert len(PUBLISHED_RUBRIC["grid"]) == 29
+    # the behaviour, not only the constant: an empty population still walks the sweep it was given
+    refusal = certify_choice([])
+    assert refusal.meta["diagnostic_grid_size"] == len(PUBLISHED_RUBRIC["grid"]), refusal.meta
+    assert refusal.meta["diagnostic_grid_size"] != len(DEFAULT_GRID)
+
+
+def test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner():
+    """The duplication #62 cannot finish inside its fence, recorded as a pin rather than as a claim.
+
+    `certify_score.py:69-70,75` and `certify_threshold.py:65-66` are outside
+    `task-6-controller-amendments.md` item 7's file list, so item 9's owner covers the names and this
+    row polices the copies instead of deleting them. It is TRUE on arrival by construction -- the
+    copies agree with the owner at `c8ec8f8`, which is the pre-deletion equality measurement the
+    dispatch requires -- and it is the guard that turns a silent divergence into a red. Its negative
+    control is the monkeypatch row below, not a file plant, because planting here would write to the
+    two files the fence exists to protect.
+    """
+    from importlib import import_module
+
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    score = import_module("autorate.certify_score")
+    threshold = import_module("autorate.certify_threshold")
+    assert (score.MIN_CAL, score.MIN_EVAL) == (PUBLISHED_RUBRIC["min_cal"],
+                                               PUBLISHED_RUBRIC["min_eval"])
+    assert (threshold.MIN_CAL, threshold.MIN_EVAL) == (PUBLISHED_RUBRIC["min_cal"],
+                                                       PUBLISHED_RUBRIC["min_eval"])
+    assert score.DIAGNOSTIC_GRID == PUBLISHED_RUBRIC["grid"]
+
+
+def test_the_out_of_fence_pin_fires_when_a_copy_diverges(monkeypatch):
+    """Negative control for the row above: patch the copy, watch the same comparisons go red.
+
+    A pin nobody has seen fail is decoration (R-149's class), and this one cannot be falsified by
+    editing `certify_score.py` from inside this fence, so the defect is planted in memory instead.
+    """
+    from importlib import import_module
+
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    score = import_module("autorate.certify_score")
+    monkeypatch.setattr(score, "MIN_CAL", PUBLISHED_RUBRIC["min_cal"] + 1)
+    assert score.MIN_CAL != PUBLISHED_RUBRIC["min_cal"], "the patch did not land"
+    monkeypatch.setattr(score, "MIN_CAL", PUBLISHED_RUBRIC["min_cal"])
+    assert score.MIN_CAL == PUBLISHED_RUBRIC["min_cal"]

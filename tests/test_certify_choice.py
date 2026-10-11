@@ -501,3 +501,119 @@ def test_a_stored_bound_the_producer_cannot_write_is_still_drift(tmp_path, monke
     # both numbers are printed, so the reader can see which digits the two disagree in
     assert repr(unreproducible) in err and repr(published_bound) in err, err[:600]
     assert "recomputed" in err and "published" in err, err[:400]
+
+
+# --- #62: the certifier's own defaults, and the seed that must not be collapsed --------------
+#
+# `certify_choice`'s signature defaults were a fourth statement of alpha/beta/delta and the fifth of
+# `method`. They are checked here as SOURCE (which node is written after the `=`) and as VALUES (what
+# the parser and the publication path actually hand in), because a value check alone cannot tell an
+# import from a literal that happens to agree -- and at this rubric every one of those literals does
+# happen to agree (R-54).
+
+
+def _func_defaults(source, func_name):
+    """`{parameter: default-ast-node}` for one top-level function, as written in the file."""
+    ast = __import__("ast")
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            params = node.args.posonlyargs + node.args.args
+            out = {}
+            start = len(params) - len(node.args.defaults)
+            for index, default in enumerate(node.args.defaults):
+                out[params[start + index].arg] = default
+            for param, default in zip(node.args.kwonlyargs, node.args.kw_defaults):
+                if default is not None:
+                    out[param.arg] = default
+            return out
+    raise AssertionError("no function named %s in that source" % func_name)
+
+
+def test_the_choice_certifier_s_signature_defaults_read_the_owner_and_not_literals():
+    """`certify_choice` / `certify_groups` / `Certificate.refused` default to imported names.
+
+    Red on arrival: at `c8ec8f8` all three wrote `0.05` and `"aps"` as literals in their own
+    signatures, so a caller who took the default got a rubric nobody owned. `refused` is checked for
+    delta and method only, and the row asserts on top that it still has NO alpha/beta default: a
+    refusal must name the budgets that made it infeasible (spec 5.5), so those two are required
+    parameters and not rubric hand-offs.
+    """
+    from importlib import import_module
+    from pathlib import Path
+
+    ast = __import__("ast")
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    src = Path(__file__).resolve().parents[1] / "src" / "autorate"
+    rubric_defaults = {"alpha": ("ALPHA",), "beta": ("BETA",), "delta": ("DELTA",),
+                       "method": ("METHOD",), "seed": ("SPLIT_SEED_DEFAULT",)}
+    for module, func, checked in (
+            ("certify_choice.py", "certify_choice", ("alpha", "beta", "delta", "method", "seed")),
+            ("certify_choice.py", "certify_groups", ("alpha", "beta", "delta", "method", "seed")),
+            ("certificate.py", "refused", ("delta", "method"))):
+        defaults = _func_defaults((src / module).read_text(encoding="utf-8"), func)
+        for name in checked:
+            node = defaults.get(name)
+            assert node is not None, "%s.%s lost its %s default" % (module, func, name)
+            assert isinstance(node, ast.Name), (
+                "%s.%s still writes a literal for %s" % (module, func, name))
+            assert node.id in rubric_defaults[name], "%s.%s %s reads %s, not %s" % (
+                module, func, name, node.id, rubric_defaults[name])
+
+    refused = _func_defaults((src / "certificate.py").read_text(encoding="utf-8"), "refused")
+    assert "alpha" not in refused and "beta" not in refused, refused
+
+    for module, func in (("certify_choice", "certify_choice"), ("certify_choice", "certify_groups")):
+        fn = getattr(import_module("autorate." + module), func)
+        sig = __import__("inspect").signature(fn)
+        for name in ("alpha", "beta", "delta", "method"):
+            assert sig.parameters[name].default == PUBLISHED_RUBRIC[name], (module, func, name)
+        assert sig.parameters["seed"].default == 0, (module, func)
+
+
+def test_the_published_seed_and_the_library_split_default_stay_apart_on_purpose():
+    """seed is 7 in the published rubric and 0 in `split_cal`/`certify_choice`: a deliberate pair.
+
+    Collapsing them would re-roll every seeded split. The partition is a function of the seed over
+    the *sorted case keys*, so a change of seed moves cases between halves and moves every published
+    bound with them; the same hazard was measured here when a key DOMAIN changed (13 of 32 cases
+    switched sides and a boundary moved 0.089 -> 0.140), which is why the two numbers are separate
+    owners of separate facts and this row says so in its name.
+    """
+    from importlib import import_module
+    import inspect
+
+    from autorate.certificate import PUBLISHED_RUBRIC
+    from autorate.report import load_records
+
+    cc = import_module("autorate.certify_choice")
+    assert PUBLISHED_RUBRIC["seed"] == 7, "the published rubric's seed moved"
+    sig = inspect.signature(cc.certify_choice)
+    assert sig.parameters["seed"].default == 0, "the library default was collapsed onto the rubric"
+    assert inspect.signature(cc.split_cal).parameters["seed"].default == 0
+
+    # the two are not the same statement: on the committed corpus they hand back different halves.
+    # `split_cal` keeps only the certifiable records, so the claim is that the two seeds agree on the
+    # SIZE of each half and disagree on its MEMBERSHIP -- same budget, re-rolled partition.
+    records = load_records(REPO / "data" / "records_feishu.jsonl")["laya"]
+    cal0, ev0, dropped0 = cc.split_cal(records, 0)
+    cal7, ev7, dropped7 = cc.split_cal(records, 7)
+    ids0 = sorted(r.id for r in cal0)
+    ids7 = sorted(r.id for r in cal7)
+    assert ids0 != ids7, "the two seeds produced the same partition, so this row proves nothing"
+    assert len(cal0) == len(cal7) and len(ev0) == len(ev7), (len(cal0), len(cal7), len(ev0),
+                                                             len(ev7))
+    assert cal0 and ev0, "an empty half bounds nothing, so the comparison above would be vacuous"
+    assert dropped0 == dropped7, (dropped0, dropped7)
+
+    # and the published artefacts carry the rubric's seed, not the library default
+    for rel in CERT_FILES:
+        doc = json.loads((REPO / rel).read_text(encoding="utf-8"))
+        assert doc["meta"]["seed"] == PUBLISHED_RUBRIC["seed"] == 7, (rel, doc["meta"].get("seed"))
+
+    # the publication path reads the owner: what `certify_all` produces is stamped with the rubric
+    certs = import_module("autorate.report").certify_all(
+        load_records(REPO / "data" / "records_feishu.jsonl"))
+    assert all(c.meta["seed"] == PUBLISHED_RUBRIC["seed"] for c in certs.values()), (
+        {b: c.meta["seed"] for b, c in certs.items()})
