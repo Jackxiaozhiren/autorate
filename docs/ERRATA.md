@@ -966,3 +966,43 @@ wrong reason, since a document with none of the thirteen keys this build indexes
 disagrees -- while a snapshot that carries all of them with different contents still exits `4` as
 `DRIFT: snapshot corpus_options: recomputed …`. The shape arm answers shape and the comparison still answers
 values; neither swallowed the other.
+
+## 2026-10-11 -- #62's rubric owner is one mapping, and two of its copies live outside the fence
+
+`task-6-controller-amendments.md` item 9 states that "#62's owner must cover four more names than R-130
+listed", and the sentence as written reads as though widening the owner were enough to finish the job. It
+is not, and the gap belongs in this file rather than in a commit message.
+
+What landed: `certificate.PUBLISHED_RUBRIC` is now the single declaration of alpha, beta, delta, seed,
+method, unit, n_claims, min_cal, min_eval and grid, and every module inside item 7's fence binds those
+names by import -- `report.py` no longer declares ALPHA/BETA/SEED, `audit.py` no longer declares
+`DEFAULT_DELTA`, `certify_choice.py` no longer declares `MIN_CAL`/`MIN_EVAL`/`DIAGNOSTIC_GRID`, and the
+CLI's `--delta` and `--method` no longer carry literals of their own. The binding *form* is what the new
+rows check, through the parsed source, because a value comparison between two modules that agree cannot
+distinguish an import from a re-typed literal -- and at this rubric alpha, beta and delta are the same
+number, so a value guard is green on arrival by construction.
+
+What did not: `certify_score.py:69-70` and `:75` and `certify_threshold.py:65-66` still declare their own
+`MIN_CAL`/`MIN_EVAL`/`DIAGNOSTIC_GRID`, and the signature defaults of `certify_score`, `certify_threshold`
+and `severity.py` still write `0.05`, beside `tails.ALPHA_DEFAULT`. Those files are not in the fence, so
+the correct move was to report rather than widen. Before anything was deleted the duplicates were measured
+against each other: the two `DIAGNOSTIC_GRID` expressions agree value-for-value at 29 points and are two
+distinct tuple objects, and all three `MIN_CAL`/`MIN_EVAL` pairs are 60/60 -- which is why removing a copy
+could not move a number, and also why a copy nobody policed could.
+`test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner` now pins the
+remaining copies against the owner, with `test_the_out_of_fence_pin_fires_when_a_copy_diverges` as its
+negative control (patched in memory, since planting there would edit the fenced files), so the duplication
+is visible instead of inherited.
+
+Two claims this round also re-measured, both holding. `audit.DEFAULT_GRID` is the audit's risk-coverage
+frontier and not the certifier's diagnostic sweep: substituting it for the rubric's grid leaves every name
+plausible while changing which curve a certificate publishes, so it is asserted as a separation and as a
+behaviour (the refusal's `diagnostic_grid_size`), and the plant that swaps them reddens. And `seed` is 7 in
+the published rubric and 0 in `split_cal`/`certify_choice` by design; collapsing the pair re-rolls the
+partition -- the two seeds were checked to hand back halves of equal size and different membership on the
+committed corpus -- so the library default kept its own name rather than joining the mapping.
+
+Nothing published moved. Both `verify` lanes print the denominators they printed at `c8ec8f8` (`96 /96`
+without the corpus, `131 /131` with it), no `data/*.json` was regenerated or touched, and the two audit
+sentences that now read the unit from the mapping render byte-identically -- the byte comparison over
+`docs/AUDIT.md` is what says so, not the edit.
