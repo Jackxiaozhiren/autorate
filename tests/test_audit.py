@@ -1060,3 +1060,146 @@ def test_the_audit_reds_when_a_bound_moves_in_the_tenth_decimal(tmp_path, by_bac
     assert repr(canonicalise_bound(stored + 1e-10)) in text, text[:400]
     # and only bound columns object: the quotient columns of the same rows are not blamed
     assert not [l for l in labels if l.split(".")[-1].split("[")[0] not in _BOUND_KEYS], labels
+
+
+# ---------------------------------------------------------------------------
+# #88: `unit` became load-bearing when it joined the rubric mapping (B1 Task 6A's own ERRATA
+# names this gap), because two sentences in `render_audit` print it and `docs/AUDIT.md` is in
+# `PUBLISHED_DOCS`. Before these rows, a changed unit could only surface as "the document no
+# longer matches" -- never as a test naming the value or the sentence. Green on arrival by
+# construction (the renderer already binds the owner), so the work here is the two falsifications:
+# a re-typed literal in the source, and a live patch of the owner's value.
+
+
+def _unit_sites(source):
+    """Every `%`-format in `render_audit` whose template mentions the unit, with what feeds it.
+
+    Returns one dict per site: the template, the variable names substituted, and any string
+    literal substituted. A site carrying a literal where the unit belongs is a second owner of the
+    rubric's unit -- and a value comparison cannot see it, because the literal would hold the same
+    word the owner holds.
+    """
+    import ast
+
+    tree = ast.parse(source)
+    sites = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod)):
+            continue
+        left = node.left
+        if not (isinstance(left, ast.Constant) and isinstance(left.value, str)):
+            continue
+        if "unit" not in left.value.lower():
+            continue
+        right = node.right
+        args = list(right.elts) if isinstance(right, ast.Tuple) else [right]
+        names, literals = [], []
+        for arg in args:
+            target = arg
+            # `UNIT.upper()` / `UNIT.lower()` still name the owner; unwrap the call before judging.
+            if (isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute)
+                    and isinstance(arg.func.value, ast.Name)):
+                names.append(arg.func.value.id)
+                continue
+            if isinstance(target, ast.Name):
+                names.append(target.id)
+            elif isinstance(target, ast.Constant) and isinstance(target.value, str):
+                literals.append(target.value)
+        sites.append({"template": left.value, "names": names, "literals": literals})
+    return sites
+
+
+def _rendered_unit_lines(text):
+    return [line for line in text.splitlines()
+            if "certification unit: the" in line or "The unit is the" in line]
+
+
+def test_the_renderer_names_the_rubric_owner_for_every_unit_sentence():
+    """Both unit sentences read the owner; neither carries its own copy of the word."""
+    import inspect
+
+    sites = _unit_sites(inspect.getsource(render_audit))
+    assert len(sites) >= 2, (
+        "the renderer is expected to hold at least the header line and the per-field line; found %d"
+        % len(sites))
+    for site in sites:
+        assert "UNIT" in site["names"], (
+            "a unit sentence is built without the rubric owner: %r feeds %r"
+            % (site["names"], site["template"][:70]))
+        assert not site["literals"], (
+            "a string literal stands where the unit name belongs: %r in %r"
+            % (site["literals"], site["template"][:70]))
+
+
+def test_a_retyped_unit_literal_is_caught_by_the_source_probe():
+    """The probe bites: swap the owner for its own value as a literal and the site is reported."""
+    import inspect
+
+    source = inspect.getsource(render_audit)
+    mutated = source.replace("UNIT.upper()", '"CASE"')
+    assert mutated != source, "the mutation did not land; this control would prove nothing"
+    sites = _unit_sites(mutated)
+    assert sites, "the probe found no unit site even in the mutated source"
+    offenders = [s for s in sites if s["literals"] or "UNIT" not in s["names"]]
+    assert offenders, "a re-typed unit literal passed the binding probe"
+    assert '"CASE"' not in source, "the unmutated source already holds a unit literal"
+
+
+def test_the_published_unit_sentence_is_a_live_read_of_the_owner(monkeypatch, audits):
+    """Patch the owner's value and both sentences move with it; the committed artefact carries it.
+
+    This is the falsification the source probe cannot supply: a renderer that captured the unit at
+    import time, or one whose sentences were hand-edited into `docs/AUDIT.md`, would pass the AST
+    probe while the published document silently kept a stale denominator.
+    """
+    import autorate.audit as audit_module
+
+    owner = str(audit_module.UNIT)
+    before = _rendered_unit_lines(render_audit(audits))
+    assert before, "no unit sentence rendered, so the assertions below would pass on an empty list"
+    assert all(owner.upper() in line for line in before), before
+
+    patched = "slice"
+    monkeypatch.setattr(audit_module, "UNIT", patched)
+    after = _rendered_unit_lines(render_audit(audits))
+    assert len(after) == len(before), (
+        "patching the unit changed how many sentences render (%d -> %d); the header and the "
+        "per-field line are not the same site" % (len(before), len(after)))
+    assert all(patched.upper() in line for line in after), after
+    assert not any(owner.upper() in line for line in after), (
+        "a rendered line still carries the unpatched unit: %s" % [l for l in after
+                                                                  if owner.upper() in l])
+
+    published = AUDIT_MD.read_text()
+    published_lines = _rendered_unit_lines(published)
+    assert len(published_lines) >= 3, (
+        "`docs/AUDIT.md` is expected to hold the header line and one per-field line per `field`; "
+        "found %d" % len(published_lines))
+    assert all(owner.upper() in line for line in published_lines), published_lines[:2]
+
+
+def test_a_stale_published_unit_sentence_would_be_caught(monkeypatch, tmp_path, audits):
+    """The control for the row above: point it at a document whose unit disagrees, and it reddens.
+
+    Written as a test rather than invoked by hand, because a hand-call against a pytest fixture
+    raises `TypeError` and proves nothing about the assertion's power -- which is exactly what
+    happened to the first version of this control.
+    """
+    import autorate.audit as audit_module
+
+    word = str(audit_module.UNIT).upper()
+    published = AUDIT_MD.read_text()
+    stale_text = published.replace("the %s" % word, "the ROW")
+    assert stale_text != published, "the planted document is identical to the published one"
+    stale = tmp_path / "AUDIT.md"
+    stale.write_text(stale_text)
+
+    module = __import__("test_audit")
+    monkeypatch.setattr(module, "AUDIT_MD", stale)
+    with pytest.raises(AssertionError) as excinfo:
+        module.test_the_published_unit_sentence_is_a_live_read_of_the_owner(monkeypatch, audits)
+    message = str(excinfo.value)
+    assert "the ROW" in message, (
+        "the row failed, but not because of the planted unit word: %s" % message[:200])
+    assert "no unit sentence rendered" not in message, (
+        "the row failed on an empty render rather than on the stale artefact")
