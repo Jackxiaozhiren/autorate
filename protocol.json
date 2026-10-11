@@ -1,0 +1,186 @@
+{
+  "protocol_version": 1,
+  "frozen_at": "2026-10-11",
+  "record_contract": {
+    "shape_version": 2,
+    "primitives": [
+      "choice",
+      "score",
+      "noul"
+    ]
+  },
+  "rubric": {
+    "alpha": 0.05,
+    "beta": 0.05,
+    "delta": 0.05,
+    "seed": 7,
+    "method": "aps",
+    "unit": "case",
+    "n_claims": 3,
+    "min_cal": 60,
+    "min_eval": 60,
+    "grid": [
+      0.01,
+      0.02,
+      0.03,
+      0.04,
+      0.05,
+      0.06,
+      0.07,
+      0.08,
+      0.09,
+      0.1,
+      0.11,
+      0.12,
+      0.13,
+      0.14,
+      0.15,
+      0.16,
+      0.17,
+      0.18,
+      0.19,
+      0.2,
+      0.21,
+      0.22,
+      0.23,
+      0.24,
+      0.25,
+      0.26,
+      0.27,
+      0.28,
+      0.29
+    ]
+  },
+  "decision_rule": "singleton certified set automates; anything else escalates (an empty certified set or one carrying several labels) or abstains (a refused certificate, a record of another subject, a record of another question type) -- `gate.Gate.decide` is the owner of that behaviour",
+  "rubric_scope": "The `rubric` block is the published choice rule's rubric and nothing wider: it is `certificate.PUBLISHED_RUBRIC`, which `report.certify_all` and `autorate certify` read. It does not govern every rubric in this tree. `certify_score.py` and `certify_threshold.py` still declare their own `MIN_CAL`/`MIN_EVAL`/`DIAGNOSTIC_GRID`, the signature defaults of `certify_score`, `certify_threshold` and `severity.py` still write 0.05, and `tails.ALPHA_DEFAULT` remains; those copies are pinned against this owner by `test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner` rather than deleted. `seed` here is the published split (7); the certifiers' library default (`certificate.SPLIT_SEED_DEFAULT`, 0) is a different fact and the two are deliberately not collapsed, because the split is a shuffle over sorted case keys and a seed that changes re-rolls every bound measured on it.",
+  "corpus": {
+    "records_owner": "data/records_feishu.jsonl",
+    "records_digest": "d06e7e87f4de31e287f7900dc1662ea0c5c845b3b5cac592bff3612d33593026",
+    "inventory_owner": "data/inventory.md.json",
+    "inventory_digest": "be0f8e8d93fec3d67487ba8d771334ddf5ed8c533b2257c17d92b920b9e48b77",
+    "provenance": "AI-assisted, manually specified synthetic scenarios inspired by workplace workflows; no private chat logs. Not independently human-annotated.",
+    "source_labels": [
+      {
+        "label": "data/cases.jsonl",
+        "sha256": "56bdd8cbb96fc65a07e1caf0c1ebcac03cb6a56079944a7af4bf03d71846e3ba"
+      },
+      {
+        "label": "data/manifest.json",
+        "sha256": "c5c93e043cd993f7dd0fd11a0b71f1ef7702684396c7b961df98eb51e0f62cae"
+      },
+      {
+        "label": "results/v1/jev/metadata.json",
+        "sha256": "9135a8924bb45ac0dc16b8a768540d5b6bd821e8e2dcecaa8749a3001e14f3f4"
+      },
+      {
+        "label": "results/v1/jev/raw.jsonl",
+        "sha256": "a1dfd4de1819117cbd1470a187e2e8dd8f4cce7469c9c3c98befe1a282beab23"
+      },
+      {
+        "label": "results/v1/laya/metadata.json",
+        "sha256": "999851aa84a713ebd983d3d05ca074eadc5d2fe70af6dfa0efc546582607c40a"
+      },
+      {
+        "label": "results/v1/laya/raw.jsonl",
+        "sha256": "1c8dab17062f9244888f580907b62a845cf1e7b199e7041810a9301bd55c28e0"
+      },
+      {
+        "label": "results/v1/summary.json",
+        "sha256": "ec4a60b495b6d47192f8a82a1258bcf46db1e33396b1caf3cff706f0435a934c"
+      },
+      {
+        "label": "results/v1/environment_check.json",
+        "sha256": "f8b75b7ac5fbe5b1f298542b217e5d7b6d43407b5542ff816256d8ff5c21711a"
+      },
+      {
+        "label": "results/v1/option_token_audit.json",
+        "sha256": "d9b8b97e858ed4561bea0dd9344c99d523f9c26cb8e85cfb220636cbd3a13d4a"
+      }
+    ],
+    "pinned_builds": {
+      "massive_intent": {
+        "dataset": "mteb/amazon_massive_intent",
+        "revision": "940fd47a81eaa7f2cc7b129674d945d618ac38c2",
+        "license": "Apache-2.0",
+        "n_files": 51,
+        "rows_total": 151674,
+        "distinct_ids": 2974,
+        "distinct_row_counts": [
+          2974
+        ],
+        "id_sets_identical": true,
+        "bytes_total": 3221662,
+        "pin_label": "data/massive_provenance.json",
+        "pin_digest": "654e03e75da34c51a8872e1eb7877088e2ce60c5ee408d8ae25c01e0ea785e76",
+        "shard_digests": "51 per-shard sha256 values are owned by data/massive_provenance.json; this document pins that file by digest instead of transcribing them, because a published figure may not have a second owner"
+      },
+      "typed_decisions": {
+        "id": "typed_decisions",
+        "unit": "labelled decisions",
+        "n_rows": null,
+        "n_independent": null,
+        "basis": "dataset card size category 1K<n<10K only; no file opened",
+        "note": "candidate contamination probe (public train 300 / test 100)"
+      }
+    }
+  },
+  "claims": [
+    {
+      "id": "G1",
+      "criterion": "≥3 decision tasks yield a certified `autorate(α=0.05)` with an upper risk bound",
+      "measurement": "200-resplit Monte-Carlo per task; report the empirical violation rate of the claimed bound, not just the bound",
+      "status": "not_certifiable",
+      "artefacts": [
+        "data/cert_jev.json",
+        "data/cert_laya.json",
+        "data/cert_massive_de_laya.json",
+        "data/cert_massive_en_laya.json",
+        "data/cert_massive_sw_laya.json"
+      ],
+      "certified_tasks": 0,
+      "published_certificates": 5,
+      "refusal_reasons": [
+        "empty_feasible_set"
+      ],
+      "note": "every certificate this tree publishes refuses, so G1's certified task count is zero and the criterion is not met. The refusals are the artefacts named above, and `verify` re-derives them rather than transcribing them; the 200-resplit Monte-Carlo violation-rate measurement the criterion's own column names is not part of this freeze either."
+    },
+    {
+      "id": "G2",
+      "criterion": "The gate `laya`'s README instructs demonstrably violates its own implied error rate",
+      "measurement": "at `confidence >= 0.85`, measured error among automated decisions vs the 15% that sentence implies; report the multiple by which it misses",
+      "status": "measured_not_bounded",
+      "artefacts": [
+        "docs/AUDIT.md"
+      ],
+      "note": "measured, and re-derived by `autorate verify` as document bytes: on `laya` the instruction's own `confidence` row automates 2 of 64 cases with 1 wrong, so the measured error is 0.50 against the 0.15 the sentence implies (3.33x). The criterion asks for a demonstration, and the exact one-sided Clopper-Pearson bound on those 2 cases is 0.9747 -- above the implied rate -- so this corpus does not BOUND the gate it is asked to certify, which is what `NOT_INFORMATIVE` prints beside the row. The point estimate misses upward; the bound says the sample cannot carry the claim."
+    },
+    {
+      "id": "G3",
+      "criterion": "≥1 ordinal guarantee that multiclass CP cannot express",
+      "measurement": "the one-sided severity certificate (§6.4): `P(Y > â(X)) ≤ α`. If vanilla multiclass set CP reproduces it, this criterion fails",
+      "status": "not_measured",
+      "artefacts": [],
+      "note": "the ordinal family and the set gate exist in `ordinal.py` and `certify_score.py`, and no certificate this repository publishes states a one-sided severity bound: there is no `certify_severity` in `src/`, so the criterion has no artefact to be read from. Nothing in this document should be taken as claiming otherwise."
+    },
+    {
+      "id": "G4",
+      "criterion": "Worst-slice certification refuses rather than averages",
+      "measurement": "per (language x option-count) bounds with a simultaneous multiple-testing correction; must return `NOT_CERTIFIABLE` for the slices `laya` documents as collapsed (e.g. Khmer: accuracy 0.000 at mean confidence 0.952)",
+      "status": "not_measured",
+      "artefacts": [],
+      "note": "the mechanism is real and on the CLI (`--groups`, `correction.py`), and the two collapsed slices this project scored itself (`de` automates 0 of 1,487 cases, `sw` 39 with 13 wrong) are published as MARGINAL artefacts, not as slice certificates. The slice the criterion names by name -- Khmer -- has no per-case data in this tree, so the literal row is unmeasured."
+    },
+    {
+      "id": "G5",
+      "criterion": "Reproducible from a commit with no GPU, no network, no model",
+      "measurement": "`autorate verify --protocol protocol.json` re-derives every published number from per-case records alone; exit code + counts printed",
+      "status": "not_measured",
+      "artefacts": [],
+      "note": "this document is the file the criterion names, and it exists now; the flag does not. `verify` has no `--protocol` at this freeze, so the command as written cannot be run and this row may not be cited as met: Plan D Task 2 wires the flag and Task 3 measures it inside a `git archive` export, which is G5's literal transcript."
+    }
+  ],
+  "known_limits": [
+    "exchangeability within group assumed; none of it is usable here",
+    "no certificate exists, so no action is certified"
+  ]
+}

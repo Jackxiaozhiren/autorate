@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from .audit import DEFAULT_DELTA, DEFAULT_GATE, audit_fields, check_audit, render_audit
@@ -14,6 +15,7 @@ from .certificate import ALPHA, BETA, DELTA, METHOD, SEED
 from .certify_choice import certify_choice
 from .gate import Gate
 from .inventory import corpus_label, inventory, write_inventory
+from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
 from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS,
@@ -38,6 +40,11 @@ class UsageError(ValueError):
 RESULTS = Path("docs/RESULTS.md")
 AUDIT_MD = Path("docs/AUDIT.md")
 INVENTORY_MD = Path("data/inventory.md")
+# The frozen protocol document, named here because this file is where the commands that read and write
+# it are declared. `certify --protocol` takes a path from the operator; the DEFAULT stays `None`, and
+# this constant is the table Task 2's `verify` will read as its own default (R-200's Design G) --
+# naming it now is what keeps a later round from inventing a second spelling of the path.
+PROTOCOL_JSON = Path("protocol.json")
 FROM_CORPUS = "recomputed from the corpus"
 FROM_SNAPSHOT = "committed %s" % INVENTORY_JSON
 # Written by the environment that can reach the corpus, so they cannot be compared
@@ -293,13 +300,24 @@ def cmd_certify(args) -> int:
       catch: R-115 ruled that `cli.main` gains no `KeyError` arm, because `KeyError` is ordinary dict
       access everywhere here and catching it centrally would turn unrelated bugs into an exit 2 with
       a helpful-looking message. Before that ruling the typo `--groups langauge` exited **1**.
+      `--protocol` adds two more ways to land here: the document named cannot be read as this build's
+      protocol (`ProtocolError`, a `ValueError`), or a rubric flag contradicts it (R-199's freeze,
+      stated below).
     - **rc 4** -- an invariant of our own arithmetic failed (`ArithmeticError`), which is not the
       operator's mistake and not a refusal about the data.
     """
+    protocol = load_protocol(Path(args.protocol)) if args.protocol else None
+    rubric = _certify_rubric(args, protocol)
     recs = _records_from(Path(args.records), backend=args.backend, mode=args.mode)
     groups = _slice_keys(getattr(args, "groups", None))
-    cert = certify_choice(recs, alpha=args.alpha, beta=args.beta, delta=args.delta,
-                          seed=args.seed, method=args.method, groups=groups)
+    cert = certify_choice(recs, groups=groups, **rubric)
+    if protocol is not None:
+        # The freeze travels INSIDE the artefact. `meta` is one of `CERT_COMPARE_FIELDS`, so a
+        # certificate stamped under a protocol and the same certificate re-derived without the stamp
+        # disagree loudly -- which is why Task 1 stamps only when the flag is on its own command line,
+        # and why the published artefacts get theirs in Task 2, in the commit that also re-exports them
+        # (R-200: a half-moved HEAD is a red HEAD).
+        cert = replace(cert, meta={**cert.meta, "protocol_digest": protocol_digest(protocol)})
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(cert.to_json())
@@ -308,6 +326,10 @@ def cmd_certify(args) -> int:
         print("  envelope:", line)
     if groups is not None:
         _print_slices(cert)
+    if protocol is not None:
+        print("  protocol: %s (version %d, frozen %s) digest %s"
+              % (args.protocol, protocol.protocol_version, protocol.frozen_at,
+                 protocol_digest(protocol)))
     # The exit code is `cert.feasible`, and for a group run that property IS the conjunction over the
     # slices: a deployment acts on the worst-of-G statement, so answering 0 because the marginal
     # certificate certified while a slice has no bound at all is the averaging spec 8.1 refuses. rc 3
@@ -319,6 +341,43 @@ def cmd_certify(args) -> int:
               % (len(cert.meta["diagnostic_curve"]), args.out))
     print("wrote %s" % args.out)
     return code
+
+
+# The rubric fields `certify` takes as flags, each with the name that owns its default. The pairs are
+# the imported owner names, not numbers: `test_every_cli_rubric_flag_defaults_to_the_owner_name_and_not_a_literal`
+# is what keeps the second half of each pair honest, and the flag defaults stay the owner's values so a
+# run with no `--protocol` behaves exactly as it did before the freeze existed.
+CERTIFY_RUBRIC_FLAGS = (("alpha", ALPHA), ("beta", BETA), ("delta", DELTA), ("seed", SEED),
+                        ("method", METHOD))
+
+
+def _certify_rubric(args, protocol) -> dict:
+    """Resolve the five rubric values, and refuse a command line that argues with its own protocol.
+
+    With no `--protocol`, every value is the flag's own default or whatever the operator typed -- the
+    behaviour of every certificate this repository has published. With one, the protocol's rubric is
+    the rule and a flag may only restate it: `load_protocol` has already refused a document whose
+    rubric disagrees with `certificate.PUBLISHED_RUBRIC`, so the two agree by construction, and a flag
+    carrying a different number is the operator asking for a measurement the freeze does not license.
+    Silently letting it win would make the protocol a suggestion, which is the one thing a freeze is
+    not (brief step 3). So the contradiction exits 2, naming BOTH values and which flag and which
+    document said each.
+    """
+    out = {}
+    for name, owner in CERTIFY_RUBRIC_FLAGS:
+        typed = getattr(args, name)
+        if protocol is None:
+            out[name] = owner if typed is None else typed
+            continue
+        stated = protocol.rubric[name]
+        if typed is not None and typed != stated:
+            raise UsageError(
+                "--%s was given %r, but the protocol at %s states %r for `%s`: the frozen rubric is "
+                "not overridable at the command line. Drop the flag to certify under the protocol, or "
+                "re-freeze it (%s) under the number you mean -- the values disagree, so this run wrote "
+                "nothing" % (name, typed, args.protocol, stated, name, protocol_digest(protocol)))
+        out[name] = stated
+    return out
 
 
 RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
@@ -609,6 +668,84 @@ def cmd_verify(args) -> int:
     return EXIT_DRIFT if failures else 0
 
 
+def _frozen_at_in_place(out: Path) -> str:
+    """The date the document at `out` already states, or the refusal that says one is needed.
+
+    This is the command's ONLY fall-back, and it is what makes the freeze checkable in the one
+    environment that has neither a clock to trust nor a `.git` to read: `autorate protocol --out
+    protocol.json` re-emits the committed bytes inside a `git archive` export (amendment §1 / R-188).
+    The first freeze therefore stays a deliberate act -- a date this tool computed would make every
+    re-emission a different file, which is the drift check's own death.
+
+    The read is deliberately lenient (`json`, not `load_protocol`): the file is being ASKED what date it
+    states, not validated. What gets written is validated on the way out, by `emit_protocol` calling the
+    same `protocol.require_frozen_at` the loader uses, so the two arms cannot disagree about the format.
+    """
+    if not out.exists():
+        raise UsageError(
+            "no --frozen-at was given and %s holds nothing, so there is no stated date to reuse. The "
+            "freeze date is provenance, never a computed value: pass --frozen-at YYYY-MM-DD, or point "
+            "--out at the document whose date you are re-emitting" % out)
+    try:
+        stated = json.loads(out.read_text(encoding="utf-8")).get("frozen_at")
+    except ValueError as exc:
+        raise UsageError(
+            "no --frozen-at was given and %s could not be read for one (%s): pass --frozen-at "
+            "YYYY-MM-DD" % (out, exc)) from exc
+    if not isinstance(stated, str) or not stated:
+        raise UsageError(
+            "no --frozen-at was given and %s states no `frozen_at` to reuse; pass --frozen-at "
+            "YYYY-MM-DD" % out)
+    return stated
+
+
+def cmd_protocol(args) -> int:
+    """Write the frozen protocol document -- from the committed inputs, so its bytes are reproducible.
+
+    Every input is a file this checkout publishes: the inventory snapshot at `report.INVENTORY_JSON`,
+    the records at `report.RECORDS`, the MASSIVE pin through `inventory.massive_pin`, and the published
+    certificates. The corpus is never scanned and the clock is never read, which is what makes the same
+    command produce the same bytes in the corpus-present lane, the corpus-absent lane and a clean export
+    -- the three places the drift check has to hold. It is emitted by a command and never typed
+    (ruling D-b): a protocol with a typo in `min_cal` would freeze a floor nobody implemented.
+
+    The rubric values come from `certificate.PUBLISHED_RUBRIC`, one owner for the whole block (R-187 /
+    R-199), and the printed lines include the `rubric_scope` sentence, because a command whose output
+    reads as though one mapping governed every certifier in the tree is the misreading this field
+    exists to prevent.
+    """
+    out = Path(args.out)
+    frozen_at = args.frozen_at or _frozen_at_in_place(out)
+    inv = load_published(Path(INVENTORY_JSON), "report.INVENTORY_JSON", read_inventory_snapshot)
+    doc = emit_protocol(inv, file_digest(Path(RECORDS)), frozen_at)
+    write_protocol(doc, out)
+
+    rubric = dict(doc["rubric"])
+    grid = rubric.pop("grid")
+    g1 = next(row for row in doc["claims"] if row["id"] == "G1")
+    print("wrote %s" % out)
+    print("protocol_version %d, frozen_at %s (%s), digest %s"
+          % (doc["protocol_version"], doc["frozen_at"],
+             "from --frozen-at" if args.frozen_at else "reused from %s" % out,
+             protocol_digest(doc)))
+    print("  rubric: %s, grid=%d points (%.2f..%.2f)"
+          % (", ".join("%s=%s" % kv for kv in rubric.items()), len(grid), grid[0], grid[-1]))
+    print("  record contract: shape %d, primitives %s"
+          % (doc["record_contract"]["shape_version"], ", ".join(doc["record_contract"]["primitives"])))
+    print("  corpus: records %s, inventory %s, %d source labels"
+          % (doc["corpus"]["records_digest"], doc["corpus"]["inventory_digest"],
+             len(doc["corpus"]["source_labels"])))
+    for row in doc["claims"]:
+        print("  claim %s: %s" % (row["id"], row["status"]))
+    print("  G1: %d of %d published certificates certify, refusal reasons: %s"
+          % (g1["certified_tasks"], g1["published_certificates"],
+             ", ".join(g1["refusal_reasons"]) or "none"))
+    print("  known limits: %d envelope lines, read from the published certificates"
+          % len(doc["known_limits"]))
+    print("  scope: %s" % doc["rubric_scope"])
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="autorate")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -636,6 +773,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--seed", type=int, default=SEED)
     c.add_argument("--method", default=METHOD, choices=("aps", "lac"),
                    help="the nonconformity that sizes the set; lac is the comparison arm")
+    c.add_argument("--protocol", default=None,
+                   help="the frozen protocol document to certify under: its digest is written into "
+                        "meta, its rubric is the rule, and a rubric flag that contradicts it exits 2 "
+                        "naming both values. There is NO default -- `certify` never reads "
+                        "`protocol.json` unless this flag names it, because the artefacts published "
+                        "before the freeze carry no stamp and `verify` compares `meta` whole (R-200).")
     c.add_argument("--groups", action="append", metavar="KEY[,KEY...]",
                    help="group-conditional (Mondrian) certification over these declared slice keys "
                         "(spec 8.1): one certificate per slice at alpha/n_groups and delta/n_groups, "
@@ -675,6 +818,18 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--records", default=RECORDS, help="committed records file (default %s)" % RECORDS)
     a.add_argument("--out", default=str(AUDIT_MD))
     a.set_defaults(fn=cmd_audit)
+
+    f = sub.add_parser(
+        "protocol", help="emit the frozen protocol document (protocol.json) from the tree's own "
+                         "constants, digests and published certificates")
+    f.add_argument("--out", default=str(PROTOCOL_JSON),
+                   help="where to write it (default %s)" % PROTOCOL_JSON)
+    f.add_argument("--frozen-at", dest="frozen_at", default=None,
+                   help="the freeze date, YYYY-MM-DD: provenance the operator states. Required unless "
+                        "--out already holds a document whose own date is reused; never read from a "
+                        "clock or from git, because a computed date makes the re-emission the drift "
+                        "check depends on impossible")
+    f.set_defaults(fn=cmd_protocol)
 
     v = sub.add_parser("verify", help="re-derive every published number")
     v.set_defaults(fn=cmd_verify)
