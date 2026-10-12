@@ -159,13 +159,17 @@ second place to keep them.
   command, an artefact and a gate row now: `autorate severity` writes `data/cert_severity_ordinal.json` from
   the committed ordinal population, `docs/SEVERITY.md` renders it from those bytes, and `verify` re-derives
   twenty comparisons of it in both lanes. The status does not move, because the criterion is a contrast and
-  not a certificate: until the falsification control -- the same data, the multiclass set gate silent or wrong
-  in a specific direction where the ordinal statement is checkable -- is committed, what exists demonstrates
-  that the ordinal guarantee can be produced and checked, not that a set gate cannot state it. And that
-  control can go against the claim: `certify_score` certifies *intervals* of ordered levels, whose top
-  endpoint bounds `P(Y > hi(X))` by the set gate's own coverage statement, so if the experiment shows the set
-  gate expresses the statement after all, the honest outcome
-  is that G3 fails and the claim is removed rather than reworded.
+  not a certificate. A first measured contrast is committed (`tests/test_g3_contrast.py`): on the published
+  ordinal population, at the rubric this freeze owns, this repository's ordinal set gate refuses --
+  `empty_feasible_set`, publishing no `qhat`, no automation rate and no error bound of any kind -- while the
+  severity gate certifies the one-sided bound, reports its measured held-out violation rate and states the
+  rule's price; the set gate refuses on all four population variants that file walks. That is silence in a
+  named direction, and it is not yet the criterion. For an interval `C(X) = [lo, hi]` a coverage claim would
+  bound `P(Y > hi(X))` directly, so "cannot express" needs a population where the set gate *does* certify and
+  its published fields still fail to bound the one-sided risk of the rule it deploys -- and no population in
+  this family lets it certify, so the question is open rather than answered. If that experiment shows the set
+  gate expresses the statement after all, the honest outcome is that G3 fails and the claim is removed rather
+  than reworded.
 - **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
   CLI (`certify --groups`, plus the simultaneous correction), and a slice below the size floor is refused by
   name with its case count; what is missing is a published artefact for a slice this project scored. The two

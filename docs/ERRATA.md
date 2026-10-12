@@ -1312,3 +1312,22 @@ had to be written twice; and `protocol.py`'s "the tables are the one owner of wh
 still enumerates five artefacts now that a sixth exists. Each is opened as its own follow-up, and the
 denominators did not move with this fix round: `verify` still reads `128 /128` absent and `163 /163` present,
 because the guards close doors the gate never opened.
+
+**#72 item 3, partly measured, and the claim kept inside what the measurement shows.** A first contrast is
+committed in `tests/test_g3_contrast.py`. On the published ordinal population, at this freeze's own rubric,
+`certify_score` -- the ordinal *set* gate -- refuses with `empty_feasible_set` and publishes nothing
+(`qhat`, `autorate`, both error bounds and `mean_set_size` are all absent), while `certify_severity` certifies
+the one-sided bound, reports its measured held-out violation rate and states the always-report rule's price.
+The set gate refuses on all four population variants the file walks, and every number the rows assert is read
+from the certificate objects rather than typed. The row that keeps the other two from being decoration measures
+the generator's own liveness: the probabilities change with `temp` (four distinct digests), the reported
+rule's statistics do not between `temp` 2.0, 6.0 and 12.0 because the argmax pattern saturates once the ballot
+is sharp, and `temp` 0.3 moves the bound, the reported level and the measured rate. Two things follow, and both
+are recorded rather than smoothed over. First, an invariance across configurations was a bug signature until it
+was measured: the saturation is real, but it means the published population's temperature is not the binding
+knob -- `shift` and `error_rate` are -- which is a fact about how that envelope should be read. Second, the
+criterion is still not met: for an interval set a coverage claim bounds `P(Y > hi(X))` directly, so "cannot
+express" needs a population where the set gate certifies and its published fields still fail to bound the
+one-sided risk of the rule it deploys, and no population in this family lets it certify. `claim G3` therefore
+stays `not_measured`, the README says so in those terms, and the open question is written down instead of being
+answered by the silence of a refusal.
