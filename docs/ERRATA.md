@@ -989,10 +989,63 @@ the correct move was to report rather than widen. Before anything was deleted th
 against each other: the two `DIAGNOSTIC_GRID` expressions agree value-for-value at 29 points and are two
 distinct tuple objects, and all three `MIN_CAL`/`MIN_EVAL` pairs are 60/60 -- which is why removing a copy
 could not move a number, and also why a copy nobody policed could.
-`test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner` now pins the
-remaining copies against the owner, with `test_the_out_of_fence_pin_fires_when_a_copy_diverges` as its
-negative control (patched in memory, since planting there would edit the fenced files), so the duplication
-is visible instead of inherited.
+`test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner` pins the
+remaining copies against the owner, and it and its negative control
+`test_the_out_of_fence_pin_fires_when_a_copy_diverges` call the SAME function,
+`_assert_rubric_copies_agree`: the control walks the pin's whole comparison table, diverges one copy at
+a time by patching that module attribute in memory -- planting there would edit the fenced files -- and
+requires the resulting `AssertionError` to name the module and the name it patched and no other,
+asserting as it goes that the patch landed (`getattr` differs before and after) and that it was
+reverted. The pin also compares its table against the two modules' parsed declarations, so a copy
+cannot leave the table silently, and `METHOD` is disclosed there rather than pinned because each gate's
+`METHOD` is its own rule name (`ordinal`, `threshold`) and not the rubric's `method` (`aps`). The
+duplication is thereby visible instead of inherited, and the control has been seen to fail: neutering
+the shared comparison leaves the pin green and reddens the control. Measured 2026-10-12 by the
+controller, on this tree, with both plants: neutering `_assert_rubric_copies_agree` reddens exactly
+`test_the_out_of_fence_pin_fires_when_a_copy_diverges` and leaves all three pins green; neutering
+`_assert_signature_defaults_agree` reddens exactly the two signature-default controls and again leaves the
+pins green; `tests/test_cli.py` was restored byte-identical after each, by a harness that resolves the
+mutation sites from the file it patches and refuses to conclude anything from a row it cannot see. The harness that made that measurement was itself wrong on its first run --
+it passed `-q` and `-v` together, which cancel to verbosity 0 and print no per-row lines, and its fallback
+labelled every row it could not see as passing -- so the green verdict it reported described the reader,
+not the code, and the reader was rewritten before anything was concluded from it.
+
+Two copies this entry recorded as unpinned are now pinned, by the same shape and for the same reason:
+`certify_score.py:191` and `certify_threshold.py:279` default `alpha`, `beta` and `delta` to `0.05`,
+and `test_certify_scores_out_of_fence_signature_defaults_agree_with_the_owner` and
+`test_certify_thresholds_out_of_fence_signature_defaults_agree_with_the_owner` compare each live
+signature's defaults against `PUBLISHED_RUBRIC`, one row per file so a divergence names which certifier
+moved. Each has its own control --
+`test_certify_scores_signature_default_pin_fires_when_a_default_diverges` and
+`test_certify_thresholds_signature_default_pin_fires_when_a_default_diverges` -- which patches
+`__defaults__` in memory (`inspect.signature` reads that tuple, so the patch is the same state a file
+edit produces), calls that pin's comparison, and requires the failure to name the parameter it moved.
+`seed` is excluded on purpose: the certifiers default to `certificate.SPLIT_SEED_DEFAULT` (0) while the
+published seed is 7, and `tests/test_certify_choice.py` already pins the pair apart. Still unpinned:
+`severity.py:426-427`, `:526`, `:563`, `:576` and `tails.ALPHA_DEFAULT`; that deferral is owned by task
+#72, and naming its owner in this tracked file rather than only in a gitignored ledger is what turns
+"recorded not touched" above into a commitment someone else has to discharge.
+
+Amendment, same day, by fix round `task-6a-fix1`. The first paragraph above replaces four lines that
+read, verbatim: "`test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner`
+now pins the remaining copies against the owner, with
+`test_the_out_of_fence_pin_fires_when_a_copy_diverges` as its negative control (patched in memory,
+since planting there would edit the fenced files), so the duplication is visible instead of inherited."
+The amendment was needed because that sentence claimed more than the row it described delivered.
+Measured on this tree before the rewrite: `MIN_CAL = 61` planted at `certify_score.py:69` reddened the
+pin (rc 1) and left the control passing at rc 0, because the control asserted facts about its own
+monkeypatch and never called the comparisons it claimed to falsify. That plant is this round's own
+measurement and is preserved with its work product: the round ended before it filed a report, so its diff
+is the record of what it saw, and the rewrites it produced are what the following paragraph measures
+directly. The four claims the replaced lines
+carried -- that the pin pins the surviving copies against the owner, that its control patches in
+memory, that the reason is the fence, and that the aim is duplication made visible rather than
+inherited -- are each restated in the first paragraph above, and no number was deleted with them, so
+the amendment loses no claim. The sentence at the head of this entry that "a value guard is green on
+arrival by construction" is unchanged and still explains why the in-fence rows check binding form; the
+four rows added by this round are value guards on files the fence cannot re-bind, which is why they are
+green on arrival by design, and the difference between such a pin and a decoration is that a control
+now calls it.
 
 Two claims this round also re-measured, both holding. `audit.DEFAULT_GRID` is the audit's risk-coverage
 frontier and not the certifier's diagnostic sweep: substituting it for the rubric's grid leaves every name

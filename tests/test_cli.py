@@ -1907,8 +1907,18 @@ RUBRIC_NAMES = ("ALPHA", "BETA", "DELTA", "SEED", "METHOD", "UNIT", "N_CLAIMS", 
                 "MIN_EVAL", "DIAGNOSTIC_GRID", "DEFAULT_DELTA", "PUBLISHED_RUBRIC")
 SRC = REPO / "src" / "autorate"
 # The modules this task's fence owns and can therefore fix. `certify_score.py` and
-# `certify_threshold.py` are deliberately absent: they still carry their own copies, which is the
-# BLOCKED item in the report, and `test_the_two_out_of_fence_certifiers_...` pins them instead.
+# `certify_threshold.py` are deliberately absent, and the whole reason is a fact about this file's
+# own fence rather than about an untracked ledger: they are not in `task-6-controller-amendments.md`
+# item 7's file list, so the owner could not converge the copies they still carry --
+# `certify_score.py:69-70,75` (`MIN_CAL`/`MIN_EVAL`/`DIAGNOSTIC_GRID`), `certify_threshold.py:65-66`
+# (`MIN_CAL`/`MIN_EVAL`), and the `alpha`/`beta`/`delta` signature defaults at `certify_score.py:191`
+# and `certify_threshold.py:279`. Widening the fence to delete them was the wrong move, so each copy
+# is pinned against the owner instead:
+# `test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner`,
+# `test_certify_scores_out_of_fence_signature_defaults_agree_with_the_owner` and
+# `test_certify_thresholds_out_of_fence_signature_defaults_agree_with_the_owner`. Converging the
+# copies -- together with `severity.py`'s defaults, which task #72 owns -- is a separate round with
+# its own file list.
 RUBRIC_CONSUMERS = ("report.py", "cli.py", "audit.py", "certify_choice.py")
 
 
@@ -2106,6 +2116,155 @@ def test_audit_default_grid_stays_the_frontier_and_is_never_the_diagnostic_grid(
     assert refusal.meta["diagnostic_grid_size"] != len(DEFAULT_GRID)
 
 
+# --- one comparison surface, shared by each out-of-fence pin and by its own negative control --
+#
+# `certify_score.py` and `certify_threshold.py` sit outside this task's fence, so the rubric values
+# they re-declare -- the floors, the diagnostic grid, and the levels their signatures default to --
+# cannot be deleted here. They are policed instead, and the policing goes through ONE function per
+# copy family: the pin row calls it on the live modules, and the control row calls the same function
+# on the same live modules with one copy patched in memory. That sharing is the point. The control
+# this round replaced asserted facts about its own monkeypatch and never called what the pin
+# compared, so a file plant (`MIN_CAL = 61` at `certify_score.py:69`) reddened the pin while the
+# control stayed green at rc 0 -- a control that cannot see the pin failing is decoration.
+RUBRIC_COPY_CHECKS = (
+    # Each entry is `(module, name it declares at module level, key of PUBLISHED_RUBRIC it must equal)`
+    ("autorate.certify_score", "MIN_CAL", "min_cal"),
+    ("autorate.certify_score", "MIN_EVAL", "min_eval"),
+    ("autorate.certify_score", "DIAGNOSTIC_GRID", "grid"),
+    ("autorate.certify_threshold", "MIN_CAL", "min_cal"),
+    ("autorate.certify_threshold", "MIN_EVAL", "min_eval"),
+)
+# A rubric-NAMED copy the table above deliberately does not compare, with the reason. `METHOD` is each
+# gate's own rule name (`ordinal` at `certify_score.py:71`, `threshold` at `certify_threshold.py:67`)
+# while `PUBLISHED_RUBRIC["method"]` is the nonconformity the published certificates were measured
+# with (`aps`): two different facts wearing one word, so pinning them equal would be the error. The
+# coverage assertion in the pin row makes this list load-bearing: a fourth shared name appearing in
+# either file reddens it until it is pinned in the table or disclosed here.
+RUBRIC_COPIES_DISCLOSED_NOT_PINNED = frozenset({
+    ("autorate.certify_score", "METHOD"),
+    ("autorate.certify_threshold", "METHOD"),
+})
+RUBRIC_SIGNATURE_DEFAULTS = (
+    # Each entry is `(parameter a certifier's signature defaults to, PUBLISHED_RUBRIC key it equals)`
+    ("alpha", "alpha"),
+    ("beta", "beta"),
+    ("delta", "delta"),
+)
+
+
+def _rubric_copy_modules():
+    """The two out-of-fence modules, looked up live so a control's patch is visible to the pin."""
+    from importlib import import_module
+
+    return {name: import_module(name) for name in
+            sorted({module for module, _attribute, _key in RUBRIC_COPY_CHECKS})}
+
+
+def _assert_rubric_copies_agree(modules, published):
+    """The module-level copies against the owner: the first divergence raises and names its copy."""
+    for module_name, attribute, key in RUBRIC_COPY_CHECKS:
+        declared = getattr(modules[module_name], attribute)
+        if declared != published[key]:
+            raise AssertionError(
+                "%s.%s is %r while PUBLISHED_RUBRIC[%r] is %r: the copy diverged from its owner"
+                % (module_name, attribute, declared, key, published[key]))
+
+
+def _assert_signature_defaults_agree(module_name, fn, published):
+    """A certifier's signature defaults against the owner: the first divergence names its parameter."""
+    defaults = _certifier_signature_defaults(fn)
+    for parameter, key in RUBRIC_SIGNATURE_DEFAULTS:
+        if defaults[parameter] != published[key]:
+            raise AssertionError(
+                "%s's %s default is %r while PUBLISHED_RUBRIC[%r] is %r: a published level was "
+                "restated in a signature" % (module_name, parameter, defaults[parameter], key,
+                                             published[key]))
+
+
+def _certifier_signature_defaults(fn):
+    """The rubric-owned defaults as the LIVE signature binds them, keyed by parameter name.
+
+    Read through `inspect.signature` rather than out of the source text, because the claim being
+    policed is what a caller who omits the argument gets, and that is a fact about the object.
+    """
+    inspect = __import__("inspect")
+    parameters = inspect.signature(fn).parameters
+    defaults = {}
+    for parameter, _key in RUBRIC_SIGNATURE_DEFAULTS:
+        assert parameter in parameters, "%s declares no %s parameter any more" % (
+            fn.__qualname__, parameter)
+        default = parameters[parameter].default
+        assert default is not inspect.Parameter.empty, (
+            "%s's %s parameter stopped carrying a default, so the pin has no copy to compare" % (
+                fn.__qualname__, parameter))
+        defaults[parameter] = default
+    return defaults
+
+
+def _a_diverged_copy(current, published):
+    """A value guaranteed to differ from BOTH what the module declares now and what the owner says.
+
+    Derived from those two values instead of typed, because a typed value (the `owner + 1` the old
+    control used) silently becomes a no-op the moment the file itself is planted with it -- exactly
+    the ineffectual patch this control is supposed to catch.
+    """
+    if isinstance(current, tuple):
+        assert current, "an empty copy has no derived divergence; extend this helper deliberately"
+        candidate = current + (current[-1],)
+    else:
+        candidate = current + 1
+        if candidate == published:
+            candidate = current + 2
+    assert candidate != current and candidate != published, (candidate, current, published)
+    return candidate
+
+
+def _drive_signature_default_control(monkeypatch, module_name, function_name):
+    """Patch one signature default of a live certifier at a time and run THAT pin's comparison.
+
+    The divergence cannot be planted in the file from inside this fence, so it is planted on the
+    function object: `inspect.signature` reads `__defaults__`, so replacing that tuple is the same
+    state a file edit produces and restoring it is the same revert. `monkeypatch` owns the revert,
+    and the row asserts the patch landed and reverted rather than trusting either.
+    """
+    from importlib import import_module
+
+    from autorate.certificate import PUBLISHED_RUBRIC
+
+    fn = getattr(import_module(module_name), function_name)
+    defaulted = [p.name for p in __import__("inspect").signature(fn).parameters.values()
+                 if p.default is not __import__("inspect").Parameter.empty]
+    for parameter, key in RUBRIC_SIGNATURE_DEFAULTS:
+        assert parameter in defaulted, "%s's %s has no default to diverge" % (
+            function_name, parameter)
+    before = getattr(fn, "__defaults__")
+    assert before is not None and len(before) == len(defaulted), (before, defaulted)
+    for parameter, key in RUBRIC_SIGNATURE_DEFAULTS:
+        index = defaulted.index(parameter)
+        diverged = list(before)
+        diverged[index] = _a_diverged_copy(before[index], PUBLISHED_RUBRIC[key])
+        monkeypatch.setattr(fn, "__defaults__", tuple(diverged))
+        after = getattr(fn, "__defaults__")
+        assert after != before, (
+            "the patch did not land on %s's defaults, which are still %r" % (
+                function_name, before))
+        assert after[index] != PUBLISHED_RUBRIC[key], (
+            "the patch left %s's %s equal to the owner (%r), so nothing diverged" % (
+                function_name, parameter, after[index]))
+        with pytest.raises(AssertionError) as caught:
+            _assert_signature_defaults_agree(module_name, fn, PUBLISHED_RUBRIC)
+        message = str(caught.value)
+        assert "%s default is %r" % (parameter, after[index]) in message, message
+        assert module_name in message, message
+        for other, _key in RUBRIC_SIGNATURE_DEFAULTS:
+            if other != parameter:
+                assert "%s default is" % other not in message, message
+        monkeypatch.undo()
+        assert getattr(fn, "__defaults__") == before, (
+            "the patch of %s's defaults was not reverted, so it would leak into the pin above" % (
+                function_name,))
+
+
 def test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_the_owner():
     """The duplication #62 cannot finish inside its fence, recorded as a pin rather than as a claim.
 
@@ -2113,35 +2272,98 @@ def test_the_two_out_of_fence_certifiers_still_declare_copies_that_agree_with_th
     `task-6-controller-amendments.md` item 7's file list, so item 9's owner covers the names and this
     row polices the copies instead of deleting them. It is TRUE on arrival by construction -- the
     copies agree with the owner at `c8ec8f8`, which is the pre-deletion equality measurement the
-    dispatch requires -- and it is the guard that turns a silent divergence into a red. Its negative
-    control is the monkeypatch row below, not a file plant, because planting here would write to the
-    two files the fence exists to protect.
+    dispatch requires -- and it is the guard that turns a silent divergence into a red. That red is
+    produced by `_assert_rubric_copies_agree`, the one comparison this row and its negative control
+    share; the control is an in-memory patch rather than a file plant because planting there would
+    write to the two files the fence exists to protect.
     """
-    from importlib import import_module
-
     from autorate.certificate import PUBLISHED_RUBRIC
 
-    score = import_module("autorate.certify_score")
-    threshold = import_module("autorate.certify_threshold")
-    assert (score.MIN_CAL, score.MIN_EVAL) == (PUBLISHED_RUBRIC["min_cal"],
-                                               PUBLISHED_RUBRIC["min_eval"])
-    assert (threshold.MIN_CAL, threshold.MIN_EVAL) == (PUBLISHED_RUBRIC["min_cal"],
-                                                       PUBLISHED_RUBRIC["min_eval"])
-    assert score.DIAGNOSTIC_GRID == PUBLISHED_RUBRIC["grid"]
+    _assert_rubric_copies_agree(_rubric_copy_modules(), PUBLISHED_RUBRIC)
+
+    # The comparison above is worth nothing once its table stops covering the copies the two modules
+    # declare, so the table is checked against the parsed source rather than against a count typed
+    # here: a copy removed from the table has to be disclosed below or this row goes red.
+    declared = set()
+    for module_name in sorted({m for m, _a, _k in RUBRIC_COPY_CHECKS}):
+        _imported, assigned = _module_bindings(SRC / (module_name.rsplit(".", 1)[-1] + ".py"))
+        declared.update((module_name, name) for name in assigned if name in RUBRIC_NAMES)
+    pinned = {(module_name, attribute) for module_name, attribute, _key in RUBRIC_COPY_CHECKS}
+    assert declared == pinned | RUBRIC_COPIES_DISCLOSED_NOT_PINNED, (
+        "copies unpinned by the table: %s; table entries no longer declared: %s" % (
+            sorted(declared - pinned - RUBRIC_COPIES_DISCLOSED_NOT_PINNED),
+            sorted(pinned - declared)))
 
 
 def test_the_out_of_fence_pin_fires_when_a_copy_diverges(monkeypatch):
-    """Negative control for the row above: patch the copy, watch the same comparisons go red.
+    """Negative control for the row above: it drives THAT row's comparison against a diverged copy.
 
-    A pin nobody has seen fail is decoration (R-149's class), and this one cannot be falsified by
-    editing `certify_score.py` from inside this fence, so the defect is planted in memory instead.
+    The first version of this row patched a module attribute and then asserted facts about its own
+    patch, never calling anything the pin compared. Measured on `plan/b1-task6-fix1` before the
+    rewrite: `MIN_CAL = 61` planted at `certify_score.py:69` reddened the pin and left this row
+    passing at rc 0, which is the decoration R-149's class describes.
     """
-    from importlib import import_module
-
     from autorate.certificate import PUBLISHED_RUBRIC
 
-    score = import_module("autorate.certify_score")
-    monkeypatch.setattr(score, "MIN_CAL", PUBLISHED_RUBRIC["min_cal"] + 1)
-    assert score.MIN_CAL != PUBLISHED_RUBRIC["min_cal"], "the patch did not land"
-    monkeypatch.setattr(score, "MIN_CAL", PUBLISHED_RUBRIC["min_cal"])
-    assert score.MIN_CAL == PUBLISHED_RUBRIC["min_cal"]
+    assert RUBRIC_COPY_CHECKS, "the pin's comparison table is empty, so nothing below can fail"
+    for module_name, attribute, key in RUBRIC_COPY_CHECKS:
+        modules = _rubric_copy_modules()
+        before = getattr(modules[module_name], attribute)
+        monkeypatch.setattr(modules[module_name], attribute,
+                            _a_diverged_copy(before, PUBLISHED_RUBRIC[key]))
+        after = getattr(modules[module_name], attribute)
+        assert after != before, (
+            "the patch did not land on %s.%s, which is still %r" % (
+                module_name, attribute, before))
+        assert after != PUBLISHED_RUBRIC[key], (
+            "the patch left %s.%s equal to the owner (%r), so no copy actually diverged" % (
+                module_name, attribute, after))
+        with pytest.raises(AssertionError) as caught:
+            _assert_rubric_copies_agree(modules, PUBLISHED_RUBRIC)
+        message = str(caught.value)
+        assert "%s.%s is %r" % (module_name, attribute, after) in message, message
+        for other_module, other_attribute, _key in RUBRIC_COPY_CHECKS:
+            if (other_module, other_attribute) != (module_name, attribute):
+                assert "%s.%s is" % (other_module, other_attribute) not in message, message
+        monkeypatch.undo()
+        assert getattr(modules[module_name], attribute) == before, (
+            "the patch of %s.%s was not reverted, so it would leak into the pin above" % (
+                module_name, attribute))
+
+
+def test_certify_scores_out_of_fence_signature_defaults_agree_with_the_owner():
+    """`certify_score.py:191` still writes `alpha/beta/delta = 0.05`; pinned to the owner, not deleted.
+
+    The signature defaults are a third copy of the published levels, in a file this fence cannot
+    change, so they are policed the same way as the module-level floors above: green on arrival
+    because the restated numbers do agree, red the moment one of them stops agreeing. `seed` is not
+    in the table -- the certifiers' own split default is `certificate.SPLIT_SEED_DEFAULT` (0) while
+    the published seed is 7, and collapsing them re-rolls the partition.
+    """
+    from autorate.certificate import PUBLISHED_RUBRIC
+    from autorate.certify_score import certify_score
+
+    _assert_signature_defaults_agree("autorate.certify_score", certify_score, PUBLISHED_RUBRIC)
+
+
+def test_certify_thresholds_out_of_fence_signature_defaults_agree_with_the_owner():
+    """`certify_threshold.py:279` restates the same three levels, and is pinned identically.
+
+    Separate from the row above on purpose: one row per file is what lets a divergence name which
+    certifier moved.
+    """
+    from autorate.certificate import PUBLISHED_RUBRIC
+    from autorate.certify_threshold import certify_threshold
+
+    _assert_signature_defaults_agree("autorate.certify_threshold", certify_threshold,
+                                     PUBLISHED_RUBRIC)
+
+
+def test_certify_scores_signature_default_pin_fires_when_a_default_diverges(monkeypatch):
+    """Negative control for `certify_score`'s signature pin, driving that pin's own comparison."""
+    _drive_signature_default_control(monkeypatch, "autorate.certify_score", "certify_score")
+
+
+def test_certify_thresholds_signature_default_pin_fires_when_a_default_diverges(monkeypatch):
+    """Negative control for `certify_threshold`'s signature pin, driving that pin's own comparison."""
+    _drive_signature_default_control(monkeypatch, "autorate.certify_threshold", "certify_threshold")
