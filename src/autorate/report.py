@@ -305,7 +305,9 @@ def read_severity_certificate(path: Path) -> SeverityCertificate:
     `read_certificate` is `Certificate.from_dict` and cannot read this artefact -- the two shapes refuse
     each other by version (see `severity.SEVERITY_SHAPE_VERSION`). A wrong shape here raises
     `SeverityShapeMismatch`, a `ValueError`, which `load_published` answers at exit 4 for a table-declared
-    path and `cli.main` answers at 2 for a path the operator typed.
+    path. No shipped command takes a severity artefact path today -- `severity` reads records and writes an
+    artefact, and `gate`/`compare` still read the set shape -- so this refusal has exactly one door in this
+    build, and it is the 4 below rather than a 2 the operator can be sent to.
     """
     return SeverityCertificate.from_dict(json.loads(Path(path).read_text()))
 
@@ -373,10 +375,14 @@ def rederive_severity(expect, expect_rubric, fields, rubric_fields, rubric=None,
         fresh = certify_severity(records, alpha=chosen["alpha"], delta=chosen["delta"],
                                  direction=direction, seed=chosen["seed"])
         if rubric is not None:
-            # The producer echoes alpha/delta/seed inside `meta` (`severity._intake`), which this gate
-            # compares by whole-dict equality: a caller handing in a protocol has to move the echo too, or
-            # every frozen tree reads red on an artefact that was re-exported correctly. R-225's trap,
-            # reached from the ordinal side.
+            # The producer echoes `alpha`/`delta`/`seed` into `meta` (`severity._intake`) and this gate
+            # compares `meta` whole, so a caller handing in a protocol has to keep those three in step.
+            # Measured at this tip: the echo branch is the identity -- `certify_severity` is called with
+            # `chosen` two lines above, and `_intake` writes back exactly what it was given -- so no test
+            # can force it to fire and the ordinal side of R-225 is NOT what this line covers. It stays as an
+            # explicit belt: if the producer ever stops echoing, the whole-dict comparison goes red here
+            # rather than at every frozen tree reading the artefact. The owner of those three values is
+            # `_intake`, and `severity.py`'s `meta` is compared against it by `certify`/`severity`'s own rows.
             fresh = replace(fresh, meta={**fresh.meta, "alpha": chosen["alpha"],
                                          "delta": chosen["delta"], "seed": chosen["seed"]})
         if stamp is not None:

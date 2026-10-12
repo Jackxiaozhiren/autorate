@@ -1259,3 +1259,56 @@ control that would establish it is item 3, unwritten. It also records the way th
 `P(Y > hi(X))` through the set gate's own coverage statement, so the honest reading of the experiment may be
 that G3 fails and the claim is deleted. `docs/SEVERITY.md` itself needed no edit, because every figure in it
 is read from the artefact it describes.
+
+**Fix round, same day, from the independent review.** A reviewer agent read the brief, the controller's
+amendments and the whole diff, and returned changes requested. Four of its findings were real defects in the
+shipped program and are fixed here, in the order that matters:
+
+- **Four exit codes escaped as 1.** `SeverityCertificate.from_dict` read four slots before the dataclass could
+  check them, so a published artefact with `envelope` removed answered `KeyError`, a `n_cal` holding a JSON
+  string answered `TypeError` inside `summary()`'s `%d`, a `backend` holding a list answered
+  `TypeError: unhashable type` at the records lookup, and a document that is a top-level JSON array answered
+  `AttributeError` on `.get`. `cli.main` maps none of those, so each was rc 1 -- the one number this
+  project's contract forbids -- on the door whose whole purpose is to name the artefact at 4. Every claim
+  above was reproduced by hand before being fixed, and again through `main(["verify"])` afterwards. The
+  loader now refuses a non-object, requires every field `to_dict` writes (the two dataclass defaults were
+  what let `envelope` be absent *and* read), and guards the four slots by name. The rc-1 escape was
+  invisible to the suite because the adopted shape rows fed the loader only documents with every key present:
+  the new parametrised row walks the tampered copies through the shipped command, so it asserts the exit
+  code rather than the exception.
+- **The `--doc` guard ran after the artefact was written.** Its refusal ends "Nothing was written" and its
+  help says the same; measured, a refused run left its `--out` file on disk. The check now happens before
+  anything is read, certified or written, so both sentences are true.
+- **The `--doc` guard compared two of the three values the table row declares.** `direction` -- the element
+  the severity table exists to carry -- was unchecked, so `--direction over` at the published paths exited
+  0 and rewrote the published certificate as an over-call certificate under a document whose own bullet
+  still named `under`: artefact and prose agreed with each other and disagreed with the publication, which is
+  precisely what `verify`'s byte comparison of the document cannot see. All three values are compared now.
+- **Two whole production additions had no test that could fail on them.** `certificate.py`'s new clause (the
+  one that names the severity fields and says `autorate severity` is their producer) survived being emptied
+  to `[]`, and no row passed `--doc` at all, so the guard, its write and its message were dead to the suite.
+  The cross-shape row now asserts the clause's own words, and three `--doc` rows exist: the published pair
+  reproduced byte for byte in a staged copy, and the two refusals above.
+
+Three of the review's sentences about this tree were stale when they arrived -- the README tense and the
+ERRATA append had already been corrected by the time its report landed, and `report.read_severity_certificate`
+no longer claims a typed door -- and each was re-measured against the tree rather than accepted or dismissed.
+Two claims the review found overstated are corrected in prose, because they were not the code's fault: the
+loader's docstring said every refusal is named when four were not (now true, and the docstring enumerates the
+slots guarded by hand), and `cmd_severity`'s rc-2 list promised a door no command opens -- this build reads no
+severity artefact from an operator-typed path, so the shape refusal has exactly one door, at 4, and the help
+text and the two docstrings now say so. One measured finding is recorded rather than "fixed": the meta-echo
+branch in `rederive_severity` is provably the identity at this tip (`certify_severity` is called with the same
+values it re-states, and `_intake` echoes what it was given), so its comment no longer claims to close R-225's
+ordinal side; it stays as a declared belt, and the owner of those three values is named as `_intake`.
+
+Parked with rulings, none of them load-bearing for a published number: the derived document prints the word
+`None` for three `meta` keys a refused certificate does not carry (latent -- the published row is feasible, and
+the fix is the delete-the-sentence rule, not a hand-tuned value); the decimal-only prose guard is blind to the
+integers it claims to police, so a hand-typed `600` in `render_severity` would pass it; the exit-code sweep's
+`set(codes) <= {0,2,3,4}` is implied by the per-arm list above it and adds nothing; the ordinal arm's
+`rederive_severity` duplicates `rederive_massive` rather than sharing it, which is where the four new guards
+had to be written twice; and `protocol.py`'s "the tables are the one owner of what is published" sentence
+still enumerates five artefacts now that a sixth exists. Each is opened as its own follow-up, and the
+denominators did not move with this fix round: `verify` still reads `128 /128` absent and `163 /163` present,
+because the guards close doors the gate never opened.

@@ -95,7 +95,7 @@ nothing about which side it missed, while a set rule refuses where it cannot say
 from __future__ import annotations
 
 import json
-from dataclasses import MISSING, asdict, dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional, Sequence
 
 from .case_count import case_key
@@ -871,20 +871,32 @@ class SeverityCertificate:
     def from_dict(cls, d: dict) -> "SeverityCertificate":
         """Read a stored severity certificate, naming the shape it found before anything else.
 
-        Three arms, in this order, each with its own statement:
-        the SHAPE (a tag that is not this build's severity shape, including a set certificate's tag -- the
-        two shapes refuse each other, and a field diff would have said `unknown ['ahat', ...]` about what
-        is really a version); the FIELD NAMES (unknown or missing, which is a stale or hand-edited
-        artefact); and then the shape's own invariants, which `__post_init__` polices -- including the
-        types, because a string in a numeric slot used to answer a comparison with `TypeError` and rc 1.
+        Four arms, in this order, each with its own statement:
+        the OBJECT (a JSON array or scalar is not this shape, and reading a key off it would answer with an
+        `AttributeError` no exit-code arm maps); the SHAPE (a tag that is not this build's severity shape,
+        including a set certificate's tag -- the two shapes refuse each other, and a field diff would have
+        said `unknown ['ahat', ...]` about what is really a version); the FIELD NAMES (unknown or missing --
+        and every field is required, because `to_dict` writes all of them, so an artefact missing `envelope`
+        or `meta` is incomplete rather than old); and the slots this function reads before the dataclass can
+        check them (`n_cal`, `n_eval`, `backend`, `envelope`), each refused by name. What is left goes to the
+        shape's own invariants, which `__post_init__` polices -- the probability and level slots, where a
+        string used to answer a comparison with `TypeError` and rc 1.
 
         Every refusal is a `SeverityShapeMismatch`, which is a `ValueError`: `load_published` answers it
-        with the named refusal at exit 4 for a table-declared artefact, and `cli.main`'s general arm answers
-        it with 2 for a path the operator typed. Neither reading may be silent, and neither may escape the
-        documented 0/2/3/4 contract.
+        with the named refusal at exit 4 for a table-declared artefact. Neither reading may be silent, and
+        neither may escape the documented 0/2/3/4 contract -- the four slots guarded by hand here are exactly
+        where it escaped, and `test_a_published_severity_artefact_with_a_wrongly_typed_slot_refuses_at_four_not_one`
+        walks each through `main(["verify"])`.
         """
         from dataclasses import fields
 
+        if not isinstance(d, dict):
+            # `.get` is the first thing this function does, so a document that is a JSON array answered with
+            # an `AttributeError` no exit-code arm maps -- rc 1 on a path whose whole contract is 0/2/3/4.
+            raise SeverityShapeMismatch(
+                "stored severity certificate is a JSON %s, not an object: this shape is one mapping of the "
+                "certificate's fields -- regenerate it with `autorate severity`"
+                % ("array" if isinstance(d, list) else type(d).__name__))
         found = d.get(SEVERITY_SHAPE_KEY)
         if found != SEVERITY_SHAPE_VERSION:
             named = (repr(found) if SEVERITY_SHAPE_KEY in d else
@@ -902,12 +914,34 @@ class SeverityCertificate:
                    % ", ".join(sorted(foreign)) if foreign else ""))
         names = {f.name for f in fields(cls)}
         unknown = sorted(set(d) - names - {SEVERITY_SHAPE_KEY})
-        defaulted = {f.name for f in fields(cls) if f.default is not MISSING}
-        missing = sorted(names - set(d) - defaulted)
+        # Every field is required, including the two that carry a dataclass default: `to_dict` writes all of
+        # them, so an artefact missing `envelope` or `meta` is not an older certificate, it is an incomplete
+        # one -- and reading it with the default substituted made `d["envelope"]` below raise `KeyError`, an
+        # exception no exit-code arm maps. The rc 1 escaped through the door that is supposed to name the
+        # artefact at rc 4.
+        missing = sorted(names - set(d))
         if unknown or missing:
             raise SeverityShapeMismatch(
                 "stored certificate does not match the severity certificate shape: unknown %s, "
                 "missing %s -- regenerate it with `autorate severity`" % (unknown, missing))
+        # The slots whose wrong type answers with an exception rather than a refusal, checked before anything
+        # reads them: the summary formats `n_cal`/`n_eval` with `%d`, and `verify` looks the records up by
+        # `stored.backend`, so a list there is `TypeError: unhashable type`. `bool` is an `int` subclass and a
+        # case count is never a flag, so it is refused beside the strings and the nulls.
+        counts = sorted(name for name in ("n_cal", "n_eval")
+                        if not isinstance(d[name], int) or isinstance(d[name], bool))
+        if counts:
+            raise SeverityShapeMismatch(
+                "severity certificate's %s must be an integer case count, found %s -- regenerate it with "
+                "`autorate severity`" % (", ".join(counts), [repr(d[n]) for n in counts]))
+        if not isinstance(d["backend"], str):
+            raise SeverityShapeMismatch(
+                "severity certificate's `backend` must be a backend name, found %r -- regenerate it with "
+                "`autorate severity`" % (d["backend"],))
+        if not isinstance(d["envelope"], list) or not all(isinstance(line, str) for line in d["envelope"]):
+            raise SeverityShapeMismatch(
+                "severity certificate's `envelope` must be a list of assumption lines, found %s -- "
+                "regenerate it with `autorate severity`" % (type(d["envelope"]).__name__,))
         kw = dict(d)
         kw.pop(SEVERITY_SHAPE_KEY)
         kw["envelope"] = tuple(d["envelope"])

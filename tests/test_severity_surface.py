@@ -169,6 +169,15 @@ def test_a_set_certificate_is_not_read_as_a_severity_certificate_and_vice_versa(
     with pytest.raises(CertificateShapeMismatch) as caught:
         Certificate.from_dict(json.loads(_cert().to_json()))
     assert "found shape %d" % SEVERITY_SHAPE_VERSION in str(caught.value), str(caught.value)
+    # The clause, not only the version number: `certificate.py` names the severity fields it found and says
+    # which command produces them, because "regenerate it with `autorate certify`" is an instruction that
+    # cannot produce this artefact. Emptying the field list (`foreign = []`) leaves the version sentence
+    # intact and the guidance gone, so without these assertions the whole clause is decoration.
+    text = str(caught.value)
+    for name in ("ahat", "direction", "price_bound", "override_bound", "measured_violation"):
+        assert name in text, (name, text)
+    assert "`autorate severity` is its producer" in text, text
+    assert "regenerate it with `autorate certify`" in text, text
 
 
 def test_read_severity_certificate_accepts_the_published_bytes_and_refuses_a_wrong_shape(tmp_path):
@@ -306,6 +315,67 @@ def test_the_documented_directions_are_the_closed_set_reachable_from_the_parser(
     sub = parser._subparsers._group_actions[0].choices["severity"]
     action = next(a for a in sub._actions if a.dest == "direction")
     assert tuple(action.choices) == tuple(DIRECTIONS), action.choices
+
+
+# --- the `--doc` arm, which publishes the artefact and its document together ---------------------
+
+
+def test_doc_writes_the_published_pair_the_command_is_named_for(tmp_path, in_repo):
+    """`--doc` is the only way the tracked document is produced, so its bytes are the command's claim.
+
+    Run in a staged copy of the committed trees, because the guard only admits the run that names the
+    published paths -- and a passing `--doc` arm writes those paths. Asserting the pair reproduces the
+    committed bytes is what turns "the artefact and its document land in one commit" (PF-D-3's rule) from a
+    sentence into a checked statement: an artefact re-exported without re-rendering its document, or the
+    reverse, fails here rather than in `verify`'s byte comparison after somebody else commits it.
+    """
+    from test_cli import run, stage_committed_tree
+
+    work = tmp_path / "checkout"
+    stage_committed_tree(work)
+    p = run("severity", "data/records_ordinal_synthetic.jsonl", "--direction", "under",
+            "--protocol", "protocol.json", "--out", "data/cert_severity_ordinal.json",
+            "--doc", "docs/SEVERITY.md", cwd=work)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert (work / "data" / "cert_severity_ordinal.json").read_text() == \
+        (REPO / report.SEVERITY_CERTS[report.SEVERITY_LABEL][1]).read_text(), p.stdout
+    assert (work / "docs" / "SEVERITY.md").read_text() == (REPO / cli.SEVERITY_MD).read_text(), p.stdout
+
+
+@pytest.mark.parametrize("extra,needle", [
+    (["--out", "other.json"], "--out"),
+    (["--direction", "over"], "direction"),
+])
+def test_doc_refuses_before_writing_anything_else(tmp_path, monkeypatch, in_repo, capsys, extra, needle):
+    """The guard runs before the artefact is written, and it checks the direction the table declares.
+
+    Both arms were measured against the code as adopted: with `--out other.json` the command exited 2 while
+    `other.json` sat on disk, so its own refusal text ("Nothing was written") and its help ("writing
+    nothing") were false; and `--direction over` at the published paths exited 0 and rewrote the artefact as
+    an `over` certificate while the freshly-rendered document's bullet still said `under`, because the guard
+    compared only `SEVERITY_CERTS[label][:2]` and left out the element the table exists to carry.
+
+    The table is re-pointed at a scratch certificate path so a guard that fails open cannot rewrite the
+    tracked artefact, which would leave the suite asserting against bytes it just changed.
+    """
+    _records_path, cert_path, _direction = report.SEVERITY_CERTS[report.SEVERITY_LABEL]
+    published_out = str(tmp_path / Path(cert_path).name)
+    table = {label: (records, published_out, direction)
+             for label, (records, _stored, direction) in sorted(report.SEVERITY_CERTS.items())}
+    monkeypatch.setattr(cli, "SEVERITY_CERTS", table)
+    monkeypatch.setattr(report, "SEVERITY_CERTS", table)
+    written = tmp_path / "other.json"
+    out = str(written) if "--out" in extra else published_out
+    direction = extra[extra.index("--direction") + 1] if "--direction" in extra else "under"
+    argv = ["severity", report.SEVERITY_RECORDS, "--direction", direction,
+            "--protocol", "protocol.json", "--out", out, "--doc", str(tmp_path / "SEVERITY.md")]
+    code = rc(argv)
+    captured = capsys.readouterr()
+    assert code == 2, (code, captured.out, captured.err)
+    assert needle in captured.err, captured.err
+    assert not written.exists(), "the refusal wrote an artefact, and says it wrote nothing"
+    assert not (tmp_path / "SEVERITY.md").exists(), "the refusal wrote the published document"
+    assert not Path(published_out).exists(), "the refusal wrote the published certificate"
 
 
 def test_no_severity_command_path_exits_one(tmp_path, capsys):
@@ -486,6 +556,55 @@ def test_a_wrong_shaped_published_severity_artefact_is_four_not_two(tmp_path, mo
     assert code == 4, code
     err = capsys.readouterr().err
     assert "PUBLISHED ARTEFACT UNAVAILABLE" in err and "report.SEVERITY_CERTS" in err, err
+
+
+@pytest.mark.parametrize("mutate,needle", [
+    (lambda d: d.pop("envelope"), "missing"),
+    (lambda d: d.pop("meta"), "missing"),
+    (lambda d: d.update({"n_cal": "600"}), "an integer"),
+    (lambda d: d.update({"n_eval": None}), "an integer"),
+    (lambda d: d.update({"backend": ["laya"]}), "a backend name"),
+    (lambda d: d.update({"envelope": "exchangeability assumed"}), "must be a list"),
+    (lambda d: d.update({"envelope": [1]}), "must be a list"),
+])
+def test_a_published_severity_artefact_with_a_wrongly_typed_slot_refuses_at_four_not_one(
+        tmp_path, monkeypatch, in_repo, capsys, mutate, needle):
+    """The four slots whose wrong type used to answer with an unmapped exception, walked at the entry point.
+
+    Measured before the guard existed: `envelope` absent raised `KeyError`, `n_cal` as a JSON string raised
+    `TypeError` out of `summary()`'s `%d`, `backend` as a list raised `TypeError: unhashable type` at the
+    records lookup, and a top-level JSON array raised `AttributeError` on `.get` -- and `cli.main` maps none
+    of those, so each was exit 1, the one number the 0/2/3/4 contract forbids. They are asserted through
+    `main(["verify"])` rather than through `from_dict` because the claim being policed is the shipped
+    program's exit code, and a reader that tests the loader directly can watch a `TypeError` and still call
+    it a pass.
+    """
+    _point_table_at_copies(tmp_path, monkeypatch, mutate=mutate)
+    code = main(["verify"])
+    assert code == 4, code
+    err = capsys.readouterr().err
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err and "report.SEVERITY_CERTS" in err, err
+    assert needle in err, err
+
+
+def test_a_published_severity_artefact_that_is_not_a_json_object_refuses_by_its_type(
+        tmp_path, monkeypatch, in_repo, capsys):
+    """A document that is an array is not a certificate, and `.get` on it is not a refusal.
+
+    The shape guard reads `d[SEVERITY_SHAPE_KEY]` before anything else, so a list answers `AttributeError`
+    and the gate dies at 1 -- the same door as the tampered artefacts above, arriving from a different shape.
+    """
+    table = {}
+    for label, (records_path, cert_path, direction) in sorted(report.SEVERITY_CERTS.items()):
+        doc = json.loads((REPO / cert_path).read_text())
+        dst = tmp_path / Path(cert_path).name
+        dst.write_text(json.dumps([doc], indent=2) + "\n")
+        table[label] = (records_path, str(dst), direction)
+    monkeypatch.setattr(cli, "SEVERITY_CERTS", table)
+    monkeypatch.setattr(report, "SEVERITY_CERTS", table)
+    assert main(["verify"]) == 4
+    err = capsys.readouterr().err
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err and "array" in err, err
 
 
 def test_a_missing_published_severity_artefact_is_four(tmp_path, monkeypatch, in_repo, capsys):

@@ -425,19 +425,50 @@ def cmd_severity(args) -> int:
     - **rc 2** -- a records path that is not there or not a record, a budget that is not a probability, a
       `--delta` loose enough that `correction.joint_level` refuses to derive a level from it, a direction
       outside the closed set, a population carrying no `score` record or spanning two backends or two
-      rubric widths, `--direction both_sides_sum` refused by its own measured curve, an artefact whose
-      shape this build does not read on a PATH THE OPERATOR TYPED, or a rubric flag that contradicts the
-      `--protocol` document it was handed.
+      rubric widths, `--direction both_sides_sum` refused by its own measured curve, or a rubric flag that
+      contradicts the `--protocol` document it was handed. A stored severity artefact is not in this list:
+      this command reads records and writes an artefact, and no other command reads a severity artefact, so
+      there is no typed path over which a wrong-shaped certificate can arrive -- its refusal is the rc-4 arm
+      below, reached through `verify`, which is the door the publication declares.
     - **rc 4** -- two kinds, neither of them the operator's input: a table-declared severity artefact that
       is absent or unreadable or wrong-shaped (`PublishedArtefactUnavailable`, reached by `verify`), and an
       invariant of our own arithmetic (`ArithmeticError`, the search-and-scan disagreement).
 
     A refusal never exits 1, which is why `SeverityShapeMismatch` is a `ValueError` subclass and why the
     shape guards refuse a JSON string in a numeric slot by name instead of letting the comparison answer
-    with a `TypeError` no arm maps.
+    with a `TypeError` no arm maps. That sentence was false for four slots until the loader grew its own
+    guards: a missing `envelope` answered `KeyError`, a string `n_cal` answered `TypeError` inside
+    `summary()`'s `%d`, a list `backend` answered `TypeError: unhashable type` at the records lookup, and a
+    top-level JSON array answered `AttributeError` on `.get` -- all four exit 1, and all four are now refused
+    by name at 4 and walked through `main(["verify"])` by a test.
     """
     protocol = load_protocol(Path(args.protocol)) if args.protocol else None
     rubric = _rubric_or_freeze(args, protocol, SEVERITY_RUBRIC_FLAGS)
+    if args.doc:
+        # Checked before anything is read, certified or written, because this refusal's own sentence says
+        # "Nothing was written" and its help says the same: the guard ran after `out.write_text`, so a
+        # refused run left an artefact on disk while telling the operator it had not.
+        #
+        # The published document quotes the artefact at the table's own paths, so it may only be written by
+        # the run that produces that artefact. Two reasons, one rule: a document naming the published paths
+        # while carrying figures from somebody else's records is the misattribution this file keeps
+        # deleting, and a path the operator typed would land inside a tracked file -- the machine-path
+        # defect class `protocol._absolute` polices on the freeze's side.
+        #
+        # All three values the table row declares are compared, `direction` included: it is the element the
+        # table exists to carry (see `report.SEVERITY_CERTS`), and a run at the published paths with
+        # `--direction over` used to pass, rewriting the artefact as an over-call certificate above a
+        # document whose own bullet still named `under` -- the pair disagreeing with the publication while
+        # agreeing with each other, which is the one thing `verify`'s document arm cannot see.
+        published_records, published_cert, published_direction = SEVERITY_CERTS[SEVERITY_LABEL]
+        if (str(args.records) != published_records or str(args.out) != published_cert
+                or args.direction != published_direction):
+            raise UsageError(
+                "--doc publishes %s, which quotes the ordinal artefact at its declared paths and rule, so "
+                "it requires the run that produces them: --records %s --out %s --direction %s (this run "
+                "named --records %s --out %s --direction %s). Nothing was written"
+                % (args.doc, published_records, published_cert, published_direction,
+                   args.records, args.out, args.direction))
     recs = _records_from(Path(args.records))
     cert = certify_severity(recs, direction=args.direction, **rubric)
     if protocol is not None:
@@ -456,22 +487,9 @@ def cmd_severity(args) -> int:
               % (args.protocol, protocol.protocol_version, protocol.frozen_at,
                  protocol_digest(protocol)))
     if args.doc:
-        # The published document quotes the artefact at the table's own paths, so it may only be written by
-        # the run that produces that artefact. Two reasons, one rule: a document naming the published paths
-        # while carrying figures from somebody else's records is the misattribution this file keeps
-        # deleting, and a path the operator typed would land inside a tracked file -- the machine-path
-        # defect class `protocol._absolute` polices on the freeze's side.
-        label = SEVERITY_LABEL
-        published_records, published_cert = SEVERITY_CERTS[label][:2]
-        if str(args.records) != published_records or str(args.out) != published_cert:
-            raise UsageError(
-                "--doc publishes %s, which quotes the ordinal artefact at its declared paths, so it "
-                "requires the run that produces them: --records %s --out %s (this run named "
-                "--records %s --out %s). Nothing was written"
-                % (args.doc, published_records, published_cert, args.records, args.out))
         doc = Path(args.doc)
         doc.parent.mkdir(parents=True, exist_ok=True)
-        doc.write_text(render_severity(label, cert))
+        doc.write_text(render_severity(SEVERITY_LABEL, cert))
         print("wrote %s" % args.doc)
     print("wrote %s" % args.out)
     return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
@@ -1044,9 +1062,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--doc", default=None,
                    help="also publish the document quoting this artefact's figures "
                         "(docs/SEVERITY.md). Only allowed for the run that produces the published "
-                        "artefact -- --records and --out must name report.SEVERITY_CERTS, or the "
-                        "document would quote published paths over somebody else's numbers. Exits 2 "
-                        "otherwise, writing nothing.")
+                        "artefact -- --records, --out and --direction must all name what "
+                        "report.SEVERITY_CERTS declares, or the document would quote published paths and a "
+                        "published rule over somebody else's numbers. Exits 2 otherwise, writing nothing: "
+                        "the check runs before any file is opened.")
     s.set_defaults(fn=cmd_severity)
 
     m = sub.add_parser("compare", help="two certificates side by side")
