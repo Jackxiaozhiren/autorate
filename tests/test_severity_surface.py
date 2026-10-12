@@ -1,0 +1,606 @@
+"""Task 72 items 1 and 2: the severity command surface, its serialisation shape, the published artefact.
+
+G3's engine has been tested since Plan B2 landed and nothing shipped could reach it: `autorate verify`, CI
+and a reader of the documents all answered the one-sided guarantee by pointing at a library. These rows are
+the difference between "a function that works when a test calls it" and "a program that produces the
+artefact". R-170's first obligation is the reason the exit codes are asserted at `cli.main` and not at the
+function: a refusal's exit code is a claim about the shipped program, and until a command invokes
+`certify_severity` it is a claim about a test.
+
+What is pinned here, in order:
+
+* the serialisation shape (`severity.SEVERITY_SHAPE_VERSION`), round-tripping, and both directions of the
+  cross-shape refusal -- a set certificate is not a severity certificate and neither reading may be silent;
+* the command `autorate severity <records>` and its exit codes 0 / 2 / 3 / 4, with the two refusals R-170
+  recorded as unreachable-by-a-command now reached through it, and no path to rc 1;
+* the published ordinal artefact, `verify`'s re-derivation of it in BOTH lanes, its protocol stamp, the
+  named refusal at exit 4 when the table's own file is absent or wrong-shaped, and the denominator row
+  that proves the new checks are counted rather than claimed;
+* the rubric ownership ruling: `severity.py`'s signature `0.05`s are library defaults the published path
+  never consults, proved by moving them and showing the published numbers do not move with them.
+
+Item 3 -- the falsification control for G3 -- is deliberately NOT here. It is the controller's, and a
+control that has to be able to answer "no" is not this file's subject.
+"""
+import dataclasses
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from autorate import cli, report, severity
+from autorate.certificate import ALPHA, DELTA, SEED, SHAPE_VERSION, Certificate, CertificateShapeMismatch
+from autorate.cli import main
+from autorate.protocol import load_protocol, protocol_digest
+from autorate.severity import (DIRECTIONS, SEVERITY_SHAPE_KEY, SEVERITY_SHAPE_VERSION,
+                               SeverityCertificate, SeverityShapeMismatch, certify_severity)
+
+REPO = Path(cli.__file__).resolve().parents[2]
+# The population the published artefact is made from, in the one owner's parameters (ruling R-69 puts
+# `build_ordinal` in `tests/_records.py`). `CLEAN` is the comparison population `tests/test_severity.py`
+# already measures the one-sided claim on, so the published artefact and the suite's rows describe one
+# population rather than two.
+ORDINAL = dict(n=1200, seed=5, shift=0.1, temp=2.0)
+
+
+@pytest.fixture
+def in_repo(monkeypatch):
+    monkeypatch.chdir(REPO)
+
+
+def _cert(**kw):
+    from _records import build_ordinal
+
+    return certify_severity(build_ordinal(**{**ORDINAL, **kw}), alpha=ALPHA, delta=DELTA,
+                            direction="under", seed=SEED)
+
+
+def _ordinal_records_file(tmp_path, name="records_ordinal.jsonl", **kw):
+    """The published population, written to a scratch path through the generator's one owner.
+
+    The file is named, and an existing name is a refusal rather than an overwrite: two callers of this
+    helper with different `kw` were measured to write the SAME path, so the second silent rewrite replaced
+    the certified 1200-record population with a 60-record one and the sweep that meant to walk rc 0 saw
+    rc 3. A fixture that quietly collides is worse than one that fails.
+    """
+    from _records import build_ordinal
+
+    path = tmp_path / name
+    assert not path.exists(), "%s already holds a different population" % name
+    recs = build_ordinal(**{**ORDINAL, **kw})
+    path.write_text("".join(json.dumps(r.to_dict(), sort_keys=True) + "\n" for r in recs))
+    return path
+
+
+def rc(argv):
+    """`main`'s exit code, with argparse's own usage refusal folded in at its own code.
+
+    A flag the parser cannot read never reaches a command function: argparse raises `SystemExit(2)`, which
+    is the contract's 2 by a different door. Asserting the code here -- rather than letting a `SystemExit`
+    sail past the test -- is what keeps "no path to rc 1" a statement about the whole surface instead of
+    about the arms `main` catches.
+    """
+    try:
+        return main(argv)
+    except SystemExit as exc:
+        assert exc.code == 2, exc.code
+        return 2
+
+
+# --- the serialisation shape ---------------------------------------------------------------------
+
+
+def test_a_severity_certificate_round_trips_through_json_field_for_field():
+    """`SeverityCertificate` had no serialisation surface at all; this is it, and it is lossless.
+
+    Every field is compared, not just the headline numbers: `envelope` has to come back as a tuple (a list
+    would make the loaded artefact unequal to the one produced, and `verify` compares it whole) and `meta`
+    as the dict the producer wrote.
+    """
+    cert = _cert()
+    assert cert.feasible, cert.summary()
+    doc = json.loads(cert.to_json())
+    assert doc[SEVERITY_SHAPE_KEY] == SEVERITY_SHAPE_VERSION, sorted(doc)
+    back = SeverityCertificate.from_dict(doc)
+    assert back == cert
+    assert back.to_json() == cert.to_json()
+
+
+def test_a_refused_severity_certificate_round_trips_too():
+    """A refusal is a published-shaped artefact as well: rc 3 travels inside the bytes."""
+    from _records import build_ordinal
+
+    refused = certify_severity(build_ordinal(n=60, seed=5, shift=0.1, repeats=1), alpha=ALPHA,
+                               delta=DELTA, direction="under", seed=SEED)
+    assert not refused.feasible, refused.summary()
+    assert SeverityCertificate.from_dict(json.loads(refused.to_json())) == refused
+
+
+def test_the_severity_shape_tag_is_not_the_set_shape_version():
+    """Reusing `certificate.SHAPE_VERSION` for a different field set would be a false statement.
+
+    A tag says which shape the bytes are in; two shapes sharing one number is a tag that cannot fail.
+    """
+    assert SEVERITY_SHAPE_VERSION != SHAPE_VERSION, (SEVERITY_SHAPE_VERSION, SHAPE_VERSION)
+    assert SEVERITY_SHAPE_KEY == "shape", SEVERITY_SHAPE_KEY
+    severity_names = {f.name for f in dataclasses.fields(SeverityCertificate)}
+    set_names = {f.name for f in dataclasses.fields(Certificate)}
+    assert severity_names != set_names, (severity_names, set_names)
+    assert {"ahat", "direction", "price_bound"} <= severity_names, severity_names
+    assert {"beta", "method", "qhat"} <= set_names, set_names
+
+
+@pytest.mark.parametrize("mutate,needle", [
+    (lambda d: d.pop(SEVERITY_SHAPE_KEY), "no 'shape' key"),
+    (lambda d: d.update({SEVERITY_SHAPE_KEY: 99}), "found shape 99"),
+    (lambda d: d.pop("bound"), "missing"),
+    (lambda d: d.update({"qhat": 0.9, "beta": 0.05, "method": "aps"}), "unknown"),
+    (lambda d: d.update({"ahat": "3"}), "a reported level"),
+    (lambda d: d.update({"bound": "0.04"}), "is a probability"),
+    (lambda d: d.update({"meta": "not a mapping"}), "meta"),
+])
+def test_an_unknown_severity_shape_is_refused_by_name(mutate, needle):
+    """A stale, foreign or tampered artefact is told what it is, by name, as a `ValueError` subclass.
+
+    The type arms matter as much as the messages: `"3"` in the `ahat` slot is the comparison
+    `not 0 <= "3"` answering with a `TypeError`, and `cli.main` maps no `TypeError` to an exit code -- rc 1,
+    the one number the 0/2/3/4 contract forbids, arriving through the contents of a published file.
+    """
+    doc = json.loads(_cert().to_json())
+    mutate(doc)
+    with pytest.raises(SeverityShapeMismatch) as caught:
+        SeverityCertificate.from_dict(doc)
+    assert needle in str(caught.value), str(caught.value)
+
+
+def test_a_set_certificate_is_not_read_as_a_severity_certificate_and_vice_versa():
+    """The two shapes refuse each other in both directions, and each names the shape it found.
+
+    `report.read_certificate` is bound to the set shape and was the only reader in the tree. A severity
+    document handed to it -- or the reverse -- must refuse by version, not be believed, and not crash.
+    """
+    set_doc = json.loads((REPO / report.CERTS["laya"]).read_text())
+    with pytest.raises(SeverityShapeMismatch) as caught:
+        SeverityCertificate.from_dict(set_doc)
+    assert "found shape %d" % SHAPE_VERSION in str(caught.value), str(caught.value)
+    assert "set" in str(caught.value).lower(), str(caught.value)
+
+    with pytest.raises(CertificateShapeMismatch) as caught:
+        Certificate.from_dict(json.loads(_cert().to_json()))
+    assert "found shape %d" % SEVERITY_SHAPE_VERSION in str(caught.value), str(caught.value)
+
+
+def test_read_severity_certificate_accepts_the_published_bytes_and_refuses_a_wrong_shape(tmp_path):
+    cert = _cert()
+    good = tmp_path / "good.json"
+    good.write_text(cert.to_json())
+    assert report.read_severity_certificate(good) == cert
+
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({**json.loads(cert.to_json()), SEVERITY_SHAPE_KEY: 77}))
+    with pytest.raises(SeverityShapeMismatch):
+        report.read_severity_certificate(bad)
+
+
+# --- the command, and its exit codes -----------------------------------------------------------
+
+
+def test_severity_command_certifies_and_writes_the_artefact(tmp_path, capsys):
+    out = tmp_path / "sev.json"
+    records = _ordinal_records_file(tmp_path)
+    code = rc(["severity", str(records), "--direction", "under", "--out", str(out)])
+    captured = capsys.readouterr()
+    assert code == 0, (code, captured.out, captured.err)
+    assert "severity certificate" in captured.out, captured.out
+    assert "envelope:" in captured.out, captured.out
+    doc = json.loads(out.read_text())
+    assert doc[SEVERITY_SHAPE_KEY] == SEVERITY_SHAPE_VERSION
+    assert doc["feasible"] is True
+    assert "protocol_digest" not in doc["meta"], "a run with no --protocol stays unstamped"
+
+
+def test_the_command_reproduces_the_published_artefact_byte_for_byte(tmp_path, in_repo):
+    """The committed artefact is this command's output, not a file somebody typed.
+
+    Re-run at the published arguments and compare bytes. A published artefact nobody can re-produce is the
+    defect class R-168 was written for, and the byte comparison is what makes "emitted by the command" a
+    checked statement instead of a sentence.
+    """
+    _records_path, cert_path, _d = report.SEVERITY_CERTS[report.SEVERITY_LABEL]
+    published = (REPO / cert_path).read_text()
+    out = tmp_path / "again.json"
+    code = rc(["severity", str(REPO / report.SEVERITY_RECORDS), "--direction", "under",
+               "--protocol", "protocol.json", "--out", str(out)])
+    assert code == 0, code
+    assert out.read_text() == published
+
+
+def test_severity_command_writes_the_protocol_digest_when_the_flag_names_one(tmp_path, in_repo):
+    out = tmp_path / "sev.json"
+    records = _ordinal_records_file(tmp_path)
+    assert rc(["severity", str(records), "--direction", "under", "--protocol", "protocol.json",
+               "--out", str(out)]) == 0
+    digest = protocol_digest(load_protocol(REPO / "protocol.json"))
+    assert json.loads(out.read_text())["meta"]["protocol_digest"] == digest
+
+
+def test_a_rubric_flag_that_argues_with_its_own_protocol_is_usage_two(tmp_path, in_repo, capsys):
+    """R-199's freeze, applied to the ordinal gate: the protocol is the rule, not a suggestion."""
+    records = _ordinal_records_file(tmp_path)
+    code = rc(["severity", str(records), "--direction", "under", "--protocol", "protocol.json",
+               "--delta", "0.10", "--out", str(tmp_path / "sev.json")])
+    err = capsys.readouterr().err
+    assert code == 2, (code, err)
+    assert "--delta" in err and "protocol.json" in err, err
+    assert not (tmp_path / "sev.json").exists(), "a refused run wrote an artefact anyway"
+
+
+def test_a_refusal_exits_three_and_names_its_reason(tmp_path, capsys):
+    """The sample is short: a result, not a crash, and not the operator's mistake either."""
+    records = _ordinal_records_file(tmp_path, n=60, repeats=1)
+    out = tmp_path / "sev.json"
+    code = rc(["severity", str(records), "--direction", "under", "--out", str(out)])
+    captured = capsys.readouterr()
+    assert code == 3, (code, captured.out, captured.err)
+    assert "NOT_CERTIFIABLE" in captured.out, captured.out
+    doc = json.loads(out.read_text())
+    assert doc["feasible"] is False and doc["reason"], doc
+    for name in ("ahat", "bound", "price_bound", "override_bound", "measured_violation"):
+        assert doc[name] is None, (name, doc[name])
+
+
+def test_a_budget_the_owner_refuses_is_usage_two_reached_by_a_command(tmp_path, in_repo, capsys):
+    """R-170's first obligation: the `--delta 0.40` refusal had no path a user could walk.
+
+    It is `correction.joint_level`'s `ValueError` and `main` maps it to 2. Asserted at the entry point
+    because until a command reaches it the exit code is a statement about a test.
+    """
+    records = _ordinal_records_file(tmp_path)
+    code = rc(["severity", str(records), "--direction", "under", "--delta", "0.40",
+               "--out", str(tmp_path / "s.json")])
+    err = capsys.readouterr().err
+    assert code == 2, (code, err)
+    assert "not a probability" in err, err
+
+
+def test_a_non_probability_budget_is_usage_two(tmp_path, capsys):
+    records = _ordinal_records_file(tmp_path)
+    code = rc(["severity", str(records), "--direction", "under", "--alpha", "1.5",
+               "--out", str(tmp_path / "s.json")])
+    assert code == 2, (code, capsys.readouterr().err)
+
+
+def test_the_naive_two_sided_direction_is_refused_by_a_command_naming_the_curve(tmp_path, capsys):
+    """§6.1's non-monotone loss was refused only inside a test; `--direction` walks the same refusal."""
+    records = _ordinal_records_file(tmp_path)
+    code = rc(["severity", str(records), "--direction", "both_sides_sum",
+               "--out", str(tmp_path / "s.json")])
+    err = capsys.readouterr().err
+    assert code == 2, (code, err)
+    assert "not monotone" in err, err
+
+
+def test_a_population_with_no_ordinal_record_is_usage_two_naming_the_subject(tmp_path, capsys):
+    from _records import choice_record
+
+    choice_only = tmp_path / "choice.jsonl"
+    rows = [choice_record(id="r%d" % i, case_id="c%d" % i).to_dict() for i in range(200)]
+    choice_only.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in rows))
+    code = rc(["severity", str(choice_only), "--direction", "under",
+               "--out", str(tmp_path / "s.json")])
+    err = capsys.readouterr().err
+    assert code == 2, (code, err)
+    assert "score" in err, err
+
+
+def test_a_missing_records_path_is_usage_two_not_a_crash(tmp_path, capsys):
+    code = rc(["severity", str(tmp_path / "nope.jsonl"), "--direction", "under",
+               "--out", str(tmp_path / "s.json")])
+    assert code == 2, (code, capsys.readouterr().err)
+
+
+def test_the_documented_directions_are_the_closed_set_reachable_from_the_parser():
+    """The parser's `choices` is `severity.DIRECTIONS`, so the CLI cannot invent a fourth family."""
+    parser = cli.build_parser()
+    sub = parser._subparsers._group_actions[0].choices["severity"]
+    action = next(a for a in sub._actions if a.dest == "direction")
+    assert tuple(action.choices) == tuple(DIRECTIONS), action.choices
+
+
+def test_no_severity_command_path_exits_one(tmp_path, capsys):
+    """The contract is 0/2/3/4, so every arm of this surface is walked and the set is checked.
+
+    The codes are pinned per arm, not just as a set: a bare `== {0, 2, 3}` was satisfied by a fixture whose
+    two populations shared one filename, which made the certified arm refuse at 3 and left the 0 arriving
+    from nowhere the test could name. One entry per argv says which door each code comes out of, so an arm
+    that stops being reachable reddens this row instead of quietly shrinking the set.
+    """
+    good = _ordinal_records_file(tmp_path, name="good.jsonl")
+    short = _ordinal_records_file(tmp_path, name="short.jsonl", n=60, repeats=1)
+    codes = []
+    for argv in ([str(good), "--direction", "under"],
+                 [str(short), "--direction", "under"],
+                 [str(good), "--direction", "both_sides_sum"],
+                 [str(good), "--direction", "nonsense"],
+                 [str(good), "--direction", "under", "--seed", "not-an-int"],
+                 [str(good), "--direction", "under", "--delta", "0.40"],
+                 [str(tmp_path / "absent.jsonl"), "--direction", "under"]):
+        codes.append(rc(["severity"] + argv + ["--out", str(tmp_path / "s.json")]))
+        capsys.readouterr()
+    # 0 certified, 3 too few records, 2 for the non-monotone direction, the unparseable direction, the
+    # non-integer seed (argparse's own door), the budget the owner refuses, and the absent records file.
+    assert codes == [0, 3, 2, 2, 2, 2, 2], codes
+    assert set(codes) <= {0, 2, 3, 4}, codes
+
+
+# --- the published artefact, and `verify`'s re-derivation of it ---------------------------------
+
+
+def test_the_table_declares_one_published_ordinal_artefact():
+    """One row, its two paths, and the direction the publication -- not the artefact -- declares."""
+    assert list(report.SEVERITY_CERTS) == [report.SEVERITY_LABEL], report.SEVERITY_CERTS
+    records_path, cert_path, direction = report.SEVERITY_CERTS[report.SEVERITY_LABEL]
+    assert records_path == report.SEVERITY_RECORDS, records_path
+    assert direction in DIRECTIONS and direction == "under", direction
+    for rel in (records_path, cert_path):
+        assert (REPO / rel).is_file(), rel
+        assert not str(rel).startswith("/"), rel
+        assert not re.search(r"/(Users|home)/[A-Za-z0-9._-]+/", Path(rel).read_text()), rel
+
+
+def test_the_committed_ordinal_records_file_is_the_owner_generator_output():
+    """The published population has a named producer and a byte-identity check, not a folklore recipe.
+
+    Measured before this row was written: none of the four committed records files carries a single
+    `qtype="score"` record (feishu is `choice`+`noul`, the three MASSIVE files are `choice`), so no corpus
+    this checkout holds can produce a severity certificate and the published artefact is over the synthetic
+    ordinal population the generator owns. The disclosure is inside the artefact's own envelope; this row is
+    what stops the committed bytes from drifting away from the producer they claim.
+    """
+    from _records import build_ordinal
+
+    committed = (REPO / report.SEVERITY_RECORDS).read_text()
+    regenerated = "".join(json.dumps(r.to_dict(), sort_keys=True) + "\n"
+                          for r in build_ordinal(**ORDINAL))
+    assert committed == regenerated, "the committed ordinal population diverged from its generator"
+
+
+def test_the_published_severity_artefact_carries_the_committed_freeze():
+    digest = protocol_digest(load_protocol(REPO / "protocol.json"))
+    _records_path, cert_path, _direction = report.SEVERITY_CERTS[report.SEVERITY_LABEL]
+    doc = json.loads((REPO / cert_path).read_text())
+    rubric = load_protocol(REPO / "protocol.json").rubric
+    assert doc["meta"]["protocol_digest"] == digest, cert_path
+    assert doc["alpha"] == rubric["alpha"] and doc["delta"] == rubric["delta"]
+    assert doc["meta"]["seed"] == rubric["seed"]
+    assert doc[SEVERITY_SHAPE_KEY] == SEVERITY_SHAPE_VERSION
+    assert doc["feasible"] is True, doc["reason"]
+
+
+def test_the_ordinal_arm_is_counted_in_both_lanes_and_the_total_is_derived(tmp_path, monkeypatch,
+                                                                           in_repo, capsys):
+    """The denominator is read from the shipped tables, and the ordinal rows are proved to be in it.
+
+    Two statements: the corpus-less total equals the formula over the same owners the gate loops over (the
+    `test_cli.py` derivation carries the same arithmetic, so neither can be quietly narrowed), and emptying
+    the severity table moves the total by exactly the rows that table adds -- so a row that stopped being
+    counted cannot hide inside a number that happens to match. In-process, because a subprocess would not
+    see the patched tables.
+    """
+    def absent_total():
+        monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus"))
+        assert main(["verify"]) == 0
+        out = capsys.readouterr().out
+        assert "corpus absent" in out, out
+        checked, total = (int(group) for group in
+                          re.search(r"re-derived (\d+) /(\d+) values", out).groups())
+        assert checked == total, out
+        return total
+
+    rows = len(cli.SEVERITY_COMPARE_FIELDS) + 1 + len(cli.SEVERITY_RUBRIC_FIELDS)
+    assert len(cli.SEVERITY_COMPARE_FIELDS) == 15, cli.SEVERITY_COMPARE_FIELDS
+    assert len(cli.SEVERITY_RUBRIC_FIELDS) == 3, cli.SEVERITY_RUBRIC_FIELDS
+    assert {"ahat", "bound", "price_bound", "override_bound", "measured_violation", "direction",
+            "meta", "envelope"} <= set(cli.SEVERITY_COMPARE_FIELDS), cli.SEVERITY_COMPARE_FIELDS
+    with_severity = absent_total()
+    # BOTH owners again, as in `_point_table_at_copies`: the arm's loop lives in `report` and reads the
+    # table through `report.SEVERITY_CERTS`, so emptying only `cli`'s copy leaves the gate looping over the
+    # real row and the delta measures the document arm alone. That is how this row read (128, 127) -- a
+    # denominator claim that would have passed on one row of twenty.
+    monkeypatch.setattr(cli, "SEVERITY_CERTS", {})
+    monkeypatch.setattr(report, "SEVERITY_CERTS", {})
+    monkeypatch.setattr(cli, "PUBLISHED_DOCS",
+                        tuple(row for row in cli.PUBLISHED_DOCS
+                              if str(row[0]) != str(cli.SEVERITY_MD)))
+    without_severity = absent_total()
+    assert with_severity - without_severity == rows + 1, (with_severity, without_severity)
+
+
+def _drift_labels(err):
+    """The set of comparison labels `verify` refused, one per `DRIFT:` line, nothing else.
+
+    Split on the gate's own separator instead of counting lines, because one refusal's value is an entire
+    rendered document: its inner newlines arrive as separate lines that are not themselves refusals, and a
+    reader that counted them would report drift that never happened. A `DRIFT:` line without the separator
+    is a shape this helper does not know, so it raises rather than returning a silently short set.
+    """
+    labels = set()
+    for line in err.splitlines():
+        if not line.startswith("DRIFT:"):
+            continue
+        head, sep, _rest = line.partition(": recomputed")
+        assert sep, line[:160]
+        labels.add(head[len("DRIFT: "):])
+    return labels
+
+
+def test_an_edited_published_severity_artefact_is_drift_four_not_a_pass(tmp_path, monkeypatch, in_repo,
+                                                                        capsys):
+    """The new arm must be able to fail on the new numbers, or it is decoration beside them.
+
+    The whole refusal set is pinned, not three `any()` probes: an `ahat` edit moves the field, the summary
+    that quotes it, and `docs/SEVERITY.md` that renders it (measured, in that order), and `meta` is NOT in
+    the set because the producer echoes only `alpha`/`delta`/`seed` there. A fourth line appearing beside
+    these is a claim this row would rather see than swallow.
+
+    Both non-obvious members were planted. Editing the summary so it stops quoting `ahat` dropped
+    `cert ordinal.summary` and reddened this row. Editing the document's own `ahat` bullet did NOT drop the
+    document arm, because the figure reaches the prose a second time through the verbatim summary block --
+    the tamper is caught twice over, and neither site alone is what this row relies on.
+    """
+    _point_table_at_copies(tmp_path, monkeypatch, mutate=lambda d: d.update({"ahat": 0}))
+    code = main(["verify", "--protocol", "protocol.json"])
+    assert code == 4, code
+    assert _drift_labels(capsys.readouterr().err) == {
+        "cert ordinal.ahat", "cert ordinal.summary", "%s byte-identical" % cli.SEVERITY_MD}
+
+
+def test_a_severity_artefact_produced_without_a_protocol_refuses_by_name(tmp_path, monkeypatch, in_repo,
+                                                                         capsys):
+    """R-200's rule, applied to the newest artefact: no stamp is drift the gate can attribute.
+
+    Two lines, and no third. The artefact's `meta` is compared whole, so a missing digest is drift the gate
+    can name; the document refuses alongside it because the committed bytes state the digest on their own
+    line, which a stampless artefact cannot reproduce. The summary is NOT in the set -- it quotes no digest
+    -- so the stamp reaches the reader exactly where the artefact states it, and nowhere else.
+
+    Bounded honestly: suppressing `render_severity`'s digest line leaves this row green, because the document
+    arm then fails for the other reason (the render no longer matches the committed file either way). What
+    this row proves is attribution by name in both places plus the absence of a third line, not that the
+    bullet is the only route to the second refusal.
+    """
+    _point_table_at_copies(tmp_path, monkeypatch,
+                           mutate=lambda d: d["meta"].pop("protocol_digest"))
+    code = main(["verify", "--protocol", "protocol.json"])
+    assert code == 4, code
+    assert _drift_labels(capsys.readouterr().err) == {
+        "cert ordinal.meta", "%s byte-identical" % cli.SEVERITY_MD}
+
+
+def test_a_wrong_shaped_published_severity_artefact_is_four_not_two(tmp_path, monkeypatch, in_repo,
+                                                                     capsys):
+    """A table-declared artefact whose shape this build cannot read is the checkout's failure at 4."""
+    _point_table_at_copies(tmp_path, monkeypatch, mutate=lambda d: d.update({"shape": 99}))
+    code = main(["verify"])
+    assert code == 4, code
+    err = capsys.readouterr().err
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err and "report.SEVERITY_CERTS" in err, err
+
+
+def test_a_missing_published_severity_artefact_is_four(tmp_path, monkeypatch, in_repo, capsys):
+    _point_table_at_copies(tmp_path, monkeypatch)
+    (_tmp_cert(tmp_path)).unlink()
+    code = main(["verify"])
+    assert code == 4, code
+    err = capsys.readouterr().err
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err and "report.SEVERITY_CERTS" in err, err
+
+
+def _tmp_cert(tmp_path):
+    _records_path, cert_path, _d = report.SEVERITY_CERTS[report.SEVERITY_LABEL]
+    return tmp_path / Path(cert_path).name
+
+
+def _point_table_at_copies(tmp_path, monkeypatch, mutate=None):
+    """Re-point `SEVERITY_CERTS` at copies, so the gate reads a tampered artefact.
+
+    BOTH owners are patched, exactly as `test_verify_protocol.py` does for `CERTS`: the gate iterates the
+    name it imported and opens each path through `report.load_published`, so a helper that patched one of
+    the two leaves part of the gate reading the real files -- which is how a refusal test passes while
+    asserting nothing.
+    """
+    table = {}
+    for label, (records_path, cert_path, direction) in sorted(report.SEVERITY_CERTS.items()):
+        dst = tmp_path / Path(cert_path).name
+        doc = json.loads((REPO / cert_path).read_text())
+        if mutate is not None:
+            mutate(doc)
+        dst.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+        table[label] = (records_path, str(dst), direction)
+    monkeypatch.setattr(cli, "SEVERITY_CERTS", table)
+    monkeypatch.setattr(report, "SEVERITY_CERTS", table)
+    return table
+
+
+# --- the published document ---------------------------------------------------------------------
+
+
+def test_the_published_severity_document_is_byte_reproducible(tmp_path, in_repo):
+    """`docs/SEVERITY.md` is emitted from the artefact and compared byte for byte by `verify`.
+
+    Rendered again and diffed against the committed bytes: a document that cannot be re-produced from the
+    artefact it describes is the stale-prose defect this repository has corrected for once already.
+    """
+    stored = (REPO / cli.SEVERITY_MD).read_text()
+    label, _records, cert, _direction = report.published_severity()
+    rendered = report.render_severity(label, cert)
+    assert rendered == stored, "\n".join([
+        next((line for line in rendered.splitlines() if line not in stored.splitlines()), ""),
+        next((line for line in stored.splitlines() if line not in rendered.splitlines()), "")])
+    assert str(cli.SEVERITY_MD) in {str(path) for path, _ in cli.PUBLISHED_DOCS}
+
+
+def test_the_published_severity_document_carries_no_figure_the_artefact_does_not(tmp_path, in_repo):
+    """Derived prose (B1 Task 2d's rule): every number a reader sees is a number the artefact states."""
+    _label, _records, cert, _direction = report.published_severity()
+    text = (REPO / cli.SEVERITY_MD).read_text().split("## Verbatim summary")[0]
+    numbers = set(re.findall(r"\d+\.\d+", text))
+    from_artefact = {"%.6f" % cert.bound, "%.6f" % cert.price_bound, "%.6f" % cert.override_bound,
+                     "%.6f" % cert.measured_violation, "%.3f" % cert.alpha, "%.3f" % cert.delta,
+                     "%.2f" % cert.level}
+    assert numbers <= from_artefact, sorted(numbers - from_artefact)
+    assert str(cert.ahat) in text, text
+    assert not re.search(r"/(Users|home)/[A-Za-z0-9._-]+/", text), text
+
+
+# --- the rubric ownership ruling ----------------------------------------------------------------
+
+
+def test_the_published_path_never_consults_the_library_defaults(monkeypatch, tmp_path, in_repo, capsys):
+    """`severity.py`'s signature `0.05`s are library defaults; the command does not read them.
+
+    `protocol.RUBRIC_SCOPE` states that these copies live outside the published rubric's fence, and this
+    task keeps them -- so the honest form of "one owner" is a test that MOVES the library default and shows
+    the published number does not move with it. If the command ever passed `alpha`/`delta`/`seed` through
+    implicitly, patching the signature would move the artefact and this row goes red.
+    """
+    monkeypatch.setattr(severity.certify_severity, "__defaults__", (0.07, 0.07, "under", 0))
+    records = _ordinal_records_file(tmp_path)
+    out = tmp_path / "patched.json"
+    assert rc(["severity", str(records), "--direction", "under", "--out", str(out)]) == 0
+    patched = json.loads(out.read_text())
+    assert patched["alpha"] == ALPHA and patched["delta"] == DELTA, patched
+    assert patched["meta"]["seed"] == SEED, patched["meta"]["seed"]
+    capsys.readouterr()
+    assert rc(["severity", str(records), "--direction", "under",
+               "--out", str(tmp_path / "plain.json")]) == 0
+    assert json.loads((tmp_path / "plain.json").read_text()) == patched
+
+
+def test_the_library_defaults_still_agree_with_the_owner_today():
+    """The pre-deletion equality, stated as a pin rather than as a claim of deletion.
+
+    `test_the_rubric_scope_sentence_names_copies_that_still_exist` reddens if the literals leave
+    `severity.py`, because the freeze's own `rubric_scope` field names them as still existing. So this task
+    documents the copies, polices them, and does not remove them -- the removal is not free.
+    """
+    import inspect
+
+    assert severity.certify_severity.__defaults__[:2] == (ALPHA, DELTA)
+    for func in (severity.certify_severity, severity.severity_band, severity.over_call_bound,
+                 severity.tolerance_band):
+        parameters = inspect.signature(func).parameters
+        assert parameters["alpha"].default == 0.05, func.__name__
+        assert parameters["delta"].default == 0.05, func.__name__
+    assert "0.05" in Path(severity.__file__).read_text()
+
+
+def test_the_severity_command_rubric_flags_default_to_the_owner_names_not_literals():
+    """#62's rule on a new surface: each flag's default IS the imported owner, not a retyped number."""
+    parser = cli.build_parser()
+    sub = parser._subparsers._group_actions[0].choices["severity"]
+    owners = dict(cli.SEVERITY_RUBRIC_FLAGS)
+    flags = {a.dest: a.default for a in sub._actions if a.dest in owners}
+    assert flags == owners, flags
+    assert flags["alpha"] is ALPHA and flags["delta"] is DELTA and flags["seed"] is SEED

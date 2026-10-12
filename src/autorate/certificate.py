@@ -375,10 +375,19 @@ class Certificate:
             named = (repr(found) if SHAPE_KEY in d else
                      "none (no %r key at all: a certificate written before shape %d existed)"
                      % (SHAPE_KEY, SHAPE_VERSION))
+            # The other shape this build publishes is the severity certificate (Plan B2 Task 72), whose
+            # tag lives in `severity.SEVERITY_SHAPE_VERSION` and whose field set shares nothing load-bearing
+            # with this one. Naming it costs one clause and closes a wrong instruction: "regenerate it with
+            # `autorate certify`" sent a reader holding an ordinal artefact to the command that cannot
+            # produce it, which is the misattribution this class exists to prevent.
+            foreign = sorted({name for name in ("ahat", "direction", "price_bound", "override_bound",
+                                                "measured_violation") if name in d})
             raise CertificateShapeMismatch(
                 "stored certificate is not in the shape this build reads: found shape %s, "
-                "required shape %d -- regenerate it with `autorate certify`"
-                % (named, SHAPE_VERSION))
+                "required shape %d%s -- regenerate it with `autorate certify`"
+                % (named, SHAPE_VERSION,
+                   "; it carries %s, so it is a severity certificate and `autorate severity` is its "
+                   "producer" % ", ".join(foreign) if foreign else ""))
         names = {f.name for f in fields(cls)}
         unknown = sorted(set(d) - names - {SHAPE_KEY})
         defaulted = {f.name for f in fields(cls) if f.default is not MISSING}

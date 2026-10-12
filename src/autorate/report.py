@@ -21,6 +21,7 @@ from pathlib import Path
 from .certificate import ALPHA, BETA, Certificate, SEED
 from .certify_choice import certify_choice
 from .records import Record
+from .severity import SeverityCertificate, certify_severity
 from .tails import clopper_pearson_upper
 
 RECORDS = "data/records_feishu.jsonl"
@@ -41,6 +42,26 @@ MASSIVE_CERTIFICATES = {
     "massive/en": ("data/records_massive_en.jsonl", "data/cert_massive_en_laya.json"),
     "massive/sw": ("data/records_massive_sw.jsonl", "data/cert_massive_sw_laya.json"),
 }
+
+# G3's published artefact: the one-sided severity certificate, in its own table because it is its own
+# shape (`SeverityCertificate`, not `Certificate`) and is read by a different loader. The third element of
+# each row is the direction THIS PUBLICATION declares, and it is not read back out of the artefact: a
+# re-derivation that took `direction` from the stored bytes would happily re-derive a tampered artefact
+# into agreement with itself, which is the fixed-point hole the set arm closes by supplying the rubric.
+#
+# The records file is SYNTHETIC ORDINAL DATA WITH KNOWN ANSWERS, and that is a measured constraint, not a
+# stylistic one: none of the four committed records files in this checkout carries a single
+# `qtype="score"` record (`data/records_feishu.jsonl` is `choice`+`noul`, the three MASSIVE files are all
+# `choice`), and `severity.certify_severity` refuses a population with no ordinal record by name. So no
+# corpus this repository can see produces a severity certificate, and the ordinal guarantee is published
+# over the population `tests/_records.build_ordinal` owns -- the same population `tests/test_severity.py`
+# measures the expressiveness claim on, at the same parameters, pinned byte for byte by
+# `test_the_committed_ordinal_records_file_is_the_owner_generator_output`. What the lane can reproduce:
+# BOTH of them, because nothing here reads the vendored corpus.
+SEVERITY_RECORDS = "data/records_ordinal_synthetic.jsonl"
+SEVERITY_CERT_JSON = "data/cert_severity_ordinal.json"
+SEVERITY_LABEL = "ordinal"
+SEVERITY_CERTS = {SEVERITY_LABEL: (SEVERITY_RECORDS, SEVERITY_CERT_JSON, "under")}
 
 
 class PublishedArtefactUnavailable(RuntimeError):
@@ -276,6 +297,136 @@ def rederive_massive(expect, fields, rubric=None, stamp=None) -> None:
         for field in fields:
             expect("cert %s.%s" % (label, field), getattr(fresh, field), getattr(stored, field))
         expect("cert %s.summary" % label, fresh.summary(), stored.summary())
+
+
+def read_severity_certificate(path: Path) -> SeverityCertificate:
+    """The severity shape's reader, kept beside the set shape's and bound to neither.
+
+    `read_certificate` is `Certificate.from_dict` and cannot read this artefact -- the two shapes refuse
+    each other by version (see `severity.SEVERITY_SHAPE_VERSION`). A wrong shape here raises
+    `SeverityShapeMismatch`, a `ValueError`, which `load_published` answers at exit 4 for a table-declared
+    path and `cli.main` answers at 2 for a path the operator typed.
+    """
+    return SeverityCertificate.from_dict(json.loads(Path(path).read_text()))
+
+
+def severity_certificates() -> dict:
+    """`{label: (records, stored certificate, published direction)}` for every ordinal artefact.
+
+    The read goes through `load_published` for both files, so an absent or unreadable records file is the
+    table's own failure at exit 4 -- the same attribution repair `massive_certificates` carries. The
+    direction travels with the row because the publication, not the artefact, owns it: a re-derivation that
+    took the rule off the bytes could not contradict them.
+    """
+    out = {}
+    for label, (records_path, cert_path, direction) in sorted(SEVERITY_CERTS.items()):
+        stored = load_published(cert_path, "report.SEVERITY_CERTS", read_severity_certificate)
+        rows = load_published(records_path, "report.SEVERITY_CERTS", load_records)
+        out[label] = (rows.get(stored.backend, []), stored, direction)
+    return out
+
+
+def published_severity() -> tuple:
+    """The one ordinal artefact this tree publishes, as `(label, records, certificate, direction)`.
+
+    It refuses rather than guessing if the table grows a second row: `docs/SEVERITY.md` is a document about
+    ONE certificate, and a renderer that silently picked `sorted(table)[0]` would publish the first
+    artefact's figures under a heading that says it quotes the publication. The refusal is a named exit 4
+    -- the checkout, not an argument, is what no longer matches what it publishes.
+    """
+    rows = sorted(severity_certificates().items())
+    if len(rows) != 1:
+        raise PublishedArtefactUnavailable(
+            "docs/SEVERITY.md renders one ordinal certificate and report.SEVERITY_CERTS now holds %d "
+            "(%s), so this document has no single artefact to quote. It is not a usage error -- no "
+            "argument selected the table -- and it is not a value that disagrees: the publication and its "
+            "renderer have to be widened together."
+            % (len(rows), ", ".join(label for label, _row in rows) or "nothing"))
+    return (rows[0][0],) + rows[0][1]
+
+
+def rederive_severity(expect, expect_rubric, fields, rubric_fields, rubric=None, stamp=None) -> None:
+    """Re-derive G3's published certificate from its committed records, field by field.
+
+    The same arm `cmd_verify` runs over the set artefacts, with the two differences the shapes force:
+    `direction` comes from the publication table (see `SEVERITY_CERTS`) rather than from the stored bytes,
+    because a re-derivation that read the rule off the artefact could not contradict it; and the rubric the
+    caller supplies is the freeze's `alpha`/`delta`/`seed` -- the ordinal gate has no `beta` and no
+    `method`, and inventing those here would state a rule that never ran.
+
+    `expect_rubric` is a second callback rather than a folded-in comparison because the two failures are
+    repaired differently -- re-export, or re-freeze -- and `cmd_verify` keeps them on separate prefixes for
+    that reason (`RUBRIC MISMATCH:` versus `DRIFT:`, rulings R-20/R-31). `alpha` and `delta` are also in
+    `fields`, so a rubric disagreement lands twice: once naming the freeze as the standard and once naming
+    the field. Both lists are handed in rather than copied, so the gate and the denominator that counts it
+    read one owner (R-168).
+
+    The re-derivation chooses no rubric of its own when the caller supplies none: `chosen` falls back to
+    what the artefact says it was measured at, which is R-143's rule for the set side restated here.
+    """
+    for label, (records, stored, direction) in severity_certificates().items():
+        chosen = rubric or {"alpha": stored.alpha, "delta": stored.delta,
+                            "seed": stored.meta.get("seed", SEED)}
+        for name in rubric_fields:
+            published = stored.meta.get("seed") if name == "seed" else getattr(stored, name)
+            expect_rubric("cert %s.%s" % (label, name), published, chosen[name])
+        fresh = certify_severity(records, alpha=chosen["alpha"], delta=chosen["delta"],
+                                 direction=direction, seed=chosen["seed"])
+        if rubric is not None:
+            # The producer echoes alpha/delta/seed inside `meta` (`severity._intake`), which this gate
+            # compares by whole-dict equality: a caller handing in a protocol has to move the echo too, or
+            # every frozen tree reads red on an artefact that was re-exported correctly. R-225's trap,
+            # reached from the ordinal side.
+            fresh = replace(fresh, meta={**fresh.meta, "alpha": chosen["alpha"],
+                                         "delta": chosen["delta"], "seed": chosen["seed"]})
+        if stamp is not None:
+            fresh = stamp(fresh)
+        for field in fields:
+            expect("cert %s.%s" % (label, field), getattr(fresh, field), getattr(stored, field))
+        expect("cert %s.summary" % label, fresh.summary(), stored.summary())
+
+
+def render_severity(label: str, cert: SeverityCertificate) -> str:
+    """G3's published document, written entirely out of one artefact.
+
+    Derived prose (B1 Task 2d's rule): every figure below is read off `cert`, and a sentence whose value the
+    artefact does not carry is not written here. The header names the command that emits the file and the
+    command that re-checks it; it carries no timestamp and no machine path, so both lanes reproduce the same
+    bytes -- which is what lets the corpus-less lane, and CI, byte-compare this document at all. The
+    `label` selects the table row the paths are quoted from, so the document names the artefact the gate
+    re-derived rather than a path this function remembered.
+    """
+    records_path, cert_path, direction = SEVERITY_CERTS[label]
+    meta = cert.meta
+    verdict = ("**certified**" if cert.feasible else "**NOT_CERTIFIABLE** (%s)" % cert.reason)
+    lines = [
+        "# Published ordinal guarantee (G3)",
+        "",
+        "Every number in this file is emitted by `python -m autorate.cli severity` and re-checked",
+        "by `python -m autorate.cli verify`, which re-derives the certificate from the records file",
+        "named below. None of them is typed, and the document carries no timestamp, so a re-run is",
+        "byte-comparable -- in the corpus-present lane and in the corpus-absent one alike.",
+        "",
+        "## The certificate",
+        "",
+        "- artefact: `%s`, direction `%s` (the publication names the rule, and `verify` re-derives"
+        " at it rather than reading it back out of the artefact)" % (cert_path, direction),
+        "- certified from: `%s`" % records_path,
+        "- verdict: %s" % verdict,
+        "- risk target `alpha`: %.3f, tested at `delta`: %.3f, split `seed`: %s"
+        % (cert.alpha, cert.delta, meta.get("seed")),
+        "- reported level `ahat`: %s, over a rubric of %s levels" % (cert.ahat, meta.get("rubric_levels")),
+        "- records calibration/evaluation: %d/%d, cases calibration/evaluation: %s/%s"
+        % (cert.n_cal, cert.n_eval, meta.get("n_cal_cases"), meta.get("n_eval_cases")),
+    ]
+    if meta.get("protocol_digest"):
+        lines.append("- produced under the frozen protocol: `meta.protocol_digest` = `%s`"
+                     % meta["protocol_digest"])
+    lines += ["", "## Verbatim summary", "", "```", cert.summary(), "```", "",
+              "## Envelope", ""]
+    lines += ["- %s" % line for line in cert.envelope]
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _first_clause(gap: str) -> str:

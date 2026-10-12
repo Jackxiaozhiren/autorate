@@ -71,12 +71,18 @@ named another one, whose ledger row is ``ordinal-cp-aistats2023``, and the paper
 the mathematics, and G3 is void if a systematic search starting from those two rows finds the
 statement already made.
 
-Evidence boundary. The offline archive carries no `score` answers at all, so every figure this project
-demonstrates with this gate is a function of synthetic ordinal data with known answers: seeded,
-re-derivable, and not a measurement of any shipped model. The gate cannot see provenance and claims
-none; a caller who hands in real records gets the same arithmetic over different data, and the envelope
-says so. Nothing in this module is a published artefact: no CLI path and no `verify` check reaches it
-yet, and the numbers below move only through the records a caller supplies.
+Evidence boundary. The offline archive carries no `score` answers at all -- measured across the four
+committed records files: `data/records_feishu.jsonl` is `choice`+`noul`, and the three MASSIVE files are
+`choice`, so not one of them holds an ordinal record and `certify_severity` refuses such a population by
+name. Every figure this project demonstrates with this gate is therefore a function of synthetic ordinal
+data with known answers: seeded, re-derivable, and not a measurement of any shipped model. The gate cannot
+see provenance and claims none; a caller who hands in real records gets the same arithmetic over different
+data, and the envelope says so. What Task 72 changed is REACH, not evidence: `autorate severity` produces
+this artefact, `autorate verify` re-derives it in both lanes, and `docs/SEVERITY.md` renders it. The
+published certificate is certified over the population `tests/_records.build_ordinal` owns, and
+`test_the_committed_ordinal_records_file_is_the_owner_generator_output` pins the committed records byte for
+byte against that generator -- which is also why the ordinal rows survive the corpus-absent lane: nothing in
+them reads the vendored archive.
 
 The automation-rate shape, so no sentence here leans on the wrong monotonicity (R-124). The severity
 path IS monotone in its risk target, for a structural reason: the rule answers every case, so there is
@@ -88,11 +94,12 @@ nothing about which side it missed, while a set rule refuses where it cannot say
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import MISSING, asdict, dataclass, field
 from typing import Optional, Sequence
 
 from .case_count import case_key
-from .certificate import N_CLAIMS, Reason, canonicalise_bound
+from .certificate import N_CLAIMS, SHAPE_KEY, Reason, canonicalise_bound
 from .certify_score import MIN_CAL, MIN_EVAL, split_cal
 from .correction import JOINT_LEVEL_RULE, joint_level
 from .ordinal import mode_index
@@ -159,9 +166,16 @@ class SeverityShapeMismatch(ValueError):
 
     A `ValueError` of its own class, following the precedent for a new refusal in this repository
     (`MissingRecordField` in `records.py`, `UndeclaredGroupKey` in `groups.py`,
-    `CertificateShapeMismatch` in `certificate.py`): `cli.main` maps `(OSError, ValueError)` to
-    EXIT_USAGE, so the refusal reaches a documented exit code instead of escaping as a traceback with
-    rc 1, and the name keeps it greppable. It is not a `ReaderContractError`, which is deliberately
+    `CertificateShapeMismatch` in `certificate.py`): it reaches a documented exit code through BOTH doors a
+    severity document can come in by, and the name keeps it greppable in the error stream. A path the
+    operator typed goes through `cli.main`'s `(OSError, ValueError)` arm to EXIT_USAGE; a path this
+    package's own publication table declares goes through `report.load_published`, which turns the same
+    refusal into `PublishedArtefactUnavailable` at EXIT_DRIFT, because there nobody argued with a filename
+    -- the checkout is what stopped matching what it publishes. Before `autorate severity` existed this
+    class described a path no user could walk, which is the debt R-170 recorded;
+    `tests/test_severity_surface.py` walks both arms at the entry point.
+
+    It is not a `ReaderContractError`, which is deliberately
     NOT a `ValueError` so the reader's per-line quarantine cannot absorb a corpus refusal.
     """
 
@@ -439,6 +453,17 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
     short for any bound in the family to meet the target (`n_below_min`), and nothing else: the family
     always contains a candidate that never errs, so the only way to refuse a well-formed severity run
     is the sample.
+
+    The `0.05`s in this signature are LIBRARY DEFAULTS, for a caller who has not chosen a budget, and the
+    published path never consults them: `autorate severity` passes `alpha`, `delta` and `seed` explicitly
+    from `certificate.PUBLISHED_RUBRIC`'s own names (and, under `--protocol`, from the freeze), so the
+    numbers a certificate publishes have one owner even though this signature carries a second copy. That
+    is the half of #62 this file could finish: `protocol.RUBRIC_SCOPE` states in the frozen document itself
+    that these defaults live outside the published rubric's fence, and
+    `test_the_published_path_never_consults_the_library_defaults` moves them to prove the published
+    artefact does not move with them. `certificate.PUBLISHED_RUBRIC["alpha"]` is the set gate's coverage
+    level and this gate's RISK TARGET -- one value, two kinds of promise, and every severity envelope says
+    which one it is measured against.
     """
     alpha = _budget("alpha", alpha)
     delta = _budget("delta", delta)
@@ -687,6 +712,24 @@ _REASON_MEANING = {
 }
 
 
+# The shape a serialized severity certificate is written in, declared beside the fields it describes.
+#
+# It is NOT `certificate.SHAPE_VERSION` (2), and reusing that number would be a false statement about the
+# artefact rather than a convenience: a shape tag says which field set the bytes are in, and two shapes
+# sharing one tag is a tag that cannot fail. `certificate.py:329`'s loader diffs the top-level field names
+# of `Certificate`, so a severity document handed to it would come back as
+# `unknown ['ahat', 'direction', 'price_bound', ...]` -- and `certificate`'s version stayed at 2 when
+# `meta.protocol_digest` landed, because a key added INSIDE `meta` is not a top-level shape change (Plan D
+# Task 2's ruling). The same rule reads back here: nothing in this task adds a top-level field, so the
+# severity shape stays 1.
+#
+# The KEY is shared with `certificate.SHAPE_KEY` on purpose: one spelling of "which shape am I" across the
+# two shapes is what lets a reader tell them apart, and two spellings of the same question is how a
+# document ends up answering neither.
+SEVERITY_SHAPE_VERSION = 1
+SEVERITY_SHAPE_KEY = SHAPE_KEY
+
+
 @dataclass(frozen=True)
 class SeverityCertificate:
     """A one-sided guarantee, the budgets it was made at, and the conditions that void it (spec 10).
@@ -716,6 +759,31 @@ class SeverityCertificate:
     meta: dict = field(default_factory=dict)
 
     def __post_init__(self):
+        # The type arms come first, and they are not decoration: every one of the comparisons below is
+        # `0.0 <= value <= 1.0` or `bound > alpha`, and a JSON string in a numeric slot answers them with a
+        # `TypeError`. `cli.main` maps no `TypeError` to an exit code, so a tampered or foreign artefact
+        # would leave the documented 0/2/3/4 contract at rc 1 -- the exact defect Plan D Task 2 found four
+        # times on subscripted reads of a frozen `Protocol`, arriving here through the contents rather than
+        # through the call shape. Refusing by name is also what makes the loader's "unknown shape"
+        # statement true for a document that has the right keys and the wrong types.
+        if isinstance(self.envelope, (str, bytes)) or not isinstance(self.envelope, (list, tuple)):
+            raise SeverityShapeMismatch("envelope must be a list of assumption lines, got %s (%r)"
+                                        % (type(self.envelope).__name__, self.envelope))
+        if any(not isinstance(line, str) or not line for line in self.envelope):
+            raise SeverityShapeMismatch("every envelope line must be a non-empty string; found %r"
+                                        % (self.envelope,))
+        if not isinstance(self.meta, dict):
+            raise SeverityShapeMismatch("meta must be a mapping of the run's own counters, got %s"
+                                        % type(self.meta).__name__)
+        # The budgets, too: `bound > alpha` below and `correction.joint_level` behind `level` are both
+        # arithmetic on them, and `certify_severity` validates them through `_budget` before it constructs
+        # anything. A document that skipped that door must not be allowed to answer with a `TypeError`.
+        for name in ("alpha", "delta"):
+            value = getattr(self, name)
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not 0.0 < value < 1.0):
+                raise SeverityShapeMismatch("%s must be a number in (0,1), got %r (%s)"
+                                            % (name, value, type(value).__name__))
         object.__setattr__(self, "envelope", tuple(self.envelope))
         object.__setattr__(self, "meta", dict(self.meta))
         if not self.envelope:
@@ -731,20 +799,24 @@ class SeverityCertificate:
             if missing:
                 raise SeverityShapeMismatch("a feasible severity certificate must carry %s"
                                             % ", ".join(missing))
-            if not 0 <= self.ahat:
-                raise SeverityShapeMismatch("a reported level indexes the rubric: %r" % (self.ahat,))
+            if isinstance(self.ahat, bool) or not isinstance(self.ahat, int) or not 0 <= self.ahat:
+                raise SeverityShapeMismatch("a reported level indexes the rubric and must be an int: %r"
+                                            % (self.ahat,))
             for name in ("bound", "price_bound", "override_bound"):
-                v = getattr(self, name)
-                if not 0.0 <= v <= 1.0:
-                    raise SeverityShapeMismatch("%s is a probability: %r" % (name, v))
+                value = getattr(self, name)
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not 0.0 <= value <= 1.0):
+                    raise SeverityShapeMismatch("%s is a probability: %r" % (name, value))
             if self.bound > self.alpha:
                 raise SeverityShapeMismatch(
                     "a severity certificate cannot publish a bound above its own risk target: "
                     "bound=%r > alpha=%r -- the feasibility test and the published number must be the "
                     "same canonical value" % (self.bound, self.alpha))
-            if not 0.0 <= self.measured_violation <= 1.0:
+            measured = self.measured_violation
+            if (isinstance(measured, bool) or not isinstance(measured, (int, float))
+                    or not 0.0 <= measured <= 1.0):
                 raise SeverityShapeMismatch("measured_violation is a fraction of evaluated cases: %r"
-                                            % (self.measured_violation,))
+                                            % (measured,))
         else:
             if self.reason is None:
                 raise SeverityShapeMismatch("a refusal must name its reason")
@@ -778,6 +850,68 @@ class SeverityCertificate:
                    override_bound=None, measured_violation=None, n_cal=n_cal, n_eval=n_eval,
                    envelope=_BASE_ENVELOPE + ("no certificate exists, so no action is certified",),
                    meta={"detail": detail, **(meta or {})})
+
+    def to_dict(self) -> dict:
+        """The artefact as JSON-ready data, with the shape tag written here and nowhere else.
+
+        `certificate.py`'s precedent: the tag is a property of the SERIALIZED shape, not a field of the
+        object, so no caller of `SeverityCertificate` carries it and it cannot become a second owner of
+        anything the object already holds. A producer and its bytes therefore cannot disagree about which
+        shape they are in.
+        """
+        d = asdict(self)
+        d["envelope"] = list(self.envelope)
+        d[SEVERITY_SHAPE_KEY] = SEVERITY_SHAPE_VERSION
+        return d
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SeverityCertificate":
+        """Read a stored severity certificate, naming the shape it found before anything else.
+
+        Three arms, in this order, each with its own statement:
+        the SHAPE (a tag that is not this build's severity shape, including a set certificate's tag -- the
+        two shapes refuse each other, and a field diff would have said `unknown ['ahat', ...]` about what
+        is really a version); the FIELD NAMES (unknown or missing, which is a stale or hand-edited
+        artefact); and then the shape's own invariants, which `__post_init__` polices -- including the
+        types, because a string in a numeric slot used to answer a comparison with `TypeError` and rc 1.
+
+        Every refusal is a `SeverityShapeMismatch`, which is a `ValueError`: `load_published` answers it
+        with the named refusal at exit 4 for a table-declared artefact, and `cli.main`'s general arm answers
+        it with 2 for a path the operator typed. Neither reading may be silent, and neither may escape the
+        documented 0/2/3/4 contract.
+        """
+        from dataclasses import fields
+
+        found = d.get(SEVERITY_SHAPE_KEY)
+        if found != SEVERITY_SHAPE_VERSION:
+            named = (repr(found) if SEVERITY_SHAPE_KEY in d else
+                     "none (no %r key at all: a certificate written before severity shape %d existed)"
+                     % (SEVERITY_SHAPE_KEY, SEVERITY_SHAPE_VERSION))
+            # The one foreign shape this repository actually publishes is the set certificate, and a reader
+            # who is handed one deserves its name rather than a version number: `certificate.SHAPE_VERSION`
+            # is 2 and belongs to a different field set.
+            foreign = (set(d) & {"qhat", "autorate", "mean_set_size", "beta", "method"})
+            raise SeverityShapeMismatch(
+                "stored certificate is not in the severity shape this build reads: found shape %s, "
+                "required severity shape %d%s -- regenerate it with `autorate severity`"
+                % (named, SEVERITY_SHAPE_VERSION,
+                   ", which is the shape of a SET certificate (it carries %s)"
+                   % ", ".join(sorted(foreign)) if foreign else ""))
+        names = {f.name for f in fields(cls)}
+        unknown = sorted(set(d) - names - {SEVERITY_SHAPE_KEY})
+        defaulted = {f.name for f in fields(cls) if f.default is not MISSING}
+        missing = sorted(names - set(d) - defaulted)
+        if unknown or missing:
+            raise SeverityShapeMismatch(
+                "stored certificate does not match the severity certificate shape: unknown %s, "
+                "missing %s -- regenerate it with `autorate severity`" % (unknown, missing))
+        kw = dict(d)
+        kw.pop(SEVERITY_SHAPE_KEY)
+        kw["envelope"] = tuple(d["envelope"])
+        return cls(**kw)
 
     def summary(self) -> str:
         side = _SIDE[self.direction]

@@ -1158,3 +1158,104 @@ move. That is not done here, for two reasons: a freeze is a dated act, and silen
 published digest covers is the misattribution this project keeps removing; and Task 72 is in flight on the
 adjacent files, so a second re-freeze would collide with the artefact it is about to publish. Opened as an
 explicit follow-up instead, so no reader can take G3's or G5's note as current.
+
+## 2026-10-12 -- #72 items 1 and 2: G3 acquires a command, an artefact and a gate arm; item 3 is still open
+
+**Provenance first.** A dispatched implementer for #72 died with 491 lines uncommitted in the working tree
+and four of its own test rows red. The controller adopted that work rather than discarding it, finished the
+test file, and re-measured everything it claims. Nothing in this entry rests on the dead round's assertions:
+every number below came from a run made today, and each of the four red rows is recorded with the
+measurement that showed it was the test, not the product, that was wrong.
+
+**What landed.** `autorate severity <records> --direction {under,over,both_sides_sum}` produces a one-sided
+ordinal certificate -- `P(Y > ahat(X)) <= alpha` for the report rule `max(modal, ahat)`, with the mirror for
+over-calls, the price of the rule stated beside it rather than inside it, and the joint level derived by
+`correction.joint_level` from the three claims it counts. The artefact has a serialisation shape of its own
+(`severity.SEVERITY_SHAPE_VERSION`, tagged in `shape`), because reusing the set shape's version number for a
+different field set would be a false statement about the bytes; the two shapes refuse each other in both
+directions. Three files join the publication: `data/records_ordinal_synthetic.jsonl`, its certificate
+`data/cert_severity_ordinal.json`, and `docs/SEVERITY.md`, which `verify` byte-compares through
+`cli.PUBLISHED_DOCS`. The stamp rule reaches the new artefact the same way it reaches the five set ones:
+`--protocol protocol.json` writes `meta.protocol_digest`, `verify` compares `meta` whole, and a table-declared
+artefact that is absent or wrong-shaped is a named refusal at exit 4, not a usage error at 2.
+
+**Denominators, per lane, before and after, from one run.** `verify` re-derived `108 /108` corpus-absent and
+`143 /143` corpus-present at `734313c`; it now re-derives `128 /128` and `163 /163`, both at exit 0. The
+twenty added comparisons are identical in both lanes and are named by the rows that produce them: fifteen
+`cert ordinal.<field>` -- `feasible`, `reason`, `direction`, `alpha`, `delta`, `backend`, `ahat`, `bound`,
+`price_bound`, `override_bound`, `measured_violation`, `n_cal`, `n_eval`, `envelope`, `meta` -- one
+`cert ordinal.summary`, three rubric rows (`cert ordinal.alpha`, `.delta`, `.seed` -- the ordinal gate has no
+`beta` and no `method`, so inventing them would state a rule that never ran), and `docs/SEVERITY.md
+byte-identical`. **No published number moved:** the five set certificates and every figure in
+`docs/RESULTS.md` are untouched, and the claim lines still print `claim G3 not_measured`.
+
+**Why G3 still reads `not_measured` with a published certificate in the tree.** The criterion is not
+"an ordinal certificate exists"; it is "an ordinal guarantee multiclass CP cannot express", and that is the
+brief's item 3 -- a control showing the set gate silent or wrong in a named direction on the same data,
+writable so that the opposite result is reachable and would delete the README's G3 sentence rather than
+reword it. Publishing the guarantee without the control would let a document claim a capability the tree has
+only demonstrated half of, so the status stays as the freeze states it and item 3 stays open. This is also the
+reason #89's re-freeze has not landed: G3's note in `protocol.json` is still false against the tree, and a
+re-freeze written before item 3 reports would freeze the wrong sentence again.
+
+**Four test-side corrections, each with the measurement that forced it.**
+1. The exit-code sweep wrote two different populations to one filename, so the second write replaced the
+   certified 1200-record population with a 60-record one and the sweep measured `{2, 3}` while asserting
+   `{0, 2, 3}` -- the certified arm never ran. The helper now names its file and refuses to overwrite one,
+   and the row pins the exit code per arm (`0` certified, `3` too few records, then `2` four times over: the
+   non-monotone direction, the unparseable direction, the non-integer seed, the budget the owner refuses, the
+   absent records file) instead of a set the collision could satisfy.
+2. The denominator row patched `cli.SEVERITY_CERTS` and not `report.SEVERITY_CERTS`, while the arm's loop
+   lives in `report`; it measured `(128, 127)` -- a delta of one row where twenty were added. Both owners are
+   patched now, exactly as every other helper in this file and in `test_verify_protocol.py` already does.
+3. An `ahat` edit was asserted to move `meta`; it does not. Enumerated the artefact's `meta` at the tip:
+   twenty-one keys -- the split ids, the counters, the rubric echo (`alpha`, `delta`, `seed`, `direction`), the
+   rule, the candidate domain, the unit note and the stamp -- and none of them is `ahat`, so the field the
+   tamper moved is not a field `meta` states. Measured set: `cert ordinal.ahat`, `cert ordinal.summary`,
+   `docs/SEVERITY.md byte-identical`.
+4. A removed stamp was asserted to be one drift line; measured two -- `cert ordinal.meta` and the document,
+   which states the digest on its own line. The summary does not move, because it quotes no digest.
+Both rows now assert the exact set through one `_drift_labels` helper, so a third unattributable line fails
+them; the helper splits on the gate's own separator because a drift line's value can be an entire rendered
+document, and counting its inner newlines would report drift that never happened.
+
+**Falsification, and the bound on what it proved.** Three plants, each restored byte-identically (hashes
+checked before and after). A plant that stops `severity.summary()` quoting `ahat` dropped
+`cert ordinal.summary` and reddened the edit row -- that member is load-bearing. A plant that stops
+`docs/SEVERITY.md`'s own `ahat` bullet did *not* redden it, because the figure reaches the prose a second time
+through the verbatim summary block: the tamper is caught twice over, and neither site alone is what the row
+relies on. A plant that suppresses the document's digest bullet did *not* redden the stamp row, because the
+committed document states a line a stampless artefact cannot reproduce, so that arm refuses either way. The
+rows' docstrings now say this explicitly: they prove the tamper is attributable by name in both places and
+that nothing else moves, not that any single bullet is the only route to the second refusal.
+
+**Adding an arm to the gate moves the fixtures that build a checkout.** Seven rows of `tests/test_cli.py` went
+red the moment the ordinal artefact became published, all from one cause: the scratch-checkout helper copied
+"every artefact the tables say is published" and did not know about `SEVERITY_CERTS` (a table of triples, of
+which the first two are paths and the third is a rule), so every refusal test named the absent ordinal file
+instead of the tamper it planted, and one row that expects usage error 2 got drift 4. The fixes are three, and
+all three raise the bar rather than lowering it: the staging helper reads the new table, the denominator
+formula gains a term derived from `len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1 +
+len(SEVERITY_RUBRIC_FIELDS))`, and the independent literal that names which documents `verify` owns gained
+`docs/SEVERITY.md` -- that literal is the tripwire this repository added when a document left the gate
+silently, so editing it is the intended cost of adding a document, not a way around it.
+
+**Two small production items in the same commit.** `report.py`'s import of `SEVERITY_N_CLAIMS` was unused --
+checked before deleting that no module imports the name *from* `report` (`tests/test_severity.py` takes it
+from its owner, `severity.py`), so the import went rather than the claim. And the `--direction` help text read
+"arteffact"; corrected after checking that no tracked file quotes the misspelling, so the fix moves no
+document.
+
+**The README moved in this same commit, and that belongs on the record.** Its reproduction prose quoted
+`108 /108` and `143 /143`, and its G3 bullet stated that "the shipped program cannot yet produce one: there
+is no command surface, no committed artefact, and no `verify` row for it". All three of those clauses became
+false the moment this commit's own files landed, and no test reads the README, so nothing would have said so:
+the denominators are now `128 /128` and `163 /163` (the 35-check gap between the lanes is unchanged, and is
+still the 9 `SOURCE.json` digests plus the 26 snapshot keys), "five published certificates" becomes six, and
+the byte-compared document list gains `docs/SEVERITY.md`. G3's bullet now says what exists -- a command, an
+artefact, a gate row -- and why the status stays `not_measured`: the criterion is the contrast, and the
+control that would establish it is item 3, unwritten. It also records the way that control can go against us:
+`certify_score` certifies intervals of ordered levels, and an interval's top endpoint bounds
+`P(Y > hi(X))` through the set gate's own coverage statement, so the honest reading of the experiment may be
+that G3 fails and the claim is deleted. `docs/SEVERITY.md` itself needed no edit, because every figure in it
+is read from the artefact it describes.

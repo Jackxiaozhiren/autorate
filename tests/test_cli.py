@@ -51,12 +51,19 @@ def stage_published(work):
     joined the gate, two tests that had been naming four files began to fail on a
     `FileNotFoundError` for a fifth. The tables in `report.py` are the one owner of what is
     published, so the fixture reads them instead of remembering them.
+
+    `SEVERITY_CERTS` is a table of triples -- records path, artefact path, and the direction the
+    publication declares -- and only the first two are files to copy; the direction is a rule, not a
+    path. It joins the same way the set tables do, because G3's artefact is now as published as theirs,
+    and a fixture that forgets it makes every refusal test below name the absent ordinal file instead of
+    the tamper it planted.
     """
     from autorate.cli import PROTOCOL_JSON
-    from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS
+    from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS, SEVERITY_CERTS
 
     names = ({RECORDS, str(PROTOCOL_JSON)} | set(CERTS.values())
-             | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair})
+             | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
+             | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
     for rel in sorted(names):
         shutil.copy(REPO / rel, work / rel)
 
@@ -121,9 +128,10 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # separately so a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change.
     # The key list is read from the gate itself (R-83), so a column the arm stops comparing has to
     # widen this expectation before it can shrink the gate.
-    from autorate.cli import PIN_DERIVED_KEYS, PUBLISHED_DOCS
+    from autorate.cli import (PIN_DERIVED_KEYS, PUBLISHED_DOCS, SEVERITY_COMPARE_FIELDS,
+                              SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
-    from autorate.report import CERTS, MASSIVE_CERTIFICATES
+    from autorate.report import CERTS, MASSIVE_CERTIFICATES, SEVERITY_CERTS
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
                    if o["id"].startswith("massive")]
@@ -139,7 +147,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # which published documents `verify` owns -- it is the assertion that was red for `docs/AUDIT.md`
     # before MAJ-3, and it is what a future narrowing of `PUBLISHED_DOCS` has to edit first.
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
-                                                         "docs/AUDIT.md"}, PUBLISHED_DOCS
+                                                         "docs/AUDIT.md", "docs/SEVERITY.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
@@ -150,8 +158,14 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # in `CERT_COMPARE_FIELDS`), and one per digest the protocol names in advance. Measured at the tip
     # before this row was widened, the absent lane printed 96; after the arm, 108 -- the movement is
     # added checks, not moved numbers, and the two are reported apart in `docs/ERRATA.md`.
+    # G3's ordinal arm enters the same way, from its own table and its own field lists: one comparison per
+    # declared field, one for the summary it prints, and one rubric row per field the freeze owns for that
+    # gate. Absent lane measured 108 before it and 128 after; the document row is already in
+    # `len(PUBLISHED_DOCS)`, so the twenty added comparisons are 15 + 1 + 3 + 1.
     expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
                 + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
+                + len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
+                                         + len(SEVERITY_RUBRIC_FIELDS))
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 

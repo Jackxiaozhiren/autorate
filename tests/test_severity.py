@@ -602,8 +602,10 @@ def test_a_joint_level_the_owner_refuses_to_derive_is_not_printed_as_a_confidenc
     -- raised `ValueError: the joint level -0.2 … is not a probability`. A printed number with no
     producer is exactly the anti-pattern R-160 names, and this is the state where the missing producer
     is observable without planting anything: the print survives and the derivation does not. The fix
-    is one call site, so the refusal the owner states is the refusal the artefact carries (exit 2,
-    which `cli.main` maps from `ValueError`).
+    is one call site, so the refusal the owner states is the refusal the caller gets: `autorate
+    severity --delta 0.40` exits 2 on that `ValueError`, which `cli.main` maps, and the row that walks
+    it through the shipped program is in `tests/test_severity_surface.py` -- R-170's first obligation,
+    because until a command reaches a refusal its exit code is a claim about a test.
     """
     recs = ordinal_records(**CLEAN)
     with pytest.raises(ValueError, match="not a probability"):

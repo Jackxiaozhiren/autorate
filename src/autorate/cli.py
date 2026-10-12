@@ -18,9 +18,12 @@ from .inventory import corpus_label, inventory, write_inventory
 from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS,
-                     build_report, certify_all, load_published, load_records, read_certificate,
-                     read_inventory_snapshot, rederive_massive, write_report)
+from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, SEVERITY_CERTS,
+                     SEVERITY_LABEL, SEVERITY_RECORDS, build_report, certify_all, load_published,
+                     load_records, published_severity, read_certificate, read_inventory_snapshot,
+                     rederive_massive, rederive_severity, render_severity,
+                     write_report)
+from .severity import DIRECTIONS, certify_severity
 
 EXIT_CERTIFIED = 0
 EXIT_NOT_CERTIFIABLE = 3
@@ -39,6 +42,10 @@ class UsageError(ValueError):
 
 RESULTS = Path("docs/RESULTS.md")
 AUDIT_MD = Path("docs/AUDIT.md")
+# G3's published document, named beside the other two because this file is where the commands that emit
+# them are declared. `autorate severity --doc` writes it and `verify` re-renders it byte for byte, so the
+# ordinal guarantee is legible to a reader instead of living only in a JSON artefact.
+SEVERITY_MD = Path("docs/SEVERITY.md")
 INVENTORY_MD = Path("data/inventory.md")
 # The frozen protocol document, named here because this file is where the commands that read and write
 # it are declared. `certify --protocol` takes a path from the operator; the DEFAULT stays `None`, and
@@ -350,21 +357,37 @@ def cmd_certify(args) -> int:
 CERTIFY_RUBRIC_FLAGS = (("alpha", ALPHA), ("beta", BETA), ("delta", DELTA), ("seed", SEED),
                         ("method", METHOD))
 
+# The ordinal gate's own flags, and its own comparison list. `certify_severity` takes neither `beta` nor
+# `method`: a severity certificate has no automated subset to condition on (the rule answers every case)
+# and no nonconformity to choose (one loss family per direction), which is precisely why the surface is a
+# verb of its own rather than a `--measure` flag on `certify` -- see `cmd_severity`.
+SEVERITY_RUBRIC_FLAGS = (("alpha", ALPHA), ("delta", DELTA), ("seed", SEED))
+SEVERITY_RUBRIC_FIELDS = ("alpha", "delta", "seed")
+# What `verify` re-derives of the severity shape, named here for the same reason as the set list: one
+# owner, read by the gate and by the test that counts it. `direction` is on the list although the
+# publication table also declares it -- the artefact states the rule it claims to be, and both statements
+# are compared. `meta` is compared whole, as it is on the set side, which is what makes an unstamped
+# severity artefact drift rather than pass.
+SEVERITY_COMPARE_FIELDS = ("feasible", "reason", "direction", "alpha", "delta", "backend", "ahat",
+                           "bound", "price_bound", "override_bound", "measured_violation", "n_cal",
+                           "n_eval", "envelope", "meta")
 
-def _certify_rubric(args, protocol) -> dict:
-    """Resolve the five rubric values, and refuse a command line that argues with its own protocol.
 
-    With no `--protocol`, every value is the flag's own default or whatever the operator typed -- the
-    behaviour of every certificate this repository has published. With one, the protocol's rubric is
-    the rule and a flag may only restate it: `load_protocol` has already refused a document whose
-    rubric disagrees with `certificate.PUBLISHED_RUBRIC`, so the two agree by construction, and a flag
-    carrying a different number is the operator asking for a measurement the freeze does not license.
-    Silently letting it win would make the protocol a suggestion, which is the one thing a freeze is
-    not (brief step 3). So the contradiction exits 2, naming BOTH values and which flag and which
-    document said each.
+def _rubric_or_freeze(args, protocol, flags) -> dict:
+    """Resolve rubric flags, and refuse a command line that argues with the protocol it was given.
+
+    `CERTIFY_RUBRIC_FLAGS` and `SEVERITY_RUBRIC_FLAGS` are different lists, because the two gates take
+    different numbers; the RULE is the same and lives here, so the ordinal surface cannot quietly grow a
+    second, weaker copy of the freeze check. With no `--protocol`, every value is the flag's own default
+    (the owner's name) or whatever the operator typed. With one, the protocol's rubric is the rule and a
+    flag may only restate it: `load_protocol` has already refused a document whose rubric disagrees with
+    `certificate.PUBLISHED_RUBRIC`, so the two agree by construction, and a flag carrying a different
+    number is the operator asking for a measurement the freeze does not license. Silently letting it win
+    would make the protocol a suggestion, which is the one thing a freeze is not (brief step 3). So the
+    contradiction exits 2, naming BOTH values and which flag and which document said each.
     """
     out = {}
-    for name, owner in CERTIFY_RUBRIC_FLAGS:
+    for name, owner in flags:
         typed = getattr(args, name)
         if protocol is None:
             out[name] = owner if typed is None else typed
@@ -378,6 +401,80 @@ def _certify_rubric(args, protocol) -> dict:
                 "nothing" % (name, typed, args.protocol, stated, name, protocol_digest(protocol)))
         out[name] = stated
     return out
+
+
+def _certify_rubric(args, protocol) -> dict:
+    """The set gate's five rubric values, under the freeze when one was given (see `_rubric_or_freeze`)."""
+    return _rubric_or_freeze(args, protocol, CERTIFY_RUBRIC_FLAGS)
+
+
+def cmd_severity(args) -> int:
+    """Records -> the one-sided severity certificate (G3), and the exit code says which verdict.
+
+    A verb of its own, not a `--measure` flag on `certify`, and the dispatch rule is the code: `certify`
+    and `audit` each own a subparser whose flags are THAT gate's rubric (`certify` takes `--beta` and
+    `--method` and `--groups`; `audit` takes `--gate` and `--delta` and `--records`). The ordinal gate has
+    no automated subset to condition a risk on and no nonconformity to choose, so hanging it off `certify`
+    would publish two flags that certify nothing and a `--groups` that silently does nothing -- the same
+    misattribution this file keeps deleting.
+
+    - **rc 0** -- the one-sided bound certified: `P(Y > ahat(X)) <= alpha` (or the over-call mirror) at the
+      confidence the artefact states.
+    - **rc 3** -- the run measured and refused: `no_gold_labels`, or `n_below_min` because no level in the
+      family can be bounded by a sample this short. A result, printed and written, not a crash.
+    - **rc 2** -- a records path that is not there or not a record, a budget that is not a probability, a
+      `--delta` loose enough that `correction.joint_level` refuses to derive a level from it, a direction
+      outside the closed set, a population carrying no `score` record or spanning two backends or two
+      rubric widths, `--direction both_sides_sum` refused by its own measured curve, an artefact whose
+      shape this build does not read on a PATH THE OPERATOR TYPED, or a rubric flag that contradicts the
+      `--protocol` document it was handed.
+    - **rc 4** -- two kinds, neither of them the operator's input: a table-declared severity artefact that
+      is absent or unreadable or wrong-shaped (`PublishedArtefactUnavailable`, reached by `verify`), and an
+      invariant of our own arithmetic (`ArithmeticError`, the search-and-scan disagreement).
+
+    A refusal never exits 1, which is why `SeverityShapeMismatch` is a `ValueError` subclass and why the
+    shape guards refuse a JSON string in a numeric slot by name instead of letting the comparison answer
+    with a `TypeError` no arm maps.
+    """
+    protocol = load_protocol(Path(args.protocol)) if args.protocol else None
+    rubric = _rubric_or_freeze(args, protocol, SEVERITY_RUBRIC_FLAGS)
+    recs = _records_from(Path(args.records))
+    cert = certify_severity(recs, direction=args.direction, **rubric)
+    if protocol is not None:
+        # The same stamp the set artefacts carry, so `meta` -- which `verify` compares whole -- says which
+        # freeze this guarantee was measured under. Stamped here, at the command, and not inside the
+        # certifier: a library default must stay unstamped for every other caller (R-200).
+        cert = replace(cert, meta={**cert.meta, "protocol_digest": protocol_digest(protocol)})
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(cert.to_json())
+    print(cert.summary())
+    for line in cert.envelope:
+        print("  envelope:", line)
+    if protocol is not None:
+        print("  protocol: %s (version %d, frozen %s) digest %s"
+              % (args.protocol, protocol.protocol_version, protocol.frozen_at,
+                 protocol_digest(protocol)))
+    if args.doc:
+        # The published document quotes the artefact at the table's own paths, so it may only be written by
+        # the run that produces that artefact. Two reasons, one rule: a document naming the published paths
+        # while carrying figures from somebody else's records is the misattribution this file keeps
+        # deleting, and a path the operator typed would land inside a tracked file -- the machine-path
+        # defect class `protocol._absolute` polices on the freeze's side.
+        label = SEVERITY_LABEL
+        published_records, published_cert = SEVERITY_CERTS[label][:2]
+        if str(args.records) != published_records or str(args.out) != published_cert:
+            raise UsageError(
+                "--doc publishes %s, which quotes the ordinal artefact at its declared paths, so it "
+                "requires the run that produces them: --records %s --out %s (this run named "
+                "--records %s --out %s). Nothing was written"
+                % (args.doc, published_records, published_cert, args.records, args.out))
+        doc = Path(args.doc)
+        doc.parent.mkdir(parents=True, exist_ok=True)
+        doc.write_text(render_severity(label, cert))
+        print("wrote %s" % args.doc)
+    print("wrote %s" % args.out)
+    return EXIT_CERTIFIED if cert.feasible else EXIT_NOT_CERTIFIABLE
 
 
 RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
@@ -608,7 +705,24 @@ PUBLISHED_DOCS = (
     # default row, not inventing a third parameter set for the gate to own.
     (AUDIT_MD, lambda inv, records: render_audit(
         {b: audit_fields(rs) for b, rs in sorted(records.items())})),
+    # G3's document, rendered from the published severity artefact rather than from a fresh re-derivation
+    # of the records: the certificate has its own re-derivation arm (which is what catches a stale
+    # artefact), and this row's job is that the PROSE cannot drift from the artefact it quotes. The
+    # artefact is read through `load_published`, so an absent or wrong-shaped document is exit 4 -- no
+    # argument selected that path, the table did.
+    (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
 )
+
+
+def _render_severity_doc() -> str:
+    """What `docs/SEVERITY.md` should hold: the published ordinal artefact, rendered.
+
+    One owner for the read, shared by `verify`'s byte comparison and by `autorate severity --doc`, so the
+    document a command writes and the document the gate expects cannot be produced by two different
+    readings of the same artefact.
+    """
+    label, _records, cert, _direction = published_severity()
+    return render_severity(label, cert)
 
 
 def _verify_protocol(args):
@@ -705,6 +819,13 @@ def cmd_verify(args) -> int:
     # reason: `CERT_COMPARE_FIELDS` has one owner, and it is this file.
     rederive_massive(expect, CERT_COMPARE_FIELDS, rubric=rubric,
                      stamp=lambda cert: _stamp(cert, digest))
+
+    # G3's artefact, from its own table and its own field list: a different shape, read by a different
+    # loader, with the direction declared by the publication instead of read back off the bytes. Same
+    # freeze, same stamp, both lanes -- the records file is committed, so the corpus-less run re-derives
+    # the ordinal guarantee exactly as the corpus-present one does.
+    rederive_severity(expect, expect_rubric, SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS,
+                      rubric=rubric, stamp=lambda cert: _stamp(cert, digest))
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:
@@ -887,6 +1008,46 @@ def build_parser() -> argparse.ArgumentParser:
                         "refusal (exit 2), not an empty group.")
     c.add_argument("--out", default="cert.json")
     c.set_defaults(fn=cmd_certify)
+
+    s = sub.add_parser(
+        "severity", help="G3: records -> the one-sided ordinal severity certificate "
+                         "(P(Y > ahat(X)) <= alpha, or the over-call mirror) -- the statement the "
+                         "multiclass set gates cannot make")
+    s.add_argument("records", nargs="?", default=SEVERITY_RECORDS,
+                   help="the ordinal records to certify (default: the committed ordinal population, %s)"
+                        % SEVERITY_RECORDS)
+    s.add_argument("--direction", required=True, choices=DIRECTIONS,
+                   help="which one-sided family to certify. `under` floors the report at "
+                        "max(modal, ahat) and bounds P(Y > ahat(X)); `over` clips it at "
+                        "min(modal, ahat) and bounds P(Y < ahat(X)); `both_sides_sum` is spec 6.1's naive "
+                        "weighted loss, in the closed set ONLY so the monotonicity precondition has "
+                        "something to refuse -- it exits 2 naming the curve it measured. No default: the "
+                        "direction is which guarantee is being claimed, and the published ordinal "
+                        "artefact's is declared by report.SEVERITY_CERTS, not invented here.")
+    s.add_argument("--alpha", type=float, default=ALPHA,
+                   help="the RISK target, not a confidence: the bound on P(Y > ahat(X)) is certified "
+                        "against it (default %s, the published rubric's owner)" % ALPHA)
+    s.add_argument("--delta", type=float, default=DELTA,
+                   help="the level each published bound is tested at (default %s); the joint level is "
+                        "derived from it by correction.joint_level, never restated here" % DELTA)
+    s.add_argument("--seed", type=int, default=SEED,
+                   help="the split the two halves are cut on (default %s, the published split)" % SEED)
+    s.add_argument("--protocol", default=None,
+                   help="the frozen protocol document to certify under: its digest is written into "
+                        "meta, its rubric is the rule, and a rubric flag that contradicts it exits 2 "
+                        "naming both values. There is NO default -- `severity` never reads "
+                        "`protocol.json` unless this flag names it, because `verify` compares `meta` "
+                        "whole and an unstamped artefact is a different statement (R-200).")
+    s.add_argument("--out", default="cert.json",
+                   help="where to write the certificate (default cert.json, which is gitignored; the "
+                        "published artefact is written by naming report.SEVERITY_CERTS's path)")
+    s.add_argument("--doc", default=None,
+                   help="also publish the document quoting this artefact's figures "
+                        "(docs/SEVERITY.md). Only allowed for the run that produces the published "
+                        "artefact -- --records and --out must name report.SEVERITY_CERTS, or the "
+                        "document would quote published paths over somebody else's numbers. Exits 2 "
+                        "otherwise, writing nothing.")
+    s.set_defaults(fn=cmd_severity)
 
     m = sub.add_parser("compare", help="two certificates side by side")
     m.add_argument("files", nargs=2)

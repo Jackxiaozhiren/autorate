@@ -109,25 +109,25 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 108 /108 values` where the corpus is absent, `re-derived 143 /143
+prints say so: `re-derived 128 /128 values` where the corpus is absent, `re-derived 163 /163
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 143: every CI run is a 108 run, on both of its arms. Green CI is
+alone can never reach the 163: every CI run is a 128 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 108 run proves a lot inside that lane. Every published number that is a function of a
-committed input re-derives there -- all five published certificates, each from the committed
+A 128 run proves a lot inside that lane. Every published number that is a function of a
+committed input re-derives there -- all six published certificates, each from the committed
 records it was actually made from, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
-for byte, and the MASSIVE rows
-from their committed pin. What a 108 run cannot prove is what its own disclosure says in so
+for byte, `docs/SEVERITY.md` byte for byte, and the MASSIVE rows
+from their committed pin. What a 128 run cannot prove is what its own disclosure says in so
 many words -- `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 108 /108.
+had drifted from the corpus would agree with itself and report 128 /128.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -155,12 +155,16 @@ second place to keep them.
   sample cannot bound the claim: on the 2 cases one backend automates, one is wrong, and the exact one-sided
   bound is 0.975. The point estimate misses upward; what the corpus says is that it cannot carry the claim.
 - **G3, at least one ordinal guarantee multiclass conformal prediction cannot express: `not_measured`.** The
-  one-sided severity certificate (`P(Y > â(X)) ≤ α`, three canonical bounds, its own refusal reasons) exists
-  in `src/autorate/severity.py` with its unit tests, and the shipped program cannot yet produce one: there is
-  no command surface, no committed artefact, and no `verify` row for it. Until the falsification control --
-  the same data, the multiclass set gate silent or wrong in a specific direction where the ordinal statement
-  is checkable -- is committed, this criterion rests on library tests and a claim in prose, and is stated here
-  as unmeasured. If that control turns out to show the set gate can express the statement, the honest outcome
+  one-sided severity certificate (`P(Y > â(X)) ≤ α`, three canonical bounds, its own refusal reasons) is a
+  command, an artefact and a gate row now: `autorate severity` writes `data/cert_severity_ordinal.json` from
+  the committed ordinal population, `docs/SEVERITY.md` renders it from those bytes, and `verify` re-derives
+  twenty comparisons of it in both lanes. The status does not move, because the criterion is a contrast and
+  not a certificate: until the falsification control -- the same data, the multiclass set gate silent or wrong
+  in a specific direction where the ordinal statement is checkable -- is committed, what exists demonstrates
+  that the ordinal guarantee can be produced and checked, not that a set gate cannot state it. And that
+  control can go against the claim: `certify_score` certifies *intervals* of ordered levels, whose top
+  endpoint bounds `P(Y > hi(X))` by the set gate's own coverage statement, so if the experiment shows the set
+  gate expresses the statement after all, the honest outcome
   is that G3 fails and the claim is removed rather than reworded.
 - **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
   CLI (`certify --groups`, plus the simultaneous correction), and a slice below the size floor is refused by
@@ -198,12 +202,21 @@ Covered by code and by tests: the `choice` primitive, marginal two-sided control
 Clopper-Pearson one-sided bounds, and the gate that turns a certificate into
 `auto` / `escalate` / `abstain`.
 
-Written and tested, but not yet published as evidence: the ordinal one-sided severity certificate
-(`severity.py`), the threshold certifier (`certify_threshold.py`), the group-conditional (Mondrian) surface
-and its simultaneous per-slice correction (`certify_choice.certify_groups`, `correction.py`),
-drift-adaptive conformal (`drift.py`), and the contamination stratification (`contamination.py`). Each of
-them is a library with unit tests and no committed artefact that `verify` re-derives, which is the
-difference between "implemented" and "certified" in this project -- see the criteria above.
+Written and tested, but not yet published as evidence: the threshold certifier (`certify_threshold.py`),
+the group-conditional (Mondrian) surface and its simultaneous per-slice correction
+(`certify_choice.certify_groups`, `correction.py`), drift-adaptive conformal (`drift.py`), and the
+contamination stratification (`contamination.py`). Each of them is a library with unit tests and no
+committed artefact that `verify` re-derives, which is the difference between "implemented" and "certified"
+in this project -- see the criteria above.
+
+Published, re-derived, and still not the evidence its criterion asks for: the ordinal one-sided severity
+certificate (`severity.py`), reachable as `autorate severity`, committed as `data/cert_severity_ordinal.json`
+over `data/records_ordinal_synthetic.jsonl`, rendered into `docs/SEVERITY.md` and re-derived by `verify` in
+both lanes. `claim G3` prints `not_measured` beside an artefact that exists, because G3 asks for a guarantee
+multiclass CP *cannot express* and the control that would establish the contrast has not been run. Its
+population is synthetic ordinal data with known answers: no committed records file in this checkout carries a
+`qtype="score"` record, and the artefact's own envelope says so, so nothing here is a measurement of a shipped
+model's ordinal risk.
 
 Not implemented at all: per-ask `noul` budgets. The `noul` question type is read, counted and quarantined
 by the same loaders as the others, and there is no certifier for it.
