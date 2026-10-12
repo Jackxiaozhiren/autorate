@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from tools.resplit_experiment import (SYNTHETIC_FAMILY, main, published_tasks, recompute, run_family,
-                                      summarise)
+from tools.resplit_experiment import (SYNTHETIC_FAMILY, main, published_tasks, recompute, render_task,
+                                      run_family, summarise)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -102,6 +102,35 @@ def test_the_stored_rows_recompute_every_published_aggregate(tmp_path):
     dropped = recompute(rows[:-1])[family["label"]]
     assert dropped != summary, (dropped, summary)
     assert dropped["refusal_reasons"] == {"empty_feasible_set": 2}, dropped
+
+
+def test_the_violation_counter_fires_on_a_row_it_should_fire_on():
+    """A rate of 0.000 must be distinguishable from a counter that never counts.
+
+    The synthetic family certifies on every split and violates on none, so every end-to-end row in this file
+    would still pass if `summarise` counted nothing at all. That is the vacuous-guard class this project
+    keeps finding in its own work, so the counter is exercised directly, on rows built here rather than
+    produced by the certifier: two violations, one exactly-at-the-bound case that is NOT a violation (the
+    claim is `<=`), and one refusal that must not enter the denominator at all.
+    """
+    def row(seed, feasible, observed, bound):
+        return {"label": "synthetic/planted", "seed": seed, "feasible": feasible,
+                "reason": None if feasible else "empty_feasible_set", "n_cal_cases": 100,
+                "n_eval_cases": 100, "automated_cases": 50, "errors_among_automated": 1,
+                "observed_conditional_error": observed, "conditional_error_bound": bound,
+                "autorate": 0.5}
+
+    rows = [row(0, True, 0.10, 0.05),       # above the bound: a violation
+            row(1, True, 0.05, 0.05),       # exactly the bound: the claim holds, so not a violation
+            row(2, True, 0.01, 0.05),       # below: not a violation
+            row(3, False, None, None),      # refused: absent from the denominator
+            row(4, True, 0.20, 0.05)]      # above: a violation
+    summary = summarise("synthetic/planted", rows)
+    assert summary["certificates_issued"] == 4, summary
+    assert summary["violations_denominator"] == 4, summary
+    assert summary["violations"] == 2, summary
+    assert summary["violation_rate"] == 0.5, summary
+    assert render_task(summary).count("2 of 4") == 1, render_task(summary)
 
 
 def test_a_re_run_writes_byte_identical_json(tmp_path):
