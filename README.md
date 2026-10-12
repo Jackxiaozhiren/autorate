@@ -109,25 +109,25 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 128 /128 values` where the corpus is absent, `re-derived 163 /163
+prints say so: `re-derived 166 /166 values` where the corpus is absent, `re-derived 201 /201
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 163: every CI run is a 128 run, on both of its arms. Green CI is
+alone can never reach the 201: every CI run is a 166 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 128 run proves a lot inside that lane. Every published number that is a function of a
+A 166 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all six published certificates, each from the committed
 records it was actually made from, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
-for byte, `docs/SEVERITY.md` byte for byte, and the MASSIVE rows
-from their committed pin. What a 128 run cannot prove is what its own disclosure says in so
+for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, and the MASSIVE rows
+from their committed pin. What a 166 run cannot prove is what its own disclosure says in so
 many words -- `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 128 /128.
+had drifted from the corpus would agree with itself and report 166 /166.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -145,11 +145,16 @@ second place to keep them.
   violation rate: `not_certifiable`.** Five decision tasks have been scored and their records committed;
   zero of the five yield a certificate, and the refusals are published as artefacts rather than rounded
   away. The binding quantity is the evaluation half's case count: the exact one-sided bound on a small
-  number of automated cases sits above a 5% budget no matter how few are wrong. The 200-resplit violation
-  rate the criterion also asks for has no measurement yet, and the evidence for saying so is structural:
-  every certifier in `src/` calls the calibration/evaluation split exactly once, at the seed it was handed,
-  and nothing in the tree sweeps seeds or aggregates a rate across resplits -- the only places the phrase
-  appears are the criterion texts `protocol.json` prints. This row is not close to met without that.
+  number of automated cases sits above a 5% budget no matter how few are wrong. The criterion's second
+  column is now measured and published rather than promised: `tools/resplit_experiment.py` re-splits every
+  scored task 200 times at the rubric this freeze owns, and `data/resplit_200.json` with `docs/RESPLIT.md`
+  carries what came out. All five published tasks certify in **0 of 200** splits, so their empirical violation
+  rate is recorded as undefined with a zero denominator instead of being imputed as `0.000`; the one row that
+  does produce a rate is the synthetic control (200 of 200 splits certify, rate 0.000 over 200 certificates),
+  which tests the machinery and is labelled as nothing else. `verify` compares the artefact's own arithmetic —
+  certificates plus refusals per task, the rate against its denominator, the rows against the splits — and the
+  rubric it recorded against the freeze's, in both lanes. The row is still not close to met: the second column
+  exists, the first is zero.
 - **G2, the reference README's gate demonstrably violating its implied error rate: `measured_not_bounded`.**
   `autorate audit` measures the gate upstream instructs and `docs/AUDIT.md` publishes the multiplier, but the
   sample cannot bound the claim: on the 2 cases one backend automates, one is wrong, and the exact one-sided

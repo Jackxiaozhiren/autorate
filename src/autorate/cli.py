@@ -18,10 +18,12 @@ from .inventory import corpus_label, inventory, write_inventory
 from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, SEVERITY_CERTS,
+from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
+                     RESPLIT_MD, SEVERITY_CERTS,
                      SEVERITY_LABEL, SEVERITY_RECORDS, build_report, certify_all, load_published,
                      load_records, published_severity, read_certificate, read_inventory_snapshot,
-                     rederive_massive, rederive_severity, render_severity,
+                     read_resplit, rederive_massive, rederive_resplit, rederive_severity,
+                     render_resplit, render_severity,
                      write_report)
 from .severity import DIRECTIONS, certify_severity
 
@@ -729,7 +731,19 @@ PUBLISHED_DOCS = (
     # artefact is read through `load_published`, so an absent or wrong-shaped document is exit 4 -- no
     # argument selected that path, the table did.
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
+    (RESPLIT_MD, lambda inv, records: _render_resplit_doc()),
 )
+
+
+def _render_resplit_doc() -> str:
+    """G1's second column, rendered out of the committed experiment file and nothing else.
+
+    The rubric the prose prints is the one the artefact recorded, not the gate's copy: `verify` compares the
+    two as rubric mismatches, so a document that quotes a budget the freeze never promised shows up as a
+    disagreement the reader can name rather than a sentence that quietly drifted.
+    """
+    doc = load_published(RESPLIT_JSON, "report.RESPLIT_JSON", read_resplit)
+    return render_resplit(doc, doc["rubric"])
 
 
 def _render_severity_doc() -> str:
@@ -844,6 +858,10 @@ def cmd_verify(args) -> int:
     # the ordinal guarantee exactly as the corpus-present one does.
     rederive_severity(expect, expect_rubric, SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS,
                       rubric=rubric, stamp=lambda cert: _stamp(cert, digest))
+    # G1's empirical violation-rate column. The experiment itself is six minutes of re-splitting and belongs
+    # to `tools/resplit_experiment.py`; the gate checks what the committed artefact says about itself, and
+    # that the rubric it recorded is the rubric this freeze promised.
+    rederive_resplit(expect, expect_rubric, rubric)
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:

@@ -59,9 +59,9 @@ def stage_published(work):
     the tamper it planted.
     """
     from autorate.cli import PROTOCOL_JSON
-    from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS, SEVERITY_CERTS
+    from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS
 
-    names = ({RECORDS, str(PROTOCOL_JSON)} | set(CERTS.values())
+    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON} | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
              | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
     for rel in sorted(names):
@@ -131,7 +131,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     from autorate.cli import (PIN_DERIVED_KEYS, PUBLISHED_DOCS, SEVERITY_COMPARE_FIELDS,
                               SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
-    from autorate.report import CERTS, MASSIVE_CERTIFICATES, SEVERITY_CERTS
+    from autorate.report import (CERTS, MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
+                                 SEVERITY_CERTS, read_resplit, resplit_invariants)
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
                    if o["id"].startswith("massive")]
@@ -147,7 +148,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # which published documents `verify` owns -- it is the assertion that was red for `docs/AUDIT.md`
     # before MAJ-3, and it is what a future narrowing of `PUBLISHED_DOCS` has to edit first.
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
-                                                         "docs/AUDIT.md", "docs/SEVERITY.md"}, PUBLISHED_DOCS
+                                                         "docs/AUDIT.md", "docs/SEVERITY.md",
+                                                         "docs/RESPLIT.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
@@ -166,6 +168,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
                 + len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
                                          + len(SEVERITY_RUBRIC_FIELDS))
+                + len(resplit_invariants(read_resplit(REPO / RESPLIT_JSON)))
+                + len(RESPLIT_RUBRIC_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 

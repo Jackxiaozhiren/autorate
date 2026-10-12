@@ -1331,3 +1331,32 @@ express" needs a population where the set gate certifies and its published field
 one-sided risk of the rule it deploys, and no population in this family lets it certify. `claim G3` therefore
 stays `not_measured`, the README says so in those terms, and the open question is written down instead of being
 answered by the silence of a refusal.
+
+**#87: the 200-resplit column is published, and its undefined rates stay undefined.** The experiment G1's own
+criterion names was run at the freeze's rubric -- 200 seeded re-splits of the five scored decision tasks plus
+one synthetic control whose answers are known -- and its document is now committed as `data/resplit_200.json`
+(422,463 bytes, 1,200 per-split rows) with `docs/RESPLIT.md` rendered from those bytes and added to
+`cli.PUBLISHED_DOCS`, so both lanes byte-compare it. The outcome is a refusal pattern, not a certificate: every
+published task certifies in **0 of 200** splits, so its `violation_rate` is `null` with a zero denominator, and
+the only `0.000` in the table belongs to the synthetic control (200 of 200 splits certify, 0 violations of 200
+certificates). No rate is imputed anywhere, which is the vacuity this project has refused twice already: a
+column of zeroes over no certificates would read as evidence of safety.
+
+What the gate now checks and what it deliberately does not. `verify` compares 32 quantities the artefact
+asserts about itself -- certificates plus refusals against the split count, rows per task against the split
+count, violations against the certificate denominator, the recorded rate against the ratio it claims, the bound
+order where bounds exist -- and 5 rubric rows comparing the experiment's recorded `alpha`/`beta`/`delta`/
+`method`/`seed` with the freeze, so a rate measured at a budget nobody promised is a mismatch rather than a
+pass. That takes the corpus-absent gate from `128 /128` to `166 /166` -- the 32 invariant comparisons, 5 rubric
+rows and the document row -- and the corpus-present lane from `163 /163` to `201 /201`, measured in
+the same run, since none of those comparisons reads the corpus. The gate does NOT
+re-run the experiment: six minutes of Monte-Carlo does not belong in a check CI runs on two arms, and a second
+implementation of the seeded split would make the gate a competing owner of the producer's randomness. The
+producer's determinism is recorded instead: re-running `tools/resplit_experiment.py` at this revision produced
+**byte-identical** bytes to the committed artefact (timed at 349 s of CPU, ~6 minutes wall), so the artefact can
+be regenerated and checked by anybody who doubts it, with one command.
+
+One test in this batch was wrong before it was right, and the correction is worth keeping: the
+missing-artefact row also moved the severity table aside, then asserted that the refusal named the resplit file.
+It named the severity copy instead -- the row had manufactured a second absent artefact and blamed the one it
+was studying. The row now re-points the resplit path alone, and states why in its docstring.

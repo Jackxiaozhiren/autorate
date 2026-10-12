@@ -435,6 +435,133 @@ def render_severity(label: str, cert: SeverityCertificate) -> str:
     return "\n".join(lines)
 
 
+RESPLIT_JSON = "data/resplit_200.json"
+RESPLIT_MD = Path("docs/RESPLIT.md")
+# The rubric keys the experiment records and the gate compares, one list so the arm and the denominator that
+# counts it read one owner (R-168). `seed` is in the artefact's own `rubric` block, as `cli.RUBRIC_FIELDS`
+# spells it for the certificates.
+RESPLIT_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+
+
+def read_resplit(path: Path) -> dict:
+    """The resplit experiment's document, read as the mapping the producer wrote and nothing looser.
+
+    A `ValueError` here is answered by `load_published` with the named refusal at exit 4, because the path is
+    declared by this table rather than typed by an operator: an absent or unreadable experiment file means a
+    published G1 column cannot be reproduced, which is the checkout's failure, not the caller's (`#74`'s rule,
+    applied to the newest artefact).
+    """
+    doc = json.loads(Path(path).read_text())
+    if not isinstance(doc, dict):
+        raise ValueError("the resplit experiment document is a JSON %s, not an object"
+                         % type(doc).__name__)
+    missing = sorted({"resplits", "rubric", "tasks", "rows"} - set(doc))
+    if missing:
+        raise ValueError("the resplit experiment document is missing %s" % missing)
+    return doc
+
+
+def resplit_invariants(doc: dict) -> list:
+    """The statements the experiment document must satisfy about itself, as (label, actual, wanted) triples.
+
+    These are comparisons of the artefact's own quantities against quantities the same artefact carries -- the
+    gate's job here is to make an internally inconsistent experiment file a drift it can name, because a
+    violation rate whose denominator does not match the certificate count would otherwise be a number with no
+    producer. The expensive part (200 seeded re-splits of five decision tasks plus a synthetic control, ~6
+    minutes) stays the producer's: `tools/resplit_experiment.py` is the only writer, and re-running it
+    reproduced these bytes exactly, so the digest that pins the experiment is its own, recorded in
+    `docs/ERRATA.md` rather than asserted as a re-derivation.
+    """
+    out = []
+    resplits = doc["resplits"]
+    rows = doc["rows"]
+    for task in sorted(doc["tasks"], key=lambda t: str(t["label"])):
+        label = task["label"]
+        issued = task["certificates_issued"]
+        refused = sum(task["refusal_reasons"].values())
+        out.append(("resplit %s: splits accounted for" % label, issued + refused, resplits))
+        out.append(("resplit %s: rows per task" % label,
+                    sum(1 for r in rows if r["label"] == label), resplits))
+        out.append(("resplit %s: violations within the certified denominator" % label,
+                    task["violations"] <= issued, True))
+        rate = task["violation_rate"]
+        expected = None if issued == 0 else task["violations"] / issued
+        out.append(("resplit %s: violation rate is the ratio it claims" % label, rate, expected))
+        out.append(("resplit %s: rate's denominator is the certificate count" % label,
+                    task["violations_denominator"], issued))
+        bounds = [task["bound_min"], task["bound_median"], task["bound_max"]]
+        if all(b is not None for b in bounds):
+            out.append(("resplit %s: the bound order holds" % label,
+                        bounds[0] <= bounds[1] <= bounds[2], True))
+    out.append(("resplit: every row names a published task",
+                sorted({r["label"] for r in rows}) == sorted(str(t["label"]) for t in doc["tasks"]), True))
+    return out
+
+
+def rederive_resplit(expect, expect_rubric, rubric) -> None:
+    """G1's second column, checked from the committed experiment file: invariants first, rubric second.
+
+    `expect` is the gate's drift callback and `expect_rubric` its mismatch callback, both handed in rather than
+    copied (`cmd_verify` owns the prefixes, and a second list of checks inside the gate could disagree with the
+    list that counts them -- R-168). The rubric rows compare the experiment's own recorded rubric with the
+    freeze: a rate measured at a budget nobody promised is not the number G1's column asked for, and the
+    disagreement is reported as the freeze's word, not as a reproduction failure.
+    """
+    doc = load_published(RESPLIT_JSON, "report.RESPLIT_JSON", read_resplit)
+    for label, actual, wanted in resplit_invariants(doc):
+        expect(label, actual, wanted)
+    recorded = doc["rubric"]
+    for key in RESPLIT_RUBRIC_FIELDS:
+        expect_rubric("resplit rubric.%s" % key, recorded.get(key), rubric[key])
+
+
+def render_resplit(doc: dict, rubric: dict) -> str:
+    """G1's second column as derived prose: every figure is read from the artefact, none is typed.
+
+    The header names the command that writes the file and the gate that re-checks it, carries no timestamp and
+    no machine path so both lanes byte-compare it, and states what the experiment does NOT show: the five
+    published tasks certify in none of the splits, so the empirical rate is undefined for them and only the
+    synthetic control -- labelled synthetic, and never cited as G1 evidence -- produces a number.
+    """
+    lines = [
+        "# The 200-resplit experiment (G1's second column)",
+        "",
+        "Written by `python -m tools.resplit_experiment` and re-checked by `python -m autorate.cli",
+        "verify`, which reads the artefact below and refuses it at exit 4 if it is absent or inconsistent.",
+        "No figure here is typed: each is read out of `data/resplit_200.json`, and the document carries no",
+        "timestamp so a re-run is byte-comparable in both lanes.",
+        "",
+        "- splits per task: %d" % doc["resplits"],
+        "- rubric the experiment ran at: alpha %.3f, beta %.3f, delta %.3f, method `%s`, seed %s"
+        % (rubric["alpha"], rubric["beta"], rubric["delta"], rubric["method"], rubric["seed"]),
+        "- tasks: %d (the %d published decision tasks this repository certifies, plus one synthetic control"
+        " whose labels are known)" % (len(doc["tasks"]), len(doc["tasks"]) - 1),
+        "",
+        "| task | splits certified | refusals | violations / certificates | empirical violation rate |",
+        "|---|---|---|---|---|",
+    ]
+    for task in sorted(doc["tasks"], key=lambda t: str(t["label"])):
+        refusals = ", ".join("%s:%d" % (reason, count)
+                             for reason, count in sorted(task["refusal_reasons"].items())) or "-"
+        rate = "undefined (no certificates)" if task["violation_rate"] is None \
+            else "%.3f" % task["violation_rate"]
+        lines.append("| `%s` | %d of %d | %s | %d / %d | %s |"
+                     % (task["label"], task["certificates_issued"], doc["resplits"], refusals,
+                        task["violations"], task["violations_denominator"], rate))
+    lines += [
+        "",
+        "The rate is the empirical check G1's own column names: a violation is a certified split whose",
+        "gold set escapes the bound that split published. It is undefined where no certificate exists -- no",
+        "number is imputed, and a `0.000` appears only for a population that does certify. The five",
+        "published tasks refuse in every split at this rubric, which is why the criterion's first column",
+        "(`>=3 certified decision tasks`) is unmet and why this table is evidence about the refusal, not",
+        "against it. The synthetic row is a control on the machinery, labelled synthetic in the artefact's",
+        "own `label`, and is not cited as a decision task G1 counts.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _first_clause(gap: str) -> str:
     """The clause a published bullet quotes, with an explicit marker when it is cut."""
     head = gap.split(";")[0]
