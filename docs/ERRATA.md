@@ -1068,3 +1068,40 @@ attribute when the check runs. Several existing rows went red because a scratch 
 `data/` and `docs/` has no `protocol.json`; the fixtures were completed to read the path from
 `cli.PROTOCOL_JSON`, which is the same lesson `stage_published` already carries for the certificate tables.
 No assertion was relaxed and no guard widened to accommodate this change.
+
+## 2026-10-12 -- README: the reproduction prose went stale under the gate, and the criteria are now named
+
+`README.md`'s Reproduction section stated `re-derived 96 /96 values` absent and `131 /131` present, and said
+"every CI run is a 96 run". Task 2's rubric and digest rows moved those readings to `108 /108` and
+`143 /143`, measured in both command shapes and in the `git archive` export; the gap between the lanes is
+still exactly 35 checks (9 `SOURCE.json` digests + 26 snapshot keys), which is the sentence the earlier
+entries above record. The dated entries that measured 96 and 131 keep their figures: they are records of
+runs, and this paragraph is the correction to the current prose.
+
+The README now names G1–G5 and states what this tree can show for each, with every status read from the one
+place that owns it -- `protocol.json`, printed verbatim by `autorate verify` -- rather than kept as a second
+copy in prose. Three claims in the old text were replaced because measurement contradicted them:
+
+- "Not covered yet, and gated on a corpus large enough to bound them: the ordinal `score` family and its
+  one-sided severity certificate, ... group-conditional (Mondrian) ... drift-adaptive ... contamination".
+  The corpus is not what is missing there. `severity.py`, `certify_groups`, `correction.py`, `drift.py` and
+  `contamination.py` are committed and tested; what is missing is a command surface, a committed artefact and
+  a `verify` row for each. Attributing the gap to data size would have excused the project from building the
+  surface, so the README now separates "written and tested" from "published as evidence".
+- Per-ask `noul` budgets were listed in the same breath as the above. They are different in kind: no
+  certifier for `noul` exists at all.
+- G1's missing 200-resplit violation rate is now stated with its evidence rather than as a bare absence:
+  every certifier in `src/` calls the split once, at the seed it is handed, and nothing sweeps seeds, so the
+  criterion's second column has no producer.
+
+**Two false statements found inside the frozen document, recorded rather than edited.** `protocol.json`'s G3
+note says "there is no `certify_severity` in `src/`" -- false: `severity.py:426` defines it, and it was
+false at the freeze date too. Its G5 note says "`verify` has no `--protocol` at this freeze, so the command
+as written cannot be run" -- false as of Task 2, which wired the flag. Both are corrected by re-emitting the
+document, and re-emitting changes `protocol_digest`, which is carried inside all five published certificates
+under a `meta` the gate compares whole: so the fix is a deliberate re-freeze with its own date, a new digest
+and a re-export of five artefacts in one commit -- the same mechanics as above, with numbers measured not to
+move. That is not done here, for two reasons: a freeze is a dated act, and silently renegotiating the text a
+published digest covers is the misattribution this project keeps removing; and Task 72 is in flight on the
+adjacent files, so a second re-freeze would collide with the artefact it is about to publish. Opened as an
+explicit follow-up instead, so no reader can take G3's or G5's note as current.

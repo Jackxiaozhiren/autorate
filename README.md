@@ -109,29 +109,75 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 96 /96 values` where the corpus is absent, `re-derived 131 /131
+prints say so: `re-derived 108 /108 values` where the corpus is absent, `re-derived 143 /143
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 131: every CI run is a 96 run, on both of its arms. Green CI is
+alone can never reach the 143: every CI run is a 108 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 96 run proves a lot inside that lane. Every published number that is a function of a
+A 108 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all five published certificates, each from the committed
 records it was actually made from, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
 for byte, and the MASSIVE rows
-from their committed pin. What a 96 run cannot prove is what its own disclosure says in so
+from their committed pin. What a 108 run cannot prove is what its own disclosure says in so
 many words -- `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 96 /96.
+had drifted from the corpus would agree with itself and report 108 /108.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
 because no runner can run it for you.
+
+## The five criteria, and what this tree can show for each
+
+v1 is defined by five criteria, G1–G5. `autorate verify` prints one line per criterion with a status that
+can say no -- `not_certifiable`, `measured_not_bounded`, `not_measured` -- read from `protocol.json`, the
+frozen protocol document, which is emitted by a command and never typed. The statuses below are what that
+command prints at this revision; the document is their owner, so this section is a reading of it and not a
+second place to keep them.
+
+- **G1, at least three decision tasks certified at `autorate(α = 0.05)` with a 200-resplit empirical
+  violation rate: `not_certifiable`.** Five decision tasks have been scored and their records committed;
+  zero of the five yield a certificate, and the refusals are published as artefacts rather than rounded
+  away. The binding quantity is the evaluation half's case count: the exact one-sided bound on a small
+  number of automated cases sits above a 5% budget no matter how few are wrong. The 200-resplit violation
+  rate the criterion also asks for has no measurement yet, and the evidence for saying so is structural:
+  every certifier in `src/` calls the calibration/evaluation split exactly once, at the seed it was handed,
+  and nothing in the tree sweeps seeds or aggregates a rate across resplits -- the only places the phrase
+  appears are the criterion texts `protocol.json` prints. This row is not close to met without that.
+- **G2, the reference README's gate demonstrably violating its implied error rate: `measured_not_bounded`.**
+  `autorate audit` measures the gate upstream instructs and `docs/AUDIT.md` publishes the multiplier, but the
+  sample cannot bound the claim: on the 2 cases one backend automates, one is wrong, and the exact one-sided
+  bound is 0.975. The point estimate misses upward; what the corpus says is that it cannot carry the claim.
+- **G3, at least one ordinal guarantee multiclass conformal prediction cannot express: `not_measured`.** The
+  one-sided severity certificate (`P(Y > â(X)) ≤ α`, three canonical bounds, its own refusal reasons) exists
+  in `src/autorate/severity.py` with its unit tests, and the shipped program cannot yet produce one: there is
+  no command surface, no committed artefact, and no `verify` row for it. Until the falsification control --
+  the same data, the multiclass set gate silent or wrong in a specific direction where the ordinal statement
+  is checkable -- is committed, this criterion rests on library tests and a claim in prose, and is stated here
+  as unmeasured. If that control turns out to show the set gate can express the statement, the honest outcome
+  is that G3 fails and the claim is removed rather than reworded.
+- **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
+  CLI (`certify --groups`, plus the simultaneous correction), and a slice below the size floor is refused by
+  name with its case count; what is missing is a published artefact for a slice this project scored. The two
+  collapsed slices the project measured (`de` automates 0 of 1,487 cases; `sw` 39 with 13 wrong) are
+  published as marginal certificates, not as slice certificates, and the slice the criterion names by name
+  has no per-case data in this tree.
+- **G5, reproducible from a commit with no GPU, no network, no model: `not_measured` at the freeze.**
+  `autorate verify --protocol protocol.json` is now a real command, `protocol.json` is committed and frozen,
+  every published certificate carries its digest inside, and the corpus-less reproduction has been measured
+  inside a clean `git archive` export. What is still missing is the transcript that makes that a published
+  measurement rather than a local run, and CI's own witness of the current tip. The status line stays
+  `not_measured` until both exist: it is the frozen document's word, and re-stating a criterion is a new
+  freeze, not an edit.
+
+The honest summary is that the gate's reproduction story is the strongest part of this tree today, and the
+ordinal and slice criteria are the weakest: their engines exist, their evidence does not.
 
 ## What is here, and what is not
 
@@ -148,15 +194,21 @@ written. A tool that certified anyway would have been selling the exact thing th
 refuses to sell. Both evaluation halves cover the same 32 cases, so the pair is compared
 case by case on identical inputs.
 
-Covered: the `choice` primitive, marginal two-sided control, APS and LAC set sizes,
+Covered by code and by tests: the `choice` primitive, marginal two-sided control, APS and LAC set sizes,
 Clopper-Pearson one-sided bounds, and the gate that turns a certificate into
 `auto` / `escalate` / `abstain`.
 
-Not covered yet, and gated on a corpus large enough to bound them: the ordinal `score`
-family and its one-sided severity certificate, per-ask `noul` budgets, group-conditional
-(Mondrian) and simultaneous per-slice control, drift-adaptive conformal, and the
-contamination stratification. `docs/superpowers/specs/` states the design;
-`docs/superpowers/plans/` states the order.
+Written and tested, but not yet published as evidence: the ordinal one-sided severity certificate
+(`severity.py`), the threshold certifier (`certify_threshold.py`), the group-conditional (Mondrian) surface
+and its simultaneous per-slice correction (`certify_choice.certify_groups`, `correction.py`),
+drift-adaptive conformal (`drift.py`), and the contamination stratification (`contamination.py`). Each of
+them is a library with unit tests and no committed artefact that `verify` re-derives, which is the
+difference between "implemented" and "certified" in this project -- see the criteria above.
+
+Not implemented at all: per-ask `noul` budgets. The `noul` question type is read, counted and quarantined
+by the same loaders as the others, and there is no certifier for it.
+
+`docs/superpowers/specs/` states the design; `docs/superpowers/plans/` states the order.
 
 Read `docs/ERRATA.md` before quoting any number from this project's history, and
 `docs/VERIFICATION.md` for which external claims were checked against sources and which
