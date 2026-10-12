@@ -52,12 +52,30 @@ def stage_published(work):
     `FileNotFoundError` for a fifth. The tables in `report.py` are the one owner of what is
     published, so the fixture reads them instead of remembering them.
     """
+    from autorate.cli import PROTOCOL_JSON
     from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS
 
-    names = ({RECORDS} | set(CERTS.values())
+    names = ({RECORDS, str(PROTOCOL_JSON)} | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair})
     for rel in sorted(names):
         shutil.copy(REPO / rel, work / rel)
+
+
+def stage_committed_tree(work, directories=("data", "docs")):
+    """Copy the committed published trees AND the freeze into a scratch checkout.
+
+    `verify` reads `protocol.json` as a table-declared artefact (`cli.PROTOCOL_JSON`), so a scratch tree
+    built from `data/` and `docs/` has no freeze and the gate exits 4 naming the absent document before it
+    can reach the drift the test is about. The path comes from its owner rather than a retyped literal, for
+    the same reason `stage_published` reads the tables: a rename has to move the fixture and the gate
+    together, or the fixture starts testing its own copy of the truth.
+    """
+    from autorate.cli import PROTOCOL_JSON
+
+    for directory in directories:
+        shutil.copytree(REPO / directory, work / directory)
+    shutil.copy(REPO / str(PROTOCOL_JSON), work / str(PROTOCOL_JSON))
+    return work
 
 
 def test_verify_passes_on_the_committed_tree():
@@ -92,7 +110,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # Every row the corpus-less lane can honestly print: the certificate fields re-derived
     # per backend, one summary each, and the report bytes. Derived from the shipped field
     # list rather than typed, so a row that quietly disappears changes the expectation too.
-    from autorate.cli import CERT_COMPARE_FIELDS
+    from autorate.cli import CERT_COMPARE_FIELDS, CORPUS_DIGESTS, RUBRIC_FIELDS
 
     # every certificate in the two published tables x (each compared field + its summary), then one
     # row per published document that must reproduce byte for byte -- read from `PUBLISHED_DOCS`, the
@@ -127,7 +145,13 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
     # `total` 47 against `expected` 95 until the gate grew the arm, which is the defect class
     # (a published number with no producer) this formula exists to make loud.
+    # The freeze adds two more terms, both read from their owners: one rubric comparison per
+    # `RUBRIC_FIELDS` entry for each feishu certificate (Task 2's arm closes the hole that `alpha` is not
+    # in `CERT_COMPARE_FIELDS`), and one per digest the protocol names in advance. Measured at the tip
+    # before this row was widened, the absent lane printed 96; after the arm, 108 -- the movement is
+    # added checks, not moved numbers, and the two are reported apart in `docs/ERRATA.md`.
     expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
+                + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 
@@ -194,8 +218,7 @@ def test_report_is_byte_stable_and_matches_the_committed_file(tmp_path):
 @skip
 def test_verify_catches_an_inventory_snapshot_that_went_stale(tmp_path):
     """The snapshot is what a corpus-less run trusts, so the corpus must police it."""
-    for d in ("data", "docs"):
-        shutil.copytree(REPO / d, tmp_path / d)
+    stage_committed_tree(tmp_path)
     path = tmp_path / "data" / "inventory.md.json"
     doc = json.loads(path.read_text())
     doc["unique_ids"] = 63
@@ -208,8 +231,7 @@ def test_verify_catches_an_inventory_snapshot_that_went_stale(tmp_path):
 
 def test_verify_catches_a_tampered_certificate(tmp_path):
     """The reproduction gate must be able to fail: edit one published number."""
-    for d in ("data", "docs"):
-        shutil.copytree(REPO / d, tmp_path / d)
+    stage_committed_tree(tmp_path)
     (tmp_path / "tests").mkdir()
     cert = tmp_path / "data" / "cert_jev.json"
     doc = json.loads(cert.read_text())
@@ -224,8 +246,7 @@ def test_verify_catches_a_tampered_certificate(tmp_path):
 
 
 def test_verify_also_catches_a_hand_edited_results_file(tmp_path):
-    for d in ("data", "docs"):
-        shutil.copytree(REPO / d, tmp_path / d)
+    stage_committed_tree(tmp_path)
     results = tmp_path / "docs" / "RESULTS.md"
     results.write_text(results.read_text().replace("0.3395", "0.2000"))
     p = run("verify", cwd=tmp_path)
@@ -356,8 +377,7 @@ def test_verify_sees_an_edited_method_or_meta(tmp_path):
     for field, mutate in (("method", lambda d: d.update(method="lac")),
                           ("meta", lambda d: d["meta"].update(eval_ids=["invented-0"]))):
         work = tmp_path / field
-        for d in ("data", "docs"):
-            shutil.copytree(REPO / d, work / d)
+        stage_committed_tree(work)
         cert = work / "data" / "cert_jev.json"
         doc = json.loads(cert.read_text())
         mutate(doc)
@@ -1049,8 +1069,7 @@ def test_a_stored_certificate_that_violates_its_shape_is_drift_on_a_published_pa
     named refusal rather than by a usage code, and the two rows together pin the axis that decides which:
     ownership of the path, not the class of the exception.
     """
-    for d in ("data", "docs"):
-        shutil.copytree(REPO / d, tmp_path / d)
+    stage_committed_tree(tmp_path)
     cert = tmp_path / "data" / "cert_jev.json"
     doc = json.loads(cert.read_text())
     doc["envelope"] = []
@@ -1104,8 +1123,7 @@ def test_snapshot_command_reproduces_the_committed_inventory(tmp_path):
 
 def test_verify_catches_an_edited_inventory_markdown(tmp_path):
     """The published inventory is now byte-checked in both lanes, so prove it can fail."""
-    for d in ("data", "docs"):
-        shutil.copytree(REPO / d, tmp_path / d)
+    stage_committed_tree(tmp_path)
     doc = tmp_path / "data" / "inventory.md"
     doc.write_text(doc.read_text().replace("label balance: noise=16", "label balance: noise=99"))
     assert "noise=99" in doc.read_text(), "tampering did not land"
@@ -1122,8 +1140,7 @@ def test_verify_catches_an_edited_audit_markdown(tmp_path):
     byte-comparable -- the claim `tests/test_audit.py` could only make against its own re-render
     until the gate itself re-derived the artefact.
     """
-    for d in ("data", "docs"):
-        shutil.copytree(REPO / d, tmp_path / d)
+    stage_committed_tree(tmp_path)
     doc = tmp_path / "docs" / "AUDIT.md"
     doc.write_text(doc.read_text().replace("0.8312", "0.9000"))
     assert "0.9000" in doc.read_text(), "tampering did not land"

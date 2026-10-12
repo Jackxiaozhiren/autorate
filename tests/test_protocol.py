@@ -535,7 +535,7 @@ def _fixture_records(path, n=200):
 
 
 def test_certify_stamps_only_when_the_flag_is_on_its_own_command_line(tmp_path):
-    """Task 1 leaves the published artefacts alone, measured rather than intended (R-200)."""
+    """The flag is a stamp, not a re-run -- and the published artefacts are all stamped (R-200, Task 2)."""
     records = _fixture_records(tmp_path / "records.jsonl")
     plain, stamped = tmp_path / "plain.json", tmp_path / "stamped.json"
 
@@ -546,16 +546,19 @@ def test_certify_stamps_only_when_the_flag_is_on_its_own_command_line(tmp_path):
     assert second.returncode == 0, (second.returncode, second.stdout, second.stderr)
 
     plain_doc, stamped_doc = json.loads(plain.read_text()), json.loads(stamped.read_text())
+    digest = protocol_digest(load_protocol(PROTOCOL_PATH))
     assert "protocol_digest" not in plain_doc["meta"], plain_doc["meta"]
-    assert stamped_doc["meta"]["protocol_digest"] == protocol_digest(load_protocol(PROTOCOL_PATH))
+    assert stamped_doc["meta"]["protocol_digest"] == digest
     # everything else about the two runs is identical, so the flag is a stamp and not a re-run
     assert {k: v for k, v in stamped_doc["meta"].items() if k != "protocol_digest"} \
         == plain_doc["meta"]
 
-    # the shipped certificates carry no digest, and `verify` compares `meta` whole, so the plain
-    # lane still agrees with them -- which is why Task 1 re-exports nothing.
+    # Task 2's re-export, measured rather than intended: every published certificate now carries the
+    # freeze, and the value it carries is this digest. That is what the pair above makes costly -- a
+    # published artefact produced without the flag disagrees with `verify`, which stamps its
+    # re-derivation, so the flag has to be on the command line that writes a published number.
     for path in sorted(set(CERTS.values()) | {p for _l, p in MASSIVE_CERTIFICATES.values()}):
-        assert "protocol_digest" not in json.loads((REPO / path).read_text())["meta"], path
+        assert json.loads((REPO / path).read_text())["meta"].get("protocol_digest") == digest, path
     gate = run("verify")
     assert gate.returncode == 0, gate.stdout + gate.stderr
     checked, total = re.search(r"re-derived (\d+) /(\d+) values", gate.stdout).groups()

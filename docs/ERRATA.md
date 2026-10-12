@@ -1006,3 +1006,65 @@ Nothing published moved. Both `verify` lanes print the denominators they printed
 without the corpus, `131 /131` with it), no `data/*.json` was regenerated or touched, and the two audit
 sentences that now read the unit from the mapping render byte-identically -- the byte comparison over
 `docs/AUDIT.md` is what says so, not the edit.
+
+## 2026-10-12 -- Plan D Task 2: the freeze moves inside the published certificates
+
+`autorate certify --protocol protocol.json` writes `meta.protocol_digest`, and the five published
+certificates were re-exported with it in the same commit as the code that stamps them. The reason for the
+single commit is the comparison itself: `verify` checks `meta` by whole-dict equality, so a revision where
+the stamping code had landed and the artefacts had not -- or the reverse -- is a revision where `verify`
+exits 4. There is no such revision on this branch.
+
+**No published number moved, and the re-export was measured for that rather than assumed.** The shipped
+command run without `--protocol` reproduced all five committed artefacts byte for byte, so the re-export
+could not have moved a figure by construction; the stamped re-export then added exactly one key to each
+`meta`, and removing that key in memory returns a document equal to the published one field by field. All
+five carry the same digest, `012cbed36442`. And `autorate protocol --out` still emits the committed
+`protocol.json` byte for byte after the stamp, which is what shows the freeze digests the corpus and the
+pin but not the certificates it stamps -- a document that digested its own artefacts could not be frozen
+before them, and the stamp would chase its own output. `SHAPE_VERSION` stays 2 deliberately: the shape
+check in `certificate.py` diffs top-level dataclass field names, so a key added inside `meta` is invisible
+to it, and the enforcement point for this change is `CERT_COMPARE_FIELDS`, not a schema version.
+
+**The denominators moved, and the movement is added checks rather than moved numbers.** `verify` printed
+`96 /96` without the corpus and `131 /131` with it before this change; it prints `108 /108` and `143 /143`
+after, in both command shapes (`verify`, `verify --protocol protocol.json`) and both lanes. The twelve new
+rows are two published feishu certificates compared over `RUBRIC_FIELDS`, and the two digests in
+`CORPUS_DIGESTS`. New output lines: `claim G1` through `claim G5` with the status each criterion carries,
+and a `protocol:` line naming the document read, its digest and its frozen date. The gate's own denominator
+test counts those rows from `RUBRIC_FIELDS` and `CORPUS_DIGESTS` instead of a literal, so a comparison that
+disappears has to shrink the expectation in the open.
+
+**`corpus.records_digest` is the check the freeze exists for.** Every other corpus-less comparison asks
+whether a published file reproduces from the inputs lying beside it, so replacing
+`data/records_feishu.jsonl` wholesale and regenerating its certificates in the same commit answers all of
+them -- the design spec's own D-12 case. Two rows compare against bytes the freeze named in advance, and
+they run in both lanes: the records digest and the inventory-snapshot digest, which is the staleness the
+corpus-less lane structurally cannot see.
+
+**A rubric mismatch arrives from an artefact, not from a document, and that took a red test to learn.**
+`load_protocol` already refuses a `protocol.json` whose rubric disagrees with
+`certificate.PUBLISHED_RUBRIC`, so a mutated protocol is a usage error (exit 2) before the gate reads it.
+The `RUBRIC MISMATCH:` arm therefore answers the case the loader cannot see: a published certificate
+carrying an alpha, a method or a seed the freeze never licensed. Its sentence keeps its own prefix because
+the two failures get repaired differently -- a mismatch by re-certifying at the promised rule, a drift by
+re-exporting. `alpha` shows why the arm is needed: it is not in `CERT_COMPARE_FIELDS`, so before this
+change a certificate certified at a different alpha reached the gate only obliquely, through the summary
+sentence that happens to quote it. Editing a published certificate's `meta.seed` now fails twice by design,
+once as a mismatch and once as drift on the `meta` dict.
+
+**`compare` states every reason it will not pair two certificates.** The protocol-digest refusal used to
+return before the rubric check, so a pair differing in both heard only about the protocol and the existing
+`comparable: NO` sentence was silently unreachable. Both are printed now, and the affirmative line is
+withheld whenever any refusal fired, so one command cannot issue a refusal and a pass together.
+
+**Falsification, and a defect found in this round's own code.** Two of the new rows were red for reasons
+that are this document's business: `load_protocol` hands back a frozen `Protocol` rather than the JSON
+mapping, so four subscripted reads in `cmd_verify` raised `TypeError` -- exit code 1, which this project's
+contract forbids -- and the digest list, first frozen as file paths at import time, could not see a lane
+that re-points `RECORDS`, which turned the D-12 control green when it should have been red. Both are
+fixed, and the tests that caught them are the record: the digest arm resolves its path from the module
+attribute when the check runs. Several existing rows went red because a scratch checkout that copies
+`data/` and `docs/` has no `protocol.json`; the fixtures were completed to read the path from
+`cli.PROTOCOL_JSON`, which is the same lesson `stage_published` already carries for the certificate tables.
+No assertion was relaxed and no guard widened to accommodate this change.

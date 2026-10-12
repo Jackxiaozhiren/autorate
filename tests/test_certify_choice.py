@@ -9,6 +9,7 @@ import json
 import math
 import random
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -325,10 +326,18 @@ def test_the_certifier_decides_on_the_number_it_publishes():
 
 
 def _checkout(tmp_path):
-    """A copy of the committed artefacts and renderings, so the gate can be run and tampered."""
+    """A copy of the committed artefacts, renderings and the freeze, so the gate can run and be tampered.
+
+    `protocol.json` travels with the trees: `verify` reads it through `cli.PROTOCOL_JSON` as a
+    table-declared artefact, so a checkout without it exits 4 naming the absent document before it can
+    reach the drift the test is about.
+    """
+    from autorate.cli import PROTOCOL_JSON
+
     work = tmp_path / "checkout"
     for directory in ("data", "docs"):
         shutil.copytree(REPO / directory, work / directory)
+    shutil.copy(REPO / str(PROTOCOL_JSON), work / str(PROTOCOL_JSON))
     return work
 
 
@@ -449,7 +458,14 @@ def test_a_foreign_libm_writes_the_same_bytes_for_the_same_certificate(monkeypat
     """
     from autorate.report import load_records
 
+    from autorate.protocol import load_protocol, protocol_digest
+
     records = load_records(REPO / "data" / "records_feishu.jsonl")
+    # The published artefacts are stamped with the freeze's digest (Plan D Task 2), and that stamp is what
+    # `certify --protocol` writes rather than something the certifier computes from the data. Recomputed
+    # here from `protocol.json`, so the byte claim stays about the numeric surface: a bound that moved by
+    # one ULP still breaks it, and a digest read off the artefact being compared would not have.
+    digest = protocol_digest(load_protocol(REPO / "protocol.json"))
     for raw_offset in (1, 2, 4):
         def drifting(k, n, delta, offset=raw_offset):
             raw = clopper_pearson_upper(k, n, delta)
@@ -466,8 +482,9 @@ def test_a_foreign_libm_writes_the_same_bytes_for_the_same_certificate(monkeypat
         for backend, rel in (("laya", "data/cert_laya.json"), ("jev", "data/cert_jev.json")):
             cert = certify_choice(records.get(backend, []), alpha=0.05, beta=0.05,
                                   delta=0.05, seed=7)
+            stamped = replace(cert, meta={**cert.meta, "protocol_digest": digest})
             committed = (REPO / rel).read_text()
-            assert cert.to_json() == committed, "%s at %d ULP of drift" % (rel, raw_offset)
+            assert stamped.to_json() == committed, "%s at %d ULP of drift" % (rel, raw_offset)
 
 
 def test_a_stored_bound_the_producer_cannot_write_is_still_drift(tmp_path, monkeypatch, capsys):

@@ -382,6 +382,15 @@ def _certify_rubric(args, protocol) -> dict:
 
 RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
 
+# The digests the freeze names in advance, as (the comparison `verify` prints, the key inside the
+# protocol's `corpus` block, the NAME of the module attribute holding the file). One list so the gate's
+# corpus arm and the denominator that counts it cannot drift apart -- the failure R-168 keeps re-finding
+# is a check list remembered twice. The third element is a name rather than a path on purpose: resolved
+# when the check runs, so the row follows the constant's owner (and a lane that re-points `RECORDS` at a
+# different file is seen by the digest arm, not only by the re-derivation).
+CORPUS_DIGESTS = (("corpus.records_digest", "records_digest", "RECORDS"),
+                  ("corpus.inventory_digest", "inventory_digest", "INVENTORY_JSON"))
+
 # Every number a certificate publishes that verify re-derives, named so the corpus-less
 # lane can assert a count DERIVED from it rather than typed. `method` and `meta` are on the
 # list because the first version omitted them: a certificate edited to "method": "lac"
@@ -402,6 +411,15 @@ def cmd_compare(args) -> int:
     labels = (Path(args.files[0]).name, Path(args.files[1]).name)
     certs = tuple(read_certificate(Path(f)) for f in args.files)
     not_comparable = False
+    stamps = [ct.meta.get("protocol_digest") for ct in certs]
+    same_protocol = stamps[0] == stamps[1]
+    if not same_protocol:
+        def shown(value):
+            return "produced without a protocol" if value is None else value[:12]
+        print("not comparable: the two certificates were frozen under different protocols (%s=%s, %s=%s);"
+              " a before/after table here would compare two rules while claiming to compare two backends"
+              % (labels[0], shown(stamps[0]), labels[1], shown(stamps[1])), file=sys.stderr)
+        not_comparable = True
     rubrics = [_rubric(c) for c in certs]
     off = [f for f in RUBRIC_FIELDS if rubrics[0][f] != rubrics[1][f]]
     if off:
@@ -409,7 +427,9 @@ def cmd_compare(args) -> int:
             "%s (%s=%r, %s=%r)" % (f, labels[0], rubrics[0][f], labels[1], rubrics[1][f])
             for f in off))
         not_comparable = True
-    else:
+    elif same_protocol:
+        # Only a pair the protocol arm did not already refuse may hear "yes": two sentences from one
+        # command, one of them an affirmative, is the misattribution this file keeps deleting.
         print("comparable: yes -- identical %s" % ", ".join(
             "%s=%s" % (f, rubrics[0][f]) for f in RUBRIC_FIELDS))
     backends = [c.backend for c in certs]
@@ -591,6 +611,37 @@ PUBLISHED_DOCS = (
 )
 
 
+def _verify_protocol(args):
+    """Resolve the freeze `verify` enforces: the flag selects a document, the tree supplies the default.
+
+    Design G (Plan D R-200). `cmd_verify` reads the committed `protocol.json` whether or not `--protocol` was
+    typed, so `verify` and `verify --protocol protocol.json` agree on a frozen tree and the flag's effect is
+    proved by pointing it at a *different* document -- a mutated copy or an older freeze. The default is a
+    table-declared published artefact, so its absence or an unreadable shape is a named refusal at exit 4 and
+    never a usage error: nobody typed a path, so the checkout is what failed, not the operator. A path the
+    operator did name is theirs: missing there is exit 2.
+    """
+    stated = getattr(args, "protocol", None)
+    if stated:
+        path = Path(stated)
+        if not path.is_file():
+            raise ValueError("--protocol %s does not exist" % path)
+        doc = load_protocol(path)
+    else:
+        doc = load_published(PROTOCOL_JSON, "cli.PROTOCOL_JSON", load_protocol)
+    return doc, protocol_digest(doc)
+
+
+def _stamp(cert, digest):
+    """The certificate as `verify` re-derives it under a freeze: the same numbers, plus the digest.
+
+    The stamp happens here rather than inside the certifier for the reason R-200 records: `CERT_COMPARE_FIELDS`
+    compares `meta` whole, so the artefacts and the re-derivation must gain the key in the same commit, and the
+    certifier's own default behaviour has to stay unstamped for every other caller.
+    """
+    return replace(cert, meta={**cert.meta, "protocol_digest": digest})
+
+
 def cmd_verify(args) -> int:
     """Recompute every published number from committed inputs and fail on drift."""
     checked = total = 0
@@ -604,13 +655,45 @@ def cmd_verify(args) -> int:
         else:
             failures.append("%s: recomputed %r, published %r" % (label, actual, wanted))
 
+    protocol, digest = _verify_protocol(args)
+    # A frozen `Protocol`, not the JSON mapping: fields are attributes, only their contents are dicts.
+    rubric = protocol.rubric
+    mismatches = []
+
+    def expect_rubric(label, actual, wanted):
+        """Count the comparison like any other, but keep its failure on its own line.
+
+        "This number does not reproduce" and "this number was produced under a rule nobody promised" get
+        repaired differently -- re-export, or re-freeze -- so folding the second into the `DRIFT:` prefix
+        would be a single word for two failures, which is what R-20/R-31 keep deleting here.
+        """
+        nonlocal total
+        total += 1
+        if actual == wanted:
+            bump_checked()
+        else:
+            mismatches.append("%s: published %r, the frozen protocol says %r"
+                              % (label, actual, wanted))
+
+    def bump_checked():
+        nonlocal checked
+        checked += 1
+
     records = load_records(Path(RECORDS))
     for backend, path in sorted(CERTS.items()):
         stored = load_published(path, "report.CERTS", read_certificate)
-        # the real comparison: re-derive the certificate from the committed records
-        fresh = certify_choice(records.get(backend, []), alpha=stored.alpha,
-                               beta=stored.beta, delta=stored.delta,
-                               seed=stored.meta.get("seed", SEED))
+        expect_rubric("cert %s.alpha" % backend, stored.alpha, rubric["alpha"])
+        expect_rubric("cert %s.beta" % backend, stored.beta, rubric["beta"])
+        expect_rubric("cert %s.delta" % backend, stored.delta, rubric["delta"])
+        expect_rubric("cert %s.method" % backend, stored.method, rubric["method"])
+        expect_rubric("cert %s.seed" % backend, stored.meta.get("seed"), rubric["seed"])
+        # the real comparison: re-derive from the committed records at the rubric the freeze promised,
+        # not the one the artefact happens to carry -- a protocol that disagrees has to be able to make
+        # this arm red, which is what closes D-3's `method` and `grid` holes.
+        fresh = _stamp(certify_choice(records.get(backend, []), alpha=rubric["alpha"],
+                                      beta=rubric["beta"], delta=rubric["delta"],
+                                      seed=rubric["seed"], method=rubric["method"],
+                                      grid=tuple(rubric["grid"])), digest)
         for field in CERT_COMPARE_FIELDS:
             expect("cert %s.%s" % (backend, field), getattr(fresh, field),
                    getattr(stored, field))
@@ -620,7 +703,8 @@ def cmd_verify(args) -> int:
     # file that also prints them -- a second list of artefacts inside the gate could disagree with the
     # list the document is built from. The field list is handed in rather than copied for the same
     # reason: `CERT_COMPARE_FIELDS` has one owner, and it is this file.
-    rederive_massive(expect, CERT_COMPARE_FIELDS)
+    rederive_massive(expect, CERT_COMPARE_FIELDS, rubric=rubric,
+                     stamp=lambda cert: _stamp(cert, digest))
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:
@@ -660,12 +744,26 @@ def cmd_verify(args) -> int:
             expect("pin option %s.%s" % (opt_id, key), recomputed[opt_id].get(key),
                    published.get(opt_id, {}).get(key))
 
+    corpus = protocol.corpus
+    # The two checks in this gate that are not fixed points. Everything else asks whether the published
+    # files reproduce from the inputs lying beside them, so a records file swapped wholesale with its
+    # certificates regenerated in the same commit satisfies all of them (spec 2 D-12). These compare
+    # against bytes the freeze named in advance, which is why they run in BOTH lanes.
+    for label, key, owner in CORPUS_DIGESTS:
+        expect(label, file_digest(globals()[owner]), corpus[key])
+
+    for claim in protocol.claims:
+        print("claim %s %s %s" % (claim["id"], claim["status"], claim["criterion"]))
+    print("protocol: %s %s (frozen %s)" % (getattr(args, "protocol", None) or PROTOCOL_JSON,
+                                           digest[:12], protocol.frozen_at))
     print("inventory source: %s" % source)
-    print("disclosure: %s" % disclosure)
+    print("disclosure: %s; the frozen protocol rubric was enforced" % disclosure)
     print("re-derived %d /%d values" % (checked, total))
     for f in failures:
         print("DRIFT:", f, file=sys.stderr)
-    return EXIT_DRIFT if failures else 0
+    for f in mismatches:
+        print("RUBRIC MISMATCH:", f, file=sys.stderr)
+    return EXIT_DRIFT if (failures or mismatches) else 0
 
 
 def _frozen_at_in_place(out: Path) -> str:
@@ -832,6 +930,9 @@ def build_parser() -> argparse.ArgumentParser:
     f.set_defaults(fn=cmd_protocol)
 
     v = sub.add_parser("verify", help="re-derive every published number")
+    v.add_argument("--protocol", default=None,
+                   help="which freeze to enforce (default %s, read as a published artefact)"
+                        % PROTOCOL_JSON)
     v.set_defaults(fn=cmd_verify)
     return p
 

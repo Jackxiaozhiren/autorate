@@ -10,6 +10,7 @@ them, and this module quotes the transcription rather than hashing anything itse
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 # ALPHA, BETA and SEED are IMPORTED, not declared here (#62): they are the published rubric, and
@@ -234,12 +235,13 @@ def massive_certificates() -> dict:
     return out
 
 
-def rederive_massive(expect, fields) -> None:
+def rederive_massive(expect, fields, rubric=None, stamp=None) -> None:
     """Re-derive every published MASSIVE certificate from its committed records, field by field.
 
     This is the arm `cmd_verify` already runs over the two feishu certificates, widened to G1's three
     languages: read the artefact, run `certify_choice` over the rows that artefact was made from at the
-    rubric stored *inside* it, and hand every comparison to `verify`'s own `expect`, so a drift leaves as
+    rubric stored inside it (or the rubric a frozen protocol supplies, when the caller passes one), and
+    hand every comparison to `verify`'s own `expect`, so a drift leaves as
     exit 4 naming `cert massive/en.<field>` instead of as a complaint about a document.
 
     Two differences from the feishu arm, both narrower rather than looser. `method` is taken from the
@@ -256,9 +258,21 @@ def rederive_massive(expect, fields) -> None:
     `reason`, `n_cal` and `n_eval` rather than as an exception.
     """
     for label, (records, stored) in massive_certificates().items():
-        fresh = certify_choice(records, alpha=stored.alpha, beta=stored.beta,
-                               delta=stored.delta, seed=stored.meta.get("seed", SEED),
-                               method=stored.method)
+        chosen = rubric or {"alpha": stored.alpha, "beta": stored.beta, "delta": stored.delta,
+                            "seed": stored.meta.get("seed", SEED), "method": stored.method}
+        kwargs = {"alpha": chosen["alpha"], "beta": chosen["beta"], "delta": chosen["delta"],
+                  "seed": chosen["seed"], "method": chosen["method"]}
+        if chosen.get("grid") is not None:
+            kwargs["grid"] = tuple(chosen["grid"])
+        fresh = certify_choice(records, **kwargs)
+        if rubric is not None:
+            # The producer echoes `alpha`/`beta`/`seed` into `meta`, which the gate compares by whole-dict
+            # equality: a caller handing in a protocol has to move those three as well, or every tree reads
+            # red for a reason it did not ask for. `delta` is a top-level field and never appears in `meta`.
+            fresh = replace(fresh, meta={**fresh.meta, "alpha": chosen["alpha"],
+                                         "beta": chosen["beta"], "seed": chosen["seed"]})
+        if stamp is not None:
+            fresh = stamp(fresh)
         for field in fields:
             expect("cert %s.%s" % (label, field), getattr(fresh, field), getattr(stored, field))
         expect("cert %s.summary" % label, fresh.summary(), stored.summary())

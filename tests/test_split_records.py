@@ -298,12 +298,24 @@ def _drift_labels(report_module, fields, table=None):
 
     `verify` owns the counting and the exit code; this helper is the same call with a sink that keeps
     the failures, because the thing being asserted here is *which* label fires, not how many checks ran.
+
+    The arm is handed the freeze's digest as its stamp because Plan D Task 2 re-exported the published
+    artefacts with `certify --protocol`: a caller that re-derived without stamping would report every
+    certificate as drifted on `meta` and the row would be measuring its own harness. The digest is
+    recomputed from `protocol.json` rather than read off the artefact under test, so it can disagree.
     """
+    from dataclasses import replace
+
+    from autorate.protocol import load_protocol, protocol_digest
+
+    digest = protocol_digest(load_protocol(REPO / "protocol.json"))
     if table is not None:
         report_module.MASSIVE_CERTIFICATES = table
     seen = []
     report_module.rederive_massive(lambda label, actual, published:
-                                   None if actual == published else seen.append(label), fields)
+                                   None if actual == published else seen.append(label), fields,
+                                   stamp=lambda cert: replace(cert, meta={**cert.meta,
+                                                                          "protocol_digest": digest}))
     return seen
 
 

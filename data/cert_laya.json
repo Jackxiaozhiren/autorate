@@ -549,6 +549,7 @@
     "multi_label": 90,
     "n_cal_cases": 32,
     "n_eval_cases": 32,
+    "protocol_digest": "012cbed364421cbeb1d98fa08bd5eee4ea2110e1e3f49660a80420a6594f6292",
     "seed": 7,
     "skipped_no_gold": 0,
     "skipped_wrong_qtype": 768,
