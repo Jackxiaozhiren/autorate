@@ -1360,3 +1360,14 @@ One test in this batch was wrong before it was right, and the correction is wort
 missing-artefact row also moved the severity table aside, then asserted that the refusal named the resplit file.
 It named the severity copy instead -- the row had manufactured a second absent artefact and blamed the one it
 was studying. The row now re-points the resplit path alone, and states why in its docstring.
+
+**One scope sentence this repository wrote, and then measured wrong.** The #87/G3 prose said the ordinal set
+gate "certifies nothing in this family" -- a claim drawn from the four populations walked at `shift = 0.1`. A
+64-cell search over the generator's live knobs refutes it as a universal: `certify_score` certifies in 4 cells,
+all of them `error_rate = 0` with `shift = 0` (temperatures 1.4, 2.0, 4.0, 8.0), where it publishes
+`autorate` 0.41-0.47, a conditional bound of 0.0314-0.0359 and a marginal bound of 0.014867, and the severity
+gate certifies the same marginal figure at `measured = 0`. That coincidence is not evidence either way -- both
+gates are quoting the Clopper-Pearson upper bound for zero errors in 200 cases -- so it neither supports nor
+refutes G3; it makes the question answerable. The README and `tests/test_g3_contrast.py` are corrected to say
+exactly that, and the one-sided count on a certifying population remains unperformed, which is why
+`claim G3` still prints `not_measured`.

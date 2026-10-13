@@ -9,10 +9,12 @@ direction: it has nothing to say about the risk of reporting too low, because it
 
 What this file does NOT claim, and what would be an over-reading of these rows: that a set gate could never
 express a one-sided bound. For an interval `C(X) = [lo, hi]`, `P(Y > hi(X)) <= alpha` follows from the set
-gate's own coverage claim, so the general proposition is open. It stays open in this family because no
-population here lets the set gate certify -- the four variants this row walks all refuse -- so the interval-top
-construction never acquires a certified `qhat` to bind to. Settling that needs a population where the set gate
-certifies, which is recorded as the next step rather than asserted here.
+gate's own coverage claim, so the general proposition is open -- and answerable rather than blocked. The four
+variants this row walks all refuse, but a search of the generator's own knobs found `certify_score` certifying
+in 4 of 64 populations, all of them the perfectly-calibrated corner where `shift = 0` and `error_rate = 0`
+(measured in the plan ledger's R-245 and recorded in `docs/ERRATA.md`). Settling G3 means counting the
+one-sided risk on one of those and asking whether any published field of the set certificate bounds it. That
+count has not been done, so neither this file nor the README claims it has.
 
 Every number is read from the certificate objects, never typed: a row that quoted `0.045180` would certify a
 transcription, not a measurement.

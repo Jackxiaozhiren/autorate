@@ -171,8 +171,9 @@ second place to keep them.
   rule's price; the set gate refuses on all four population variants that file walks. That is silence in a
   named direction, and it is not yet the criterion. For an interval `C(X) = [lo, hi]` a coverage claim would
   bound `P(Y > hi(X))` directly, so "cannot express" needs a population where the set gate *does* certify and
-  its published fields still fail to bound the one-sided risk of the rule it deploys -- and no population in
-  this family lets it certify, so the question is open rather than answered. If that experiment shows the set
+  its published fields still fail to bound the one-sided risk of the rule it deploys. Such populations exist:
+  4 of the 64 knob combinations this project searched (the perfectly-calibrated corner, `shift = 0` and
+  `error_rate = 0`) let the set gate certify, so the experiment is answerable and has not been run. If that experiment shows the set
   gate expresses the statement after all, the honest outcome is that G3 fails and the claim is removed rather
   than reworded.
 - **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
