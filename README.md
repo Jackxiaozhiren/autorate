@@ -204,16 +204,21 @@ second place to keep them.
   these records exits 3, `EXIT_NOT_CERTIFIABLE`. The two collapsed slices quoted
   from the marginal certificates (`de` automates 0 of 1,487 cases; `sw` 39 with 13 wrong) are the at-a-glance
   version of the same evidence, published as marginal certificates and now also as a slice run.
-- **G5, reproducible from a commit with no GPU, no network, no model: `not_measured` at the freeze.**
-  `autorate verify --protocol protocol.json` is now a real command, `protocol.json` is committed and frozen,
-  all six published certificates carry its digest inside (the five set artefacts and the ordinal severity one;
-  `data/resplit_200.json` and `data/slices_language.json` are run records rather than certificates, so
-  `verify` compares the rubric each recorded against the freeze instead of looking for a stamp), and the
-  corpus-less reproduction has been measured
-  inside a clean `git archive` export. What is still missing is the transcript that makes that a published
-  measurement rather than a local run, and CI's own witness of the current tip. The status line stays
-  `not_measured` until both exist: it is the frozen document's word, and re-stating a criterion is a new
-  freeze, not an edit.
+- **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
+  committed transcript.**
+  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `56b3f76` into a scratch
+  directory with its own HOME and runs `autorate verify --protocol protocol.json` there --
+  `248/248` values with the corpus absent at rc=0, `283/283` with
+  it present at rc=0, and four planted defects that each come back inside the documented
+  exit-code contract (rc=2, 4, 4, 4) and are restored byte-identically with the restore
+  checked. `tests/test_g5_transcript.py` refuses the file if a recorded code escapes the contract, if a
+  lane's two halves disagree, if the digest printed is not the digest of the commit the transcript names,
+  if the sentence counting the plants disagrees with the number of plant blocks, or if a single line still
+  names a machine path. Both CI jobs now run the `--protocol` form, which the frozen comparison had never
+  been platform-witnessed in; the witness of this tip is the run that follows the push, and `docs/G5.md`
+  says so rather than assuming it. Three limits stay stated: the archive lane is a local obligation, the
+  no-network claim covers the gate steps and not the dependency install, and the drift and contamination
+  figures are unpublished, so they are absent from both denominators instead of re-derived.
 
 The honest summary is that the gate's reproduction story is the strongest part of this tree today. G4's
 slice criterion now has published evidence and is short of its own wording, not short of an artefact; the

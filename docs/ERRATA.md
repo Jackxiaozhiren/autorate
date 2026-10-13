@@ -1545,3 +1545,47 @@ producer's malformed-line and backend-absent paths still answer rc 1. The two bl
 **Also corrected in code, not prose:** `inputs[].rows` had two owners (all JSON lines in the producer, the
 backend's Records in the gate) that agreed only because every committed row is `laya`; the producer now calls
 `report.slice_inputs`, so the artefact's own input table is the same value the gate re-derives.
+
+The record itself, as `docs/G5.md` transcribes it: commit `56b3f76`, protocol digest `8bcc0336dee0c5a7bacb5f83a7b5679e62b39eb6cac37b8e2dad55179feb6bfd`, absent lane
+`rc=0` at `248/248` values, corpus-present lane `rc=0` at
+`283/283` values -- the `35`-check gap is the nine upstream `SOURCE.json` digests and the
+snapshot keys a corpus-less run can only transcribe -- and four falsifications returning
+`rc=2`, `rc=4`, `rc=4`, `rc=4`.
+
+## 2026-10-13 -- G5's transcript is a published file, and the two things that made it possible
+
+
+G5 asks for a literal command's result: `autorate verify --protocol protocol.json` re-deriving every
+published number from a commit, with no GPU, no network and no model, exit code and counts printed. The
+mechanism had existed since Plan D Task 2 and the corpus-less reproduction had been run on every pre-push
+simulation, but a simulation I perform and delete is not evidence: nothing recorded what the export printed,
+so the README could only point at the absence. `tools/g5_export.sh` is the recorder, `tools/g5_transcript.py`
+the renderer, `docs/G5.md` the record, and `tests/test_g5_transcript.py` the guard that keeps the record from
+drifting away from the tree that cites it.
+
+Two facts worth recording because each one changed the design rather than merely the text.
+
+**A transcript must be checked against the revision it names, not against the reader's tree.** The first
+version of the digest row compared the recorded digest with the `protocol.json` in the working tree. That is
+unsatisfiable in the order the work has to happen: the export can only run against a commit that already
+exists, so any commit that re-freezes -- which is every commit that corrects a claim note, and there were four
+today -- reddens the transcript in the very commit that publishes it. The row now asserts the printed digest
+equals the digest of the `protocol.json` at the named commit (immutable: lying about it means editing a commit
+that no longer matches), plus reachability from HEAD (a transcript cannot be smuggled in from an abandoned
+branch). Currency is a sentence in the document, where a reader sees which commit it describes; the
+`--ignore`-style alternative of recomputing at render time was rejected because it makes the guard unable to
+fail.
+
+**macOS has two spellings of the same scratch directory, and masking one is not masking.** `mktemp -d` yields
+`/var/folders/<a>/<b>/T/g5-XXXXXX`; the interpreter inside it reports `sys.prefix` resolved through
+`/private/var/folders/...`. The first transcript therefore carried the machine in a line the emitter exists to
+police, and `tools/g5_transcript.py` refused the document at exit 2 and wrote nothing -- which is the design
+working, not failing: there is no path by which it redacts and publishes. The runner now masks both spellings,
+and `tests/test_cli.py`'s tracked-tree guard gained the `/var/folders` class it had never covered (with
+`/tmp` deliberately excluded: measured, including it named a plan document's `/tmp/falsify/` and CI's own
+`tee /tmp/pytest.log`, which are honest prose rather than machine-identifying paths).
+
+What the transcript does not license, written in its own last section: the no-network claim covers the gate
+steps, not the `uv sync` that provisions them; the corpus-present lane is a local obligation, because the
+archive is not a committed file; and CI's first witness of the `--protocol` form begins with the push that
+follows this, not before it.

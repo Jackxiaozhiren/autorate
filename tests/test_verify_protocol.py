@@ -106,7 +106,7 @@ def test_verify_prints_one_line_per_claim_with_a_status_that_can_say_no(in_repo,
     assert [line.split()[1] for line in lines] == ["G1", "G2", "G3", "G4", "G5"], lines
     joined = "\n".join(lines)
     assert "not_certifiable" in joined, joined          # G1: 0 of 5 published tasks certify (R-204)
-    assert "not_measured" in joined, joined             # G3/G4/G5 until their surfaces exist
+    assert "not_measured" in joined, joined             # G3 still refuses; G5 left this list when the transcript landed
 
 
 def test_a_records_file_the_protocol_did_not_bless_refuses_in_the_corpus_less_lane(tmp_path, monkeypatch,
