@@ -23,7 +23,15 @@ skip = pytest.mark.skipif(not UPSTREAM.exists(), reason="vendored upstream not p
 # A username-shaped segment, not the bare directory prefix: `<workspace>` prose and this file's own
 # patterns say "/Users/" without naming a machine. Machine-path-shaped is the defect class; the guard
 # deliberately does NOT claim to catch every absolute path (see the tmp-shape gap recorded in Plan D).
-MACHINE_PATH_RX = re.compile(r"/(Users|home)/[A-Za-z0-9._-]+/")
+# Three shapes, chosen by what they identify rather than by where they live: a login home (`/Users/<name>`,
+# `/home/<name>`) names the account, and a macOS scratch root (`/var/folders/<2>/<hash>`) names this machine's
+# random per-user directory. `/tmp/...` and `/private/tmp/...` are deliberately NOT in here -- they name no
+# machine, they are how this repository's own CI writes its logs (`tee /tmp/pytest.log`) and how its plans
+# tell a reader to stage a falsification (`mkdir -p /tmp/falsify`), and adding them would mean either
+# flagging honest prose or keeping an exemption list, which is a blind spot with a comment on it. The
+# transcript emitter in `tools/g5_transcript.py` is stricter on purpose: it refuses its own output on any of
+# these shapes plus the temp roots, because a run log's directory is the fact most likely to leak into it.
+MACHINE_PATH_RX = re.compile(r"/(?:Users|home|var/folders)/[A-Za-z0-9._-]+/")
 
 
 def run(*args, cwd=REPO, root=None):
@@ -135,7 +143,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     from autorate.report import (CERTS, MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
                                  SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
                                  SLICE_GROUP_FIELDS, SLICE_INPUT_FIELDS, SLICE_JSON, SLICE_POOLED_FIELDS,
-                                 SLICE_RECORDS, SLICE_RUBRIC_FIELDS, read_resplit, read_slices,
+                                 SLICE_RECORDS, SLICE_RUBRIC_FIELDS, SLICE_WORST_FIELDS,
+                                 read_resplit, read_slices,
                                  resplit_invariants)
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
@@ -185,6 +194,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + len(slice_run["per_group"]) * len(SLICE_GROUP_FIELDS)
                 + len(slice_run["slice_census"]) * len(SLICE_CENSUS_FIELDS)
                 + len(SLICE_POOLED_FIELDS) + 1
+                + len(SLICE_WORST_FIELDS) + 1
                 + len(SLICE_RECORDS) * len(SLICE_INPUT_FIELDS)
                 + len(SLICE_RUBRIC_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
@@ -906,6 +916,45 @@ def test_a_malformed_artefact_on_a_path_the_operator_supplied_is_still_a_usage_e
     assert "Traceback" not in a.stderr, a.stderr
 
 
+def test_records_that_declare_no_published_backend_are_a_named_refusal_at_four(tmp_path, monkeypatch, capsys):
+    """A table-declared input whose rows name no published backend must not reach a dict lookup.
+
+    Found by Plan D Task 3's records-swap falsification (ledger R-253): `verify` builds its report by
+    indexing the certified pair as `certs["laya"]` / `certs["jev"]`, while `certify_all` keys its result by
+    whatever backends the rows actually carry. Point `report.RECORDS` at rows that declare some other
+    backend and the gate answers `KeyError: 'laya'` -- an unmapped exception, so exit 1, which the
+    0/2/3/4 contract forbids on the very path the contract exists for.
+
+    The promise being asserted is the one #74 established for the artefacts beside this one: a
+    table-declared path with the wrong content is the checkout's failure, named by its owning table, at
+    exit 4, with no traceback. Nothing typed by an operator can select this path, so nothing an operator
+    could type can repair it either -- which is why the message names `report.BACKENDS` and the backend
+    that is missing rather than suggesting a flag.
+
+    Plant for the negative control: remove the guard, and this row reports rc 1 (the `KeyError` escaping
+    `main`), which is exactly the state the repository was in when Task 3's export recorded it.
+    """
+    import json
+
+    from autorate import cli, report
+
+    rows = [json.loads(line) for line in (REPO / report.RECORDS).read_text().splitlines() if line.strip()][:2]
+    assert rows, "the published records file is empty, so this row would prove nothing"
+    for row in rows:
+        row["backend"] = "undeclared-backend"
+    bogus = tmp_path / "records.jsonl"
+    bogus.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows))
+    for module in (cli, report):
+        monkeypatch.setattr(module, "RECORDS", str(bogus))
+
+    rc = cli.main(["verify"])
+    err = capsys.readouterr().err
+    assert rc == 4, (rc, err[-500:])
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err, err[-500:]
+    assert "undeclared-backend" in err and "laya" in err, err[-500:]
+    assert "Traceback" not in err, err[-500:]
+
+
 def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_path):
     """`verify` says "usage error" about a file no argument selected.
 
@@ -1259,6 +1308,42 @@ def test_the_path_guard_scans_a_manifest_when_there_is_no_repository(tmp_path, m
     # of the fixture: removing the line must empty the report.
     (tmp_path / "docs" / "g.md").write_text("no path here\n")
     assert _path_offenders(names, tmp_path) == []
+
+
+def test_the_path_guard_sees_the_scratch_directory_shapes_a_transcript_would_leak(tmp_path):
+    """PF-D-6: `/Users/...` was never the only shape a machine path takes, and a run log leaks the others.
+
+    Plan D Task 3 commits `docs/G5.md`, whose most natural content is the directory an export was unpacked
+    into. On macOS that is `/var/folders/<x>/<y>/T/g5-XXXXXX/...`; a Linux runner says `/tmp/<x>/...` or
+    `/private/tmp/<x>/...`. None of those matched the home-only pattern, so the file that proves
+    reproducibility could carry the machine and every gate would agree it was clean.
+
+    Asserted on a built subject rather than on the tracked tree -- the tracked tree is the case that already
+    passed. Shapes are assembled from pieces so this file does not become the offender it is looking for, the
+    same convention the row above uses for its `/` + `Users/bob/x` literal.
+
+    Measured while writing it: the first version of this pattern also covered `/tmp/...`, and the tracked-tree
+    scan then named `/tmp/falsify/` in a committed plan and `tee /tmp/pytest.log` in CI's own workflow -- the
+    guard's blast radius was prose that is honest, not paths that identify a machine. Those shapes are out,
+    with the reason written above rather than an ignore list, and the row below asserts the distinction is
+    real: a `/tmp/...` line stays clean while a `/var/folders/...` line does not.
+    """
+    shapes = ("/" + "var/folders/5l/nltc5k/T/g5-Ab12Cd/export/protocol.json",
+              "/" + "home/dev/scratch/g5-Ab12Cd/export/protocol.json",
+              "/" + "Users/dev/scratch/g5-Ab12Cd/export/protocol.json")
+    for shape in shapes:
+        (tmp_path / "docs").mkdir(exist_ok=True)
+        (tmp_path / "docs" / "leak.md").write_text("the export ran in %s\n" % shape)
+        found = _path_offenders(["docs/leak.md"], tmp_path)
+        assert found, "the guard did not see %r -- the pattern still covers only the home shape" % shape
+        assert found[0][0] == "docs/leak.md", found
+        # and the hit is the shape, not the filename: a line with no absolute path must clear the report
+        (tmp_path / "docs" / "leak.md").write_text("the export ran in <export-dir>\n")
+        assert _path_offenders(["docs/leak.md"], tmp_path) == [], shape
+    # and the distinction the pattern draws is asserted, not assumed: the temp root that CI and the plans
+    # legitimately name is not a machine path, so it must NOT be reported.
+    (tmp_path / "docs" / "leak.md").write_text("tee the log to " + "/tmp/fals" + "ify/x.log\n")
+    assert _path_offenders(["docs/leak.md"], tmp_path) == [], "the guard reached past the machine"
 
 
 def test_the_path_guard_refuses_an_empty_subject_from_either_source(tmp_path, monkeypatch):

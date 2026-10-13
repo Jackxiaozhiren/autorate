@@ -29,7 +29,6 @@ publication -- that is what G4 asked for), 2 for the refusals above and for an e
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -109,20 +108,26 @@ def check_rows(per_file) -> None:
 def build_document() -> dict:
     """The run, as the mapping the artefact publishes: budgets, inputs, and the certification itself."""
     rubric = {"alpha": ALPHA, "beta": BETA, "delta": DELTA, "method": METHOD, "seed": SEED}
-    records, raw = [], []
+    raw = []
     for path in declared_inputs():
         if not path.is_file():
             raise SliceInputRefusal("%s: declared input is missing" % path)
-        raw.append((path, [json.loads(line) for line in path.read_text().splitlines() if line.strip()]))
-        records.extend(report.load_records(path)[report.SLICE_BACKEND])
+        try:
+            lines = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        except ValueError as exc:                     # JSONDecodeError is a ValueError, and so is Record's
+            raise SliceInputRefusal("%s: a line is not a readable Record (%s)" % (path, exc)) from exc
+        raw.append((path, lines))
     check_rows(raw)
+    # The records and the per-file rows/digests the artefact publishes come from the same function the gate
+    # re-reads, so `inputs[].rows` has one owner. Two definitions of it -- every JSON line here, the backend's
+    # Records there -- agree only while every committed row happens to be that backend, and "happens to" is
+    # not a contract.
+    records, inputs = report.slice_inputs()
     run = certify_choice(records, groups=[report.SLICE_GROUP_KEY], **rubric).to_dict()
     return {
         "backend": report.SLICE_BACKEND,
         "group_key": report.SLICE_GROUP_KEY,
-        "inputs": [{"path": str(path), "rows": len(rows),
-                    "digest": hashlib.sha256(path.read_bytes()).hexdigest()}
-                   for path, rows in raw],
+        "inputs": inputs,
         "producer": PRODUCER,
         "rubric": rubric,
         "run": run,
@@ -155,7 +160,7 @@ def main(argv=None) -> int:
         return code
     try:
         doc = build_document()
-    except SliceInputRefusal as exc:
+    except (SliceInputRefusal, report.PublishedArtefactUnavailable) as exc:
         print("%s: %s" % (PRODUCER, exc), file=sys.stderr)
         return 2
 

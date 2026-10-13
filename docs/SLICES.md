@@ -12,7 +12,8 @@ refuse**, and the pooled bound must not be allowed to average that refusal away.
 - budgets as certified: alpha=0.05 beta=0.05 delta=0.05
 - corrected per slice: alpha=0.016666666666666666 delta=0.016666666666666666 (beta is not divided, and says so below)
 - joint level: 0.85
-- worst slice named by the run: `de`
+- thinnest slice by case count: `de`
+- worst slice of the joint claim: `de`
 - the run certifies: False; any slice refused: True
 - slices refused by the size floor: 0 (none)
 

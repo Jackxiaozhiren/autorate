@@ -578,9 +578,19 @@ SLICE_RECORDS = ("data/records_massive_de.jsonl",
 SLICE_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
 # Four field lists, one owner each: the arm and the denominator that counts it read these (`R-168`), and an
 # operator tampering with one published value has to be named by exactly one label.
+# `worst_claim` and `refused_by_size` are in here because they ARE G4: the first names the slice whose
+# refusal the criterion is about, the second says whether the size floor rather than a bound did the
+# refusing. `thinnest` is neither -- it is the fewest-case slice with an alphabetical tie-break -- so a list
+# that stopped at it would re-derive everything except the two claims being published.
 SLICE_COMPARE_FIELDS = ("feasible", "any_slice_refused", "n_groups", "n_claims", "level",
                         "corrected_alpha", "corrected_beta", "corrected_delta", "thinnest",
                         "alpha", "beta", "delta", "groups")
+# The joint worst-of-G claim, in the fields a reader of `docs/SLICES.md` is being asked to trust. These are
+# named rather than compared as one `worst_claim` dictionary because that dictionary carries tuples and
+# nested rows: a whole-mapping comparison drifts on JSON's list-versus-tuple round-trip, which is a
+# representation fact about the file, not a disagreement about the claim. `refused_by_size` gets the same
+# treatment as one joined row, so an artefact that hid a size-floor refusal is named.
+SLICE_WORST_FIELDS = ("group", "joint_level", "joint_level_risk", "level", "metric")
 SLICE_GROUP_FIELDS = ("feasible", "reason", "n_cal", "n_eval", "qhat", "autorate",
                       "conditional_error_bound", "marginal_error_bound")
 SLICE_CENSUS_FIELDS = ("cases", "records", "eligible_cases", "kept",
@@ -624,7 +634,48 @@ def read_slices(path: Path) -> dict:
     gap = sorted(set(SLICE_RUBRIC_FIELDS) - set(doc["rubric"]))
     if gap:
         raise ValueError("the slice experiment records no value for %s" % gap)
+    # Shape, not just presence. Six of these arms exist because each nested value is read further down -- as a
+    # mapping to index, a list to join, or a row to look a key up in -- and a JSON type that arrives from a
+    # tampered or stale file answers with `TypeError`/`AttributeError`, which `main` cannot map: exit 1 on the
+    # path whose whole contract is 0/2/3/4. `_row_list` refuses the shape where it is read, so the gate's
+    # answer is the named refusal at exit 4 that `docs/SLICES.md` promises.
+    _named_list(run.get("groups"), "run.groups", strings=True)
+    _named_list(run.get("envelope"), "run.envelope", strings=True)
+    for name, value in (("inputs", doc["inputs"]),
+                        ("run.slice_census", run.get("slice_census")),
+                        ("run.refused_by_size", run.get("refused_by_size"))):
+        _row_list(value, name, ("group",) if name != "inputs" else SLICE_INPUT_FIELDS)
+    if not isinstance(run.get("per_group"), dict) or any(
+            not isinstance(cert, dict) for cert in run["per_group"].values()):
+        raise ValueError("the slice experiment's `per_group` is not a mapping of slice name to certificate")
+    for name in ("worst_claim", "pooled"):
+        if name in run and not isinstance(run[name], dict):
+            raise ValueError("the slice experiment's `run.%s` is a %s, not the mapping the run publishes"
+                             % (name, type(run[name]).__name__))
     return doc
+
+
+def _named_list(value, label: str, strings: bool = False) -> None:
+    """Refuse a list-shaped field that is not a list (or not a list of strings, where it says so)."""
+    if not isinstance(value, list):
+        raise ValueError("the slice experiment's `%s` is a %s, not a list" % (label, type(value).__name__))
+    if strings and any(not isinstance(item, str) for item in value):
+        raise ValueError("the slice experiment's `%s` holds a %s, not strings"
+                         % (label, next(type(i).__name__ for i in value if not isinstance(i, str))))
+
+
+def _row_list(value, label: str, keys) -> None:
+    """Refuse rows that are not mappings carrying the keys the arm looks up by name."""
+    if not isinstance(value, list):
+        raise ValueError("the slice experiment's `%s` is a %s, not a list of rows"
+                         % (label, type(value).__name__))
+    for row in value:
+        if not isinstance(row, dict):
+            raise ValueError("the slice experiment's `%s` holds a %s, not a row object"
+                             % (label, type(row).__name__))
+        absent = sorted(set(keys) - set(row))
+        if absent:
+            raise ValueError("the slice experiment's `%s` has a row missing %s" % (label, absent))
 
 
 def slice_inputs() -> tuple:
@@ -640,8 +691,10 @@ def slice_inputs() -> tuple:
         path = require_published(Path(rel), "report.SLICE_RECORDS")
         by_backend = load_records(path)
         if SLICE_BACKEND not in by_backend:
-            raise ValueError("%s declares no rows for backend %r (it holds %s)"
-                             % (rel, SLICE_BACKEND, sorted(by_backend)))
+            raise PublishedArtefactUnavailable(
+                "%s is declared published by report.SLICE_RECORDS and carries no rows for backend %r "
+                "(it holds %s); the slice run is certified over that backend, so this is the checkout's "
+                "failure and no argument selected the path" % (rel, SLICE_BACKEND, sorted(by_backend)))
         rows = by_backend[SLICE_BACKEND]
         records.extend(rows)
         inputs.append({"path": rel, "rows": len(rows),
@@ -698,6 +751,20 @@ def rederive_slices(expect, expect_rubric, rubric=None) -> None:
 
     expect("slice envelope", list(fresh.get("envelope", [])), list(published.get("envelope", [])))
 
+    def worst_of(cert):
+        claim = cert.get("worst_claim") or {}
+        claim = claim if isinstance(claim, dict) else {}
+        worst = claim.get("worst")
+        out = dict(claim)
+        out["group"] = _group_of(worst) if worst is not None else None
+        return out
+
+    fresh_worst, published_worst = worst_of(fresh), worst_of(published)
+    for name in SLICE_WORST_FIELDS:
+        expect("slice worst_claim.%s" % name, fresh_worst.get(name), published_worst.get(name))
+    expect("slice refused_by_size", _join_groups(fresh.get("refused_by_size")),
+           _join_groups(published.get("refused_by_size")))
+
     recorded_inputs = {str(row.get("path")): row for row in doc["inputs"]}
     for row in inputs:
         for field in SLICE_INPUT_FIELDS:
@@ -706,6 +773,24 @@ def rederive_slices(expect, expect_rubric, rubric=None) -> None:
 
     for key in SLICE_RUBRIC_FIELDS:
         expect_rubric("slice rubric.%s" % key, doc["rubric"].get(key), rubric[key] if rubric else None)
+
+
+def _group_of(row) -> str:
+    """The slice name a `refused_by_size` entry carries, whether it is a row or a bare name."""
+    return str(row.get("group")) if isinstance(row, dict) else str(row)
+
+
+def _join_groups(rows) -> str:
+    return ", ".join(_group_of(row) for row in rows or [])
+
+
+def _worst_group(run: dict) -> str:
+    """The slice the joint worst-of-G claim names, read defensively: the claim is a mapping of shape
+    `worst_claim.worst.group`, and a run that has not got that far says so rather than raising."""
+    worst = (run.get("worst_claim") or {}).get("worst")
+    if isinstance(worst, dict):
+        return str(worst.get("group"))
+    return str(worst)
 
 
 def render_slices(doc: dict) -> str:
@@ -733,10 +818,11 @@ def render_slices(doc: dict) -> str:
         "- corrected per slice: alpha=%s delta=%s (beta is not divided, and says so below)"
         % (run["corrected_alpha"], run["corrected_delta"]),
         "- joint level: %s" % run["level"],
-        "- worst slice named by the run: `%s`" % run["thinnest"],
+        "- thinnest slice by case count: `%s`" % run["thinnest"],
+        "- worst slice of the joint claim: `%s`" % _worst_group(run),
         "- the run certifies: %s; any slice refused: %s" % (run["feasible"], run["any_slice_refused"]),
         "- slices refused by the size floor: %d (%s)"
-        % (len(run.get("refused_by_size", [])), ", ".join(run.get("refused_by_size", [])) or "none"),
+        % (len(run.get("refused_by_size", [])), _join_groups(run.get("refused_by_size", [])) or "none"),
         "",
         "## Per slice",
         "",
@@ -1055,6 +1141,22 @@ def _denominator_note(inv: dict) -> str:
 
 
 def build_report(inv: dict, certs: dict, counts: dict) -> str:
+    """The published report, from the certificates and counts the caller brought.
+
+    `certs` is keyed by whatever backends the records actually declare, while this function's sentences are
+    about the declared pair (`BACKENDS`) -- so the pair is checked once, here, before any lookup. Without it
+    a records file whose rows name no published backend answered `autorate verify` with `KeyError: 'laya'`,
+    which `main` cannot map, so the gate exited 1 on a table-declared input: the same class #74 settled for
+    absent and unreadable artefacts, reached from the marginal path instead of the severity one.
+    """
+    missing = [b for b in BACKENDS if b not in certs]
+    if missing:
+        raise PublishedArtefactUnavailable(
+            "%s is declared published by report.RECORDS and the certificates built from it name no record "
+            "for backend %s (they carry %s); report.BACKENDS declares the pair every published sentence "
+            "here is about, so this is the checkout's failure and no argument can repair it -- the path was "
+            "chosen by the table, not by the caller"
+            % (RECORDS, ", ".join(missing), ", ".join(sorted(certs)) or "no backends at all"))
     digests = inv["digests"]
     scores = _audit_scores(inv)
     ids = {b: set(certs[b].meta.get("eval_ids", [])) for b in BACKENDS}

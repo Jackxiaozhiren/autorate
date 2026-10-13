@@ -36,7 +36,9 @@ jobs:
       # had one. `-rA` would add a per-test summary for all ~600 tests; the header is the part that
       # was missing, so the log stays the same size.
       - run: uv run --frozen pytest | tee /tmp/pytest.log
-      - run: uv run --frozen autorate verify | tee /tmp/verify.log
+      # `--protocol` is the frozen-rubric half of the promise: without it the runner witnesses the
+      # numbers re-deriving and never witnesses them agreeing with the freeze that names them.
+      - run: uv run --frozen autorate verify --protocol protocol.json | tee /tmp/verify.log
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -53,7 +55,9 @@ jobs:
   # It runs `verify` and nothing else. Every input `verify` re-derives from is committed
   # (`data/records_feishu.jsonl`, `data/cert_*.json`, `data/inventory.md.json`, `docs/`), so the
   # lane costs one sync and one command per OS, and the vendored corpus is not reachable from a
-  # GitHub checkout on either arm -- both arms take the corpus-absent denominator (47 values),
+  # GitHub checkout on either arm -- both arms take the corpus-absent denominator, which `verify` prints rather than this file quoting a number that
+  # goes stale the day an arm is added (it has: 47 -> 108 -> 128 -> 166 -> 242 -> 248 as published
+  # columns joined the gate),
   # which is the same claim on two machines rather than two different claims.
   cross-libc-verify:
     needs: offline
@@ -74,7 +78,9 @@ jobs:
       - run: uv sync --frozen --extra dev
       # Before `verify`, so a mismatch is read against the probe rather than reconstructed after it.
       - run: uv run --frozen python3 tools/float_probe.py | tee /tmp/float-probe-${{ matrix.os }}.log
-      - run: uv run --frozen autorate verify | tee /tmp/verify-${{ matrix.os }}.log
+      - run: uv run --frozen autorate verify --protocol protocol.json | tee /tmp/verify-${{ matrix.os }}.log
+        # the second libc's point is that the FROZEN rubric re-derives the same numbers on a
+        # different math library; the plain form never compares the tree to the freeze
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

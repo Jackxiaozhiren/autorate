@@ -105,6 +105,7 @@ def test_the_gate_re_derives_the_published_slice_run_from_the_committed_records(
                 + len(report.SLICE_GROUP_FIELDS) * 3
                 + len(report.SLICE_CENSUS_FIELDS) * 3
                 + len(report.SLICE_POOLED_FIELDS) + 1          # +1: the six envelope lines, as one value
+                + len(report.SLICE_WORST_FIELDS) + 1           # +1: `refused_by_size`, joined as one value
                 + len(report.SLICE_INPUT_FIELDS) * 3)
     assert len(seen) == expected, (len(seen), expected)
     assert all(passed for _label, passed in seen), [l for l, p in seen if not p]

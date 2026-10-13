@@ -176,10 +176,13 @@ NON_G1_CLAIMS = (
                 "stand in for the worst slice. Three things keep the row from `certified`. It is per-language "
                 "only: `option_count` is 20 for every committed MASSIVE row, so the (language x option-count) "
                 "cross the measurement names would be the same three slices, and no cross-slice evidence "
-                "exists to publish. The emitted refusal word is the run's own (`empty_feasible_set`, "
-                "reported as NOT CERTIFIED), not the literal `NOT_CERTIFIABLE` the sentence asks for. And the "
-                "slice the criterion names by example -- Khmer, whose numbers this project measured but has "
-                "not published per-case rows for -- is not in the artefact at all.",
+                "exists to publish -- and the slice the criterion names by example, Khmer, is not in the "
+                "artefact: its numbers are quoted from the upstream README (the claim ledger records the "
+                "line), not measured by this project, and this tree publishes no per-case rows for it. What "
+                "the run does emit is the criterion's own word: each refused slice's summary carries "
+                "`NOT_CERTIFIABLE: reason=empty_feasible_set`, and `certify --groups language` over these "
+                "records exits 3, which is `EXIT_NOT_CERTIFIABLE`. An earlier draft of this note claimed the "
+                "opposite and was corrected by review, not by the author noticing.",
     },
     {
         "id": "G5",

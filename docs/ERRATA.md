@@ -1514,3 +1514,34 @@ no number moved for all six, and re-emitting the freeze under the stamped tree r
 freezes in one day is churn, and it is the churn a claim change costs by design: the alternative -- editing a
 published note under a digest that no longer describes it -- is the R-234 defect this file has now recorded
 three times.
+
+## 2026-10-13 -- review of #86 found two blockers and three false claims; what this file got wrong is here
+
+The independent review of `03f1198` measured, and was right: `verify` died with `TypeError` at exit 1 on a
+published artefact carrying a non-empty `refused_by_size` (that list holds rows, and `render_slices` joined it
+as names), and six further tampers on the same artefact -- `groups`, `envelope`, `per_group`, `slice_census`,
+`inputs`, a row missing a key -- also reached exit 1, while `docs/SLICES.md` promised exit 4. Both are fixed:
+`read_slices` now refuses the nested *shapes* it reads further down, not only their presence, and
+`slice_inputs` answers a table-declared file with no published backend through `PublishedArtefactUnavailable`
+rather than the usage exit. The gate re-derives 283 /283 corpus-present after the change (was 277): the
+comparison list gained `worst_claim`'s five fields and `refused_by_size`, because the arm had been
+re-deriving everything about the run **except the two fields G4 is a claim about**.
+
+**Three sentences in this file and the frozen document were false, and none of them were the reviewer's
+invention to fix.** (a) The G4 note and the README both said the run's refusal word is NOT CERTIFIED and "not
+the literal `NOT_CERTIFIABLE`". Measured: each refused slice's `summary()` prints
+`NOT_CERTIFIABLE: reason=empty_feasible_set`, and `certify --groups language` over these records exits 3 =
+`EXIT_NOT_CERTIFIABLE`. The gap that remains is the (language x option-count) cross and the absent Khmer
+slice -- two, not three. (b) Both texts said Khmer's figures were "measured" by this project;
+`docs/VERIFICATION.md` records them as a quote of the upstream README's own line, and `docs/SLICES.md` said so
+in its own words. (c) This file claimed the producer's two refusals were "proved by the rows": the row called
+`refuse_missing_inputs` with an argument `main()` never passes, so deleting the real guard left all eleven rows
+green, and the duplicate-id refusal had no row at all. (a) and (b) are corrected above, in current prose and in
+the frozen note. (c) is recorded as unfinished: the rows written to close it were reverted rather than shipped
+half-right, so `tools/language_slices.py`'s refusals are still unasserted through its own command, and the
+producer's malformed-line and backend-absent paths still answer rc 1. The two blockers and the rc-1 path in
+`verify` are fixed; the test-surface debt is open and named here instead of being claimed as done.
+
+**Also corrected in code, not prose:** `inputs[].rows` had two owners (all JSON lines in the producer, the
+backend's Records in the gate) that agreed only because every committed row is `laya`; the producer now calls
+`report.slice_inputs`, so the artefact's own input table is the same value the gate re-derives.

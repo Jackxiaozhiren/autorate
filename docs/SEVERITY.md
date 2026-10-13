@@ -13,7 +13,7 @@ byte-comparable -- in the corpus-present lane and in the corpus-absent one alike
 - risk target `alpha`: 0.050, tested at `delta`: 0.050, split `seed`: 7
 - reported level `ahat`: 3, over a rubric of 5 levels
 - records calibration/evaluation: 600/600, cases calibration/evaluation: 200/200
-- produced under the frozen protocol: `meta.protocol_digest` = `ff9f16fd2b67d44592e061bc81034cf8f009c9c938e61b006b3208b77cddc773`
+- produced under the frozen protocol: `meta.protocol_digest` = `8bcc0336dee0c5a7bacb5f83a7b5679e62b39eb6cac37b8e2dad55179feb6bfd`
 
 ## Verbatim summary
 
