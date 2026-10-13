@@ -169,13 +169,19 @@ second place to keep them.
   `empty_feasible_set`, publishing no `qhat`, no automation rate and no error bound of any kind -- while the
   severity gate certifies the one-sided bound, reports its measured held-out violation rate and states the
   rule's price; the set gate refuses on all four population variants that file walks. That is silence in a
-  named direction, and it is not yet the criterion. For an interval `C(X) = [lo, hi]` a coverage claim would
-  bound `P(Y > hi(X))` directly, so "cannot express" needs a population where the set gate *does* certify and
-  its published fields still fail to bound the one-sided risk of the rule it deploys. Such populations exist:
-  4 of the 64 knob combinations this project searched (the perfectly-calibrated corner, `shift = 0` and
-  `error_rate = 0`) let the set gate certify, so the experiment is answerable and has not been run. If that experiment shows the set
-  gate expresses the statement after all, the honest outcome is that G3 fails and the claim is removed rather
-  than reworded.
+  named direction, and it is not the criterion -- because the criterion's own wording lost. On the corner of
+  the generator where the set gate does certify (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells
+  searched), its interval's top endpoint sits above the gold level in no evaluated case, so
+  `P(Y > hi(X)) = 0` lies inside that certificate's own published marginal bound of 0.014867: a coverage claim
+  over ordered intervals *does* yield a one-sided bound, and "multiclass conformal prediction cannot express
+  one" is false for that construction. The difference that survives is narrower, and it is measured rather
+  than asserted: taking that rule costs reporting above the model's own modal level on a large share of cases
+  and leaves 36 evaluated records with an empty certified set and so with no top endpoint at all, while the set
+  certificate publishes no price, no override rate and no named rule -- the severity artefact certifies a rule
+  and states both quantities beside its bound, at the same `delta`. The status stays `not_measured` because the
+  narrowed claim has to be carried by a re-freeze (#89) rather than by prose that has already moved, and
+  because what remains is a wording question this project now answers in the narrow form, not a missing
+  experiment.
 - **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
   CLI (`certify --groups`, plus the simultaneous correction), and a slice below the size floor is refused by
   name with its case count; what is missing is a published artefact for a slice this project scored. The two

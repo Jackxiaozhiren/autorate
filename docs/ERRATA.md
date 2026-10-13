@@ -1371,3 +1371,24 @@ gates are quoting the Clopper-Pearson upper bound for zero errors in 200 cases -
 refutes G3; it makes the question answerable. The README and `tests/test_g3_contrast.py` are corrected to say
 exactly that, and the one-sided count on a certifying population remains unperformed, which is why
 `claim G3` still prints `not_measured`.
+
+**G3's wording met its measurement, and the bare claim did not survive.** The corner of the ordinal generator
+where the set gate certifies (`shift = 0`, `error_rate = 0`, one of the 4 cells of R-245) was counted on the
+evaluation half the severity artefact itself names: the interval's top endpoint is above the gold level in no
+case, so `P(Y > hi(X)) = 0` lies inside the set certificate's published marginal bound of 0.014867. A coverage
+statement over ordered intervals therefore *does* yield a one-sided bound, and the README's bare sentence that
+multiclass conformal prediction "cannot express" one is false for that construction -- the claim is narrowed in
+`README.md` and pinned by `tests/test_g3_contrast.py` instead of being left to drift. What the set certificate
+still does not carry is the price of taking that rule: it moves the reported level above the model's own modal
+level on a large fraction of non-empty cases, and leaves 36 records with an empty certified set and so with no
+top endpoint to report at all, while publishing no `price_bound` or `override_bound` field. The surviving
+difference is narrower than the original: a bound one must read off a rule nobody certified, whose abstentions
+are uncounted, against a bound certified for a named rule with its override rate and its abstention price
+stated beside it.
+
+Two process facts, recorded because they are the reason the above is trustworthy. A patch script in this round
+wrote a fragment over `tests/test_g3_contrast.py` and destroyed it; the file was restored from the committed
+revision (byte-identical to `HEAD`, suite green afterwards), so nothing uncommitted was lost beyond the row
+that had not yet been written. And the first version of the new row asserted `len(eval_ids) == n_eval_cases`,
+which the data contradicts -- 600 records against 200 cases, three repeats each -- so the row now states the two
+denominators separately rather than flattening the distinction the guarantee depends on.

@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _records import build_ordinal
 from autorate import report
 from autorate.certify_score import certify_score
+from autorate.ordinal import interval_set
 from autorate.certificate import ALPHA, BETA, DELTA, SEED
 from autorate.severity import certify_severity
 
@@ -97,3 +98,52 @@ def test_the_statistics_are_live_not_saturated_everywhere_the_temperature_moves_
     assert bounds[2.0] == bounds[6.0] == bounds[12.0], "the sharp region was expected to agree: %s" % (bounds,)
     assert bounds[0.3] != bounds[2.0], (bounds[0.3], bounds[2.0])
     assert bounds[0.3][0] < bounds[2.0][0], (bounds[0.3], bounds[2.0])
+
+
+def test_where_the_set_gate_certifies_coverage_also_bounds_the_interval_top_rule_at_a_price():
+    """The measured narrowing of G3's wording, and the one quantity the set certificate does not carry.
+
+    `shift = 0, error_rate = 0` is the corner of this generator where `certify_score` does certify (measured: 4
+    of the 64 knob cells, R-245). On the evaluation half the severity artefact itself names, the interval's top
+    endpoint reports above the gold level in no case, so `P(Y > hi(X)) = 0` sits inside the set certificate's
+    published marginal bound of 0.014867. That is the finding against the claim: for an ORDINAL interval set,
+    a coverage statement plus the top endpoint IS a one-sided bound, and the bare words "multiclass CP cannot
+    express a one-sided ordinal guarantee" are false for it.
+
+    What the set certificate does not state is the cost of taking that rule. It moves the reported level above
+    the model's own modal level on a large fraction of the non-empty cases, and on 36 records the certified set
+    is empty, so the interval has no top to report at all -- and neither fact appears in any field of the
+    certificate it just certified. The severity certificate publishes both, as claims at the same `delta`. So
+    the honest difference between the artefacts is: a one-sided bound that must be read off a rule nobody
+    certified and whose abstentions are uncounted, versus a bound on the rule the artefact names, with its
+    override rate and its abstention price stated beside it. Narrower than the criterion's original wording,
+    and written here so that wording cannot drift back out.
+    """
+    rows = build_ordinal(n=1200, seed=5, shift=0.0, error_rate=0.0, temp=1.4)
+    score, sev = _pair(rows)
+    assert score.feasible, score.summary()
+    ev_ids = set(sev.meta["eval_ids"])
+    ev = [r for r in rows if r.id in ev_ids]
+    # `eval_ids` names RECORDS and `n_eval_cases` counts CASES: three repeats of one case are one observation
+    # for the guarantee, so the two are not the same denominator and the row says which is which rather than
+    # asserting a flat equality that the first run measured false.
+    assert len(ev) == len(ev_ids), (len(ev), len(ev_ids))
+    assert len({r.case_id for r in ev}) == sev.meta["n_eval_cases"], (
+        len({r.case_id for r in ev}), sev.meta["n_eval_cases"])
+
+    empty = above_modal = over_hi = 0
+    for r in ev:
+        C = interval_set(r.probs, score.qhat)
+        modal = max(range(len(r.probs)), key=lambda i: r.probs[i])
+        if not C:
+            empty += 1
+            continue
+        over_hi += r.gold_index > C[-1]
+        above_modal += C[-1] != modal
+    n = len(ev)
+    # the bound holds, and is what a reader could only derive themselves...
+    assert over_hi / n <= score.marginal_error_bound, (over_hi, n, score.marginal_error_bound)
+    # ...because the set certificate publishes no rule and no price for one.
+    assert not hasattr(score, "price_bound") and not hasattr(score, "override_bound")
+    assert empty and above_modal, (empty, above_modal)
+    assert sev.price_bound is not None and sev.override_bound is not None, sev.summary()
