@@ -316,3 +316,42 @@ Provenance is no longer a column in this section; it is a machine-checked file. 
 
 **Week-1 task 0 is closed.** The gate's red state named fourteen unresolved rows; opening them produced fifteen ledger rows, eleven verified at a primary source with a URL and a date and four withdrawn (one row split in two because half of it had a vendor source and half did not). Eight further rows were added for sources the design had never itemised, and a ninth (`mapie-exchangeability-tests`) when the controller's R-7 ruling sent the competitor claims back to code. **After the R-7, R-8, R-9 and R-11 rulings the ledger stands at the census the gate itself prints — `ledger census: 46 rows: 40 verified, 6 withdrawn` — and §17 no longer types that count by hand**: `tests/test_verification_table.py::test_ledger_census_matches_the_published_counts` counts the rows, emits that line (`uv run --frozen pytest tests/test_verification_table.py -q -s`), and asserts it against three constants in the gate, so appending a row or moving a status without moving the constants and this sentence together is a red CI — review finding I-2, which this closes: the delta from the hand-typed 38 is exactly R-11's seven `verified` rows, the four refusal-and-reason searches behind §5.5's narrowing (`verdict-refusal-reporting`, `open-medical-jev-refusal-reporting`, `poorjev-refusal-reporting`, `openjev-verdict-2-refusal-reporting`), the two primary sources §12 had been resting on withdrawn rows for (`ordinal-crc-uai2023-two-losses`, `jev-trust-per-domain-calibration`), and `openjev-verdict-2-confidence-channels`. — the change from the first count is that `poorjev-conformal-abstention` moved from `verified` to `withdrawn`, `verdict-automation-guarantee` and `open-medical-jev-auto-release` stayed `verified` but now cite `path:symbol` at pinned commits instead of README anchors, and MAPIE gained a row for a capability this design does not own; R-9 then added `two-way-bound-construction-source` (verified at the paper's own PDF) and `kigel-acronym` (withdrawn — the acronym does not exist in the paper it was attributed to). A number that cannot be opened does not appear in the report, the README, or a PR description. What the pass also produced, and what the design should not forget: among those fourteen rows, **one cited a venue that does not exist** (the ordinal CRC paper is UAI 2023, not AISTATS 2023; row `ordinal-cp-aistats2023`), **one called a populated section empty**, **one row of four prior-art claims was three real papers plus that one invented venue**, **one attached two medians to the wrong benchmark denominator** (31, not 44), **one business row mixed a vendor-documented API limit with two press-only facts**, and **one star count was wrong by 49%** — the API reports 28,750 where one source reported 19,301. And the search that produced the table found two shipped conformal automation gates in the same niche that §17 had never listed, while **a third "gate" it reported from a tagline did not survive reading the code** — which is the empirical base rate for why §11's tests and §15's anchors — not memory, not a search snippet, and not a repository's own description of itself — carry this project's credibility.
 
+
+---
+
+## Appendix A — spec/implementation divergences, re-verified against the tree on 2026-10-13
+
+Appended rather than edited into §10 and §2, because a dated record of what the implementation actually does
+is evidence and an inline rewrite is a retcon. Only divergences re-measured in the tree are listed here; a
+naming question resolved earlier and recorded only in the work ledger is deliberately not restated, because
+this appendix cannot vouch for what it did not re-open. The mandates themselves are not softened: an entry
+below says what is missing and who owns closing it.
+
+1. **§10 `cert.n_min_violations` — the mandate stands and is not yet met.** §10:214 makes `envelope` and
+   `n_min_violations` non-optional in the serialized output shape. Measured today: `envelope` is enforced
+   (`certificate.py:243-244` raises when a certificate carries an empty envelope), and the *fact* the second
+   field names is carried under another name — `MondrianResult.refused_by_size` (`certify_choice.py:377`,
+   populated at `:580` as `{"group", "n", "floor", "reason"}` records, a superset of §10:208's string example
+   `"option_count:11+ : n=41 < 120"`). §10's name is not implemented, and `tests/test_mondrian.py:343` pins
+   its absence with `assert not hasattr(cert, "n_min_violations")`. That pin is not acceptance: it records a
+   deliberate deferral (`certify_choice.py:359-361`, "B3 Task 5 owns that name and the shape change together").
+   Closing it means the spec's key, presence-based validation at serialization (an empty list is a fact; a
+   missing key is a shape violation), the artefact regenerated, and the four consumers of that published arm
+   moved in one commit. Until then any statement that §10's output shape is satisfied is false.
+2. **§2 G3's wording is wider than the measured contrast, and the freeze says so.** The criterion as written
+   asks for "≥1 ordinal guarantee that multiclass CP cannot express". On the population where this repository's
+   own ordinal SET gate certifies, the interval construction yields a one-sided bound by itself, so the bare
+   sentence "multiclass CP cannot express one" is false for that construction; what survives is narrower and is
+   written out in the `claims.G3.note` of `protocol.json` rather than re-defined here. `verify` therefore prints
+   `claim G3 not_measured` — measured in CI run `38400305544` on three jobs, not inferred.
+3. **A digit inside a claim note went stale and is still stale in the frozen file.** `claims.G3.note` says
+   "20 comparisons in `verify`"; driving `report.rederive_severity` through `verify`'s own callbacks with
+   `cli.SEVERITY_COMPARE_FIELDS` and `cli.SEVERITY_RUBRIC_FIELDS` counts **19** (same method measures massive
+   48, resplit 37, slices 81). Recorded here because §11's testing strategy claims every published figure is
+   re-derivable, and a figure inside a claim note is a published figure that no gate re-derives today.
+4. **§2 G5 now has a witness at a named revision, and the no-network scope is narrower than the criterion's
+   prose.** `autorate verify --protocol protocol.json` printed `re-derived 248 /248 values` at exit 0 on three
+   CI jobs (ubuntu, macos, offline arm) for commit `56b3f76` — the frozen comparison is platform-witnessed
+   across two libc families. The scope limit is stated in the transcript itself: the no-network claim covers
+   the gate steps, not the `uv sync` that provisions them, and the corpus-present lane cannot be reproduced by
+   any runner because the archive is not a committed file.
