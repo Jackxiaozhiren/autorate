@@ -59,9 +59,10 @@ def stage_published(work):
     the tamper it planted.
     """
     from autorate.cli import PROTOCOL_JSON
-    from autorate.report import CERTS, MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS
+    from autorate.report import (CERTS, MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS,
+                                 SLICE_JSON)
 
-    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON} | set(CERTS.values())
+    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON} | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
              | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
     for rel in sorted(names):
@@ -132,7 +133,10 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                               SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
     from autorate.report import (CERTS, MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
-                                 SEVERITY_CERTS, read_resplit, resplit_invariants)
+                                 SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
+                                 SLICE_GROUP_FIELDS, SLICE_INPUT_FIELDS, SLICE_JSON, SLICE_POOLED_FIELDS,
+                                 SLICE_RECORDS, SLICE_RUBRIC_FIELDS, read_resplit, read_slices,
+                                 resplit_invariants)
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
                    if o["id"].startswith("massive")]
@@ -149,7 +153,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # before MAJ-3, and it is what a future narrowing of `PUBLISHED_DOCS` has to edit first.
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
                                                          "docs/AUDIT.md", "docs/SEVERITY.md",
-                                                         "docs/RESPLIT.md"}, PUBLISHED_DOCS
+                                                         "docs/RESPLIT.md", "docs/SLICES.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
@@ -164,12 +168,25 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # declared field, one for the summary it prints, and one rubric row per field the freeze owns for that
     # gate. Absent lane measured 108 before it and 128 after; the document row is already in
     # `len(PUBLISHED_DOCS)`, so the twenty added comparisons are 15 + 1 + 3 + 1.
+    # G4's slice arm enters the same way, from its own field lists and from the counts the artefact carries:
+    # the number of slices, census rows and declared inputs is read, never typed, so a fourth language
+    # joining the publication moves the formula with it instead of reddening a remembered integer. The `+1`
+    # is the envelope, compared as one value. Absent lane measured 201 before this arm and 277 after:
+    # 13 + 8x3 + 6x3 + 8 + 1 + 2x3 drift rows, 5 rubric rows, 1 document row.
+    slice_doc = read_slices(REPO / SLICE_JSON)
+    slice_run = slice_doc["run"]
     expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
                 + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
                 + len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
                                          + len(SEVERITY_RUBRIC_FIELDS))
                 + len(resplit_invariants(read_resplit(REPO / RESPLIT_JSON)))
                 + len(RESPLIT_RUBRIC_FIELDS)
+                + len(SLICE_COMPARE_FIELDS)
+                + len(slice_run["per_group"]) * len(SLICE_GROUP_FIELDS)
+                + len(slice_run["slice_census"]) * len(SLICE_CENSUS_FIELDS)
+                + len(SLICE_POOLED_FIELDS) + 1
+                + len(SLICE_RECORDS) * len(SLICE_INPUT_FIELDS)
+                + len(SLICE_RUBRIC_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 

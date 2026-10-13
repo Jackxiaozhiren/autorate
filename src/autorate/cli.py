@@ -20,10 +20,11 @@ from .readers.feishu_zh import ReaderContractError
 from .records import Record
 from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
                      RESPLIT_MD, SEVERITY_CERTS,
-                     SEVERITY_LABEL, SEVERITY_RECORDS, build_report, certify_all, load_published,
+                     SEVERITY_LABEL, SEVERITY_RECORDS, SLICE_JSON, SLICE_MD,
+                     build_report, certify_all, load_published,
                      load_records, published_severity, read_certificate, read_inventory_snapshot,
-                     read_resplit, rederive_massive, rederive_resplit, rederive_severity,
-                     render_resplit, render_severity,
+                     read_resplit, read_slices, rederive_massive, rederive_resplit, rederive_severity,
+                     rederive_slices, render_resplit, render_severity, render_slices,
                      write_report)
 from .severity import DIRECTIONS, certify_severity
 
@@ -732,6 +733,7 @@ PUBLISHED_DOCS = (
     # argument selected that path, the table did.
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
     (RESPLIT_MD, lambda inv, records: _render_resplit_doc()),
+    (SLICE_MD, lambda inv, records: _render_slice_doc()),
 )
 
 
@@ -744,6 +746,17 @@ def _render_resplit_doc() -> str:
     """
     doc = load_published(RESPLIT_JSON, "report.RESPLIT_JSON", read_resplit)
     return render_resplit(doc, doc["rubric"])
+
+
+def _render_slice_doc() -> str:
+    """G4's slice run, rendered out of the committed artefact and nothing else.
+
+    The document quotes the artefact's own budgets rather than the freeze's, for the same reason
+    `_render_resplit_doc` does: the two are compared as rubric mismatches, so a prose sentence that drifts
+    away from the artefact it describes stays attributable.
+    """
+    doc = load_published(SLICE_JSON, "report.SLICE_JSON", read_slices)
+    return render_slices(doc)
 
 
 def _render_severity_doc() -> str:
@@ -862,6 +875,10 @@ def cmd_verify(args) -> int:
     # to `tools/resplit_experiment.py`; the gate checks what the committed artefact says about itself, and
     # that the rubric it recorded is the rubric this freeze promised.
     rederive_resplit(expect, expect_rubric, rubric)
+    # G4's worst-slice refusal. The run costs seconds rather than minutes, so this arm recomputes the
+    # certification from the three committed record files and compares the published fields, which makes a
+    # stale slice artefact a drift with a field name on it instead of a sentence in a document.
+    rederive_slices(expect, expect_rubric, rubric)
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:

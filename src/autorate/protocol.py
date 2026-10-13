@@ -158,13 +158,28 @@ NON_G1_CLAIMS = (
         "measurement": "per (language x option-count) bounds with a simultaneous multiple-testing "
                        "correction; must return `NOT_CERTIFIABLE` for the slices `laya` documents as "
                        "collapsed (e.g. Khmer: accuracy 0.000 at mean confidence 0.952)",
-        "status": CLAIM_STATUS_NOT_MEASURED,
-        "artefacts": [],
-        "note": "the mechanism is real and on the CLI (`--groups`, `correction.py`), and the two "
-                "collapsed slices this project scored itself (`de` automates 0 of 1,487 cases, `sw` "
-                "39 with 13 wrong) are published as MARGINAL artefacts, not as slice certificates. The "
-                "slice the criterion names by name -- Khmer -- has no per-case data in this tree, so "
-                "the literal row is unmeasured.",
+        "status": CLAIM_STATUS_NOT_MET,
+        "artefacts": ["data/slices_language.json", "docs/SLICES.md", "tools/language_slices.py",
+                      "tests/test_slice_surface.py"],
+        "note": "measured, and short of its own wording -- which is why this row reads `not_met` and not "
+                "`not_measured` any more. The behaviour the criterion describes is now a published artefact "
+                "rather than terminal scrollback: `tools/language_slices.py` certifies the three committed "
+                "MASSIVE record files (8,922 cases, one per row) as slices of the key the producer itself "
+                "declares (`slices.language`), at the rubric this freeze owns, and `verify` recomputes that "
+                "run from the same bytes -- 70 field comparisons plus 5 rubric rows. The published run "
+                "refuses: 3 slices, 0 certified, `any_slice_refused` true, the worst slice named `de`, every "
+                "slice refused at the corrected budget (alpha and delta 0.05 / 3 = 0.016667, joint level "
+                "0.85), and `refused_by_size` empty -- so the refusal is a bound failure, not a thin-slice "
+                "floor. The pooled marginal certificate over the same records is published beside the "
+                "slices and refuses too (`empty_feasible_set`, exact bound above the budget), which is the "
+                "'rather than averages' half of the sentence: nothing in the artefact lets the pooled number "
+                "stand in for the worst slice. Three things keep the row from `certified`. It is per-language "
+                "only: `option_count` is 20 for every committed MASSIVE row, so the (language x option-count) "
+                "cross the measurement names would be the same three slices, and no cross-slice evidence "
+                "exists to publish. The emitted refusal word is the run's own (`empty_feasible_set`, "
+                "reported as NOT CERTIFIED), not the literal `NOT_CERTIFIABLE` the sentence asks for. And the "
+                "slice the criterion names by example -- Khmer, whose numbers this project measured but has "
+                "not published per-case rows for -- is not in the artefact at all.",
     },
     {
         "id": "G5",

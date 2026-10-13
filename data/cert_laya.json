@@ -549,7 +549,7 @@
     "multi_label": 90,
     "n_cal_cases": 32,
     "n_eval_cases": 32,
-    "protocol_digest": "4d06ffa482eb4ad7a5b1fc5f7d560aafcd364cbeafa9969522bd5c0ed700497c",
+    "protocol_digest": "ff9f16fd2b67d44592e061bc81034cf8f009c9c938e61b006b3208b77cddc773",
     "seed": 7,
     "skipped_no_gold": 0,
     "skipped_wrong_qtype": 768,

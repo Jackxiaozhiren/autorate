@@ -9,6 +9,7 @@ them, and this module quotes the transcription rather than hashing anything itse
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -557,6 +558,230 @@ def render_resplit(doc: dict, rubric: dict) -> str:
         "(`>=3 certified decision tasks`) is unmet and why this table is evidence about the refusal, not",
         "against it. The synthetic row is a control on the machinery, labelled synthetic in the artefact's",
         "own `label`, and is not cited as a decision task G1 counts.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+# --- G4's worst-slice run: the same certifier, on the slices the producer declares -------------------
+
+SLICE_JSON = "data/slices_language.json"
+SLICE_MD = Path("docs/SLICES.md")
+SLICE_GROUP_KEY = "language"
+SLICE_BACKEND = "laya"
+# The three committed MASSIVE record files this run is a function of, named in the order the producer
+# concatenates them (sorted, so the artefact does not depend on a shell glob's mood). These are the inputs
+# `verify` re-reads, which is why the list lives beside the artefact that quotes it rather than in the tool.
+SLICE_RECORDS = ("data/records_massive_de.jsonl",
+                 "data/records_massive_en.jsonl",
+                 "data/records_massive_sw.jsonl")
+SLICE_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+# Four field lists, one owner each: the arm and the denominator that counts it read these (`R-168`), and an
+# operator tampering with one published value has to be named by exactly one label.
+SLICE_COMPARE_FIELDS = ("feasible", "any_slice_refused", "n_groups", "n_claims", "level",
+                        "corrected_alpha", "corrected_beta", "corrected_delta", "thinnest",
+                        "alpha", "beta", "delta", "groups")
+SLICE_GROUP_FIELDS = ("feasible", "reason", "n_cal", "n_eval", "qhat", "autorate",
+                      "conditional_error_bound", "marginal_error_bound")
+SLICE_CENSUS_FIELDS = ("cases", "records", "eligible_cases", "kept",
+                       "skipped_no_gold", "skipped_wrong_qtype")
+SLICE_POOLED_FIELDS = ("feasible", "reason", "n_cal", "n_eval", "qhat", "autorate",
+                       "conditional_error_bound", "marginal_error_bound")
+SLICE_INPUT_FIELDS = ("rows", "digest")
+
+
+def read_slices(path: Path) -> dict:
+    """The slice experiment's document, read as the mapping its producer wrote and nothing looser.
+
+    Shape only, and `ValueError` on purpose: `load_published` turns that into the named refusal at exit 4 for
+    a table-declared artefact. The checks that a *value* is wrong belong to `rederive_slices`, which is the
+    one holding the recomputation -- a reader here would need a second copy of the certifier to say more.
+    """
+    doc = json.loads(Path(path).read_text())
+    if not isinstance(doc, dict):
+        raise ValueError("the slice experiment document is a JSON %s, not an object"
+                         % type(doc).__name__)
+    missing = sorted({"backend", "group_key", "inputs", "producer", "rubric", "run"} - set(doc))
+    if missing:
+        raise ValueError("the slice experiment document is missing %s" % missing)
+    run = doc["run"]
+    if not isinstance(run, dict):
+        raise ValueError("the slice experiment's `run` is a %s, not the certification document"
+                         % type(run).__name__)
+    absent = sorted(set(SLICE_COMPARE_FIELDS) - set(run))
+    if absent:
+        raise ValueError("the slice experiment's `run` is missing %s" % absent)
+    if not isinstance(doc["inputs"], list):
+        raise ValueError("the slice experiment's `inputs` is a %s, not a list of the files it read"
+                         % type(doc["inputs"]).__name__)
+    # The budgets are handed to the certifier as keywords, so a rubric block carrying a name the certifier
+    # does not take would answer with `TypeError` -- an unmapped exit 1 on a path `verify` walks in both
+    # lanes. Refusing the shape here is the difference between exit 4 and a traceback.
+    extra = sorted(set(doc["rubric"]) - set(SLICE_RUBRIC_FIELDS))
+    if extra:
+        raise ValueError("the slice experiment records budget keys %s, which the certifier does not take"
+                         % extra)
+    gap = sorted(set(SLICE_RUBRIC_FIELDS) - set(doc["rubric"]))
+    if gap:
+        raise ValueError("the slice experiment records no value for %s" % gap)
+    return doc
+
+
+def slice_inputs() -> tuple:
+    """`(records, per-file rows-and-digests)` for the committed files this run is a function of.
+
+    Read through `load_records`, the same reader the MASSIVE certificates use, so the slice arm certifies the
+    doubles the published certificates were built from. A declared file that is absent is `require_published`'s
+    named refusal; a declared file that carries no rows for `SLICE_BACKEND` is a refusal raised here, because
+    certifying a silently-empty pool would publish a bound over nobody.
+    """
+    records, inputs = [], []
+    for rel in sorted(SLICE_RECORDS):
+        path = require_published(Path(rel), "report.SLICE_RECORDS")
+        by_backend = load_records(path)
+        if SLICE_BACKEND not in by_backend:
+            raise ValueError("%s declares no rows for backend %r (it holds %s)"
+                             % (rel, SLICE_BACKEND, sorted(by_backend)))
+        rows = by_backend[SLICE_BACKEND]
+        records.extend(rows)
+        inputs.append({"path": rel, "rows": len(rows),
+                       "digest": hashlib.sha256(path.read_bytes()).hexdigest()})
+    return records, inputs
+
+
+def rederive_slices(expect, expect_rubric, rubric=None) -> None:
+    """G4's run, recomputed from the three committed record files and compared field by field.
+
+    This arm re-runs the certifier rather than auditing the artefact's arithmetic, because the run costs
+    seconds; a published slice certificate the certifier disagrees with is drift with a field name on it. The
+    budgets come from the freeze when one is in hand -- `rederive_massive`'s rule -- so that editing the
+    artefact's own `rubric` block cannot quietly redefine what the recomputation is measured at: that edit is
+    the freeze's disagreement, and it prints as `RUBRIC MISMATCH`.
+
+    Every nested read is `.get`, never `[...]`. A tampered or stale artefact that lacks a slice has to answer
+    with a named drift, and `KeyError` would leave `main` unmapped at exit 1 -- the contract this surface is
+    held to (R-115's class of escape).
+    """
+    doc = load_published(SLICE_JSON, "report.SLICE_JSON", read_slices)
+    published = doc["run"]
+    chosen = dict(doc["rubric"])
+    if rubric:
+        chosen.update({k: rubric[k] for k in SLICE_RUBRIC_FIELDS if k in rubric})
+    records, inputs = slice_inputs()
+    fresh = certify_choice(records, groups=[SLICE_GROUP_KEY], **chosen).to_dict()
+
+    for name in SLICE_COMPARE_FIELDS:
+        expect("slice %s" % name, fresh.get(name), published.get(name))
+
+    names = sorted(set(fresh.get("per_group", {})) | set(published.get("per_group", {})))
+    for group in names:
+        for field in SLICE_GROUP_FIELDS:
+            expect("slice per_group.%s.%s" % (group, field),
+                   fresh.get("per_group", {}).get(group, {}).get(field),
+                   published.get("per_group", {}).get(group, {}).get(field))
+
+    def census_of(cert):
+        out = {}
+        for row in cert.get("slice_census", []) or []:
+            out[str(row.get("group"))] = row
+        return out
+
+    fresh_census, published_census = census_of(fresh), census_of(published)
+    for group in sorted(set(fresh_census) | set(published_census)):
+        for field in SLICE_CENSUS_FIELDS:
+            expect("slice census.%s.%s" % (group, field),
+                   fresh_census.get(group, {}).get(field), published_census.get(group, {}).get(field))
+
+    for field in SLICE_POOLED_FIELDS:
+        expect("slice pooled.%s" % field,
+               fresh.get("pooled", {}).get(field), published.get("pooled", {}).get(field))
+
+    expect("slice envelope", list(fresh.get("envelope", [])), list(published.get("envelope", [])))
+
+    recorded_inputs = {str(row.get("path")): row for row in doc["inputs"]}
+    for row in inputs:
+        for field in SLICE_INPUT_FIELDS:
+            expect("slice inputs.%s.%s" % (row["path"], field), row[field],
+                   recorded_inputs.get(row["path"], {}).get(field))
+
+    for key in SLICE_RUBRIC_FIELDS:
+        expect_rubric("slice rubric.%s" % key, doc["rubric"].get(key), rubric[key] if rubric else None)
+
+
+def render_slices(doc: dict) -> str:
+    """G4's run as derived prose: every figure is read out of the artefact, and none is typed.
+
+    No timestamp and no machine path, so both lanes byte-compare it. The framing sentences are allowed to say
+    what the numbers do NOT cover -- the criterion's own example slice has no per-case rows here -- because a
+    reader who cannot see the boundary of a published claim has only the claim.
+    """
+    run = doc["run"]
+    per_group = run.get("per_group", {})
+    lines = [
+        "# The language-slice certification (G4)",
+        "",
+        "Written by `python3 tools/language_slices.py --out data/slices_language.json` and re-checked by",
+        "`python -m autorate.cli verify`, which recomputes this run from the committed record files named",
+        "below and refuses the artefact at exit 4 if it is absent or unreadable.",
+        "",
+        "G4 asks for a behaviour: with a simultaneous correction over the slices, the **worst slice must",
+        "refuse**, and the pooled bound must not be allowed to average that refusal away. This is that run.",
+        "",
+        "- group key: `%s`, backend `%s`" % (doc["group_key"], doc["backend"]),
+        "- slices: %d (%s), claims per slice: %d" % (run["n_groups"], ", ".join(run["groups"]), run["n_claims"]),
+        "- budgets as certified: alpha=%s beta=%s delta=%s" % (run["alpha"], run["beta"], run["delta"]),
+        "- corrected per slice: alpha=%s delta=%s (beta is not divided, and says so below)"
+        % (run["corrected_alpha"], run["corrected_delta"]),
+        "- joint level: %s" % run["level"],
+        "- worst slice named by the run: `%s`" % run["thinnest"],
+        "- the run certifies: %s; any slice refused: %s" % (run["feasible"], run["any_slice_refused"]),
+        "- slices refused by the size floor: %d (%s)"
+        % (len(run.get("refused_by_size", [])), ", ".join(run.get("refused_by_size", [])) or "none"),
+        "",
+        "## Per slice",
+        "",
+        "| slice | feasible | reason | n_cal | n_eval | qhat | autorate |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for group in sorted(per_group):
+        cert = per_group[group]
+        lines.append("| %s | %s | %s | %s | %s | %s | %s |"
+                     % (group, cert.get("feasible"), cert.get("reason"), cert.get("n_cal"),
+                        cert.get("n_eval"), cert.get("qhat"), cert.get("autorate")))
+    pooled = run.get("pooled", {})
+    lines += [
+        "",
+        "## The pooled (marginal) certificate over the same records",
+        "",
+        "Published beside the slices, never in place of them: it answers a different question, and a reader",
+        "who wants the worst-case permission has to read the slice rows above.",
+        "",
+        "- feasible: %s, reason: %s" % (pooled.get("feasible"), pooled.get("reason")),
+        "- denominator: n_cal=%s n_eval=%s, qhat=%s, autorate=%s"
+        % (pooled.get("n_cal"), pooled.get("n_eval"), pooled.get("qhat"), pooled.get("autorate")),
+        "- exact bounds: conditional=%s marginal=%s"
+        % (pooled.get("conditional_error_bound"), pooled.get("marginal_error_bound")),
+        "",
+        "## Inputs this run is a function of",
+        "",
+        "| path | rows | sha256 |",
+        "|---|---|---|",
+    ]
+    for row in doc["inputs"]:
+        lines.append("| %s | %s | %s |" % (row["path"], row["rows"], row["digest"]))
+    lines += ["", "## Assumptions the run states about itself", ""]
+    for line in run.get("envelope", []):
+        lines.append("- %s" % line)
+    lines += [
+        "",
+        "## What this does not show",
+        "",
+        "The criterion names a slice by example -- the one the upstream README documents as collapsed with",
+        "its own accuracy and confidence figures. That slice has no per-case rows in this tree, so its",
+        "literal row is unmeasured and the status the freeze prints for G4 says so. What is measured here is",
+        "the behaviour the criterion describes, on the slices this repository scored and committed: the",
+        "corrected worst-of-G permission refuses, the refusal is named slice by slice, and nothing in this",
+        "document averages it away.",
         "",
     ]
     return "\n".join(lines)

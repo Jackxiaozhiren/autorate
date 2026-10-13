@@ -109,25 +109,27 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 166 /166 values` where the corpus is absent, `re-derived 201 /201
+prints say so: `re-derived 242 /242 values` where the corpus is absent, `re-derived 277 /277
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 201: every CI run is a 166 run, on both of its arms. Green CI is
+alone can never reach the 277: every CI run is a 242 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 166 run proves a lot inside that lane. Every published number that is a function of a
+A 242 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all six published certificates, each from the committed
-records it was actually made from, the whole
+records it was actually made from, G4's slice run from the three committed MASSIVE record files
+it names inside itself, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
-for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, and the MASSIVE rows
-from their committed pin. What a 166 run cannot prove is what its own disclosure says in so
+for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
+for byte, and the MASSIVE rows from their committed pin. What a 242 run cannot prove is what its own
+disclosure says in so
 many words -- `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 166 /166.
+had drifted from the corpus would agree with itself and report 242 /242.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -184,24 +186,37 @@ second place to keep them.
   (`protocol.json`'s G3 note, at this digest) rather than in a re-worded criterion: retiring the wider wording
   is a decision with a new freeze, and this section reads its statuses off that document instead of keeping a
   second copy of them.
-- **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
-  CLI (`certify --groups`, plus the simultaneous correction), and a slice below the size floor is refused by
-  name with its case count; what is missing is a published artefact for a slice this project scored. The two
-  collapsed slices the project measured (`de` automates 0 of 1,487 cases; `sw` 39 with 13 wrong) are
-  published as marginal certificates, not as slice certificates, and the slice the criterion names by name
-  has no per-case data in this tree.
+- **G4, worst-slice certification refusing rather than averaging: `not_met`.** The behaviour is published now
+  rather than printed and discarded: `tools/language_slices.py` certifies the three committed MASSIVE record
+  files (8,922 cases) as slices of `slices.language` -- the key the producer declares, not a key invented for
+  the run -- and `verify` recomputes that run from the same bytes, 70 field comparisons plus 5 rubric rows, in
+  both lanes. What it publishes is a refusal: 3 slices, 0 certified, worst slice `de`, each slice refused at
+  the corrected budget (alpha and delta 0.05 / 3 = 0.016667, joint level 0.85), and `refused_by_size` empty --
+  so this is a bound failure, not the size floor. The pooled marginal certificate over the same records is
+  published beside the slices and refuses too, which is the "rather than averaging" half: nothing in the
+  artefact lets the pooled number stand in for the worst slice. Three things keep the row short of met: it is
+  per-language only, because `option_count` is 20 for every committed MASSIVE row so the
+  (language x option-count) cross the criterion names would be the same three slices; the emitted refusal word
+  is the run's own `empty_feasible_set`, reported as NOT CERTIFIED, rather than the literal `NOT_CERTIFIABLE`
+  the sentence asks for; and the slice the criterion names by example -- Khmer, whose figures this project
+  measured but has not published per-case rows for -- is not in the artefact. The two collapsed slices quoted
+  from the marginal certificates (`de` automates 0 of 1,487 cases; `sw` 39 with 13 wrong) are the at-a-glance
+  version of the same evidence, published as marginal certificates and now also as a slice run.
 - **G5, reproducible from a commit with no GPU, no network, no model: `not_measured` at the freeze.**
   `autorate verify --protocol protocol.json` is now a real command, `protocol.json` is committed and frozen,
   all six published certificates carry its digest inside (the five set artefacts and the ordinal severity one;
-  `data/resplit_200.json` is an experiment record rather than a certificate, so `verify` compares the rubric it
-  recorded against the freeze instead of looking for a stamp), and the corpus-less reproduction has been measured
+  `data/resplit_200.json` and `data/slices_language.json` are run records rather than certificates, so
+  `verify` compares the rubric each recorded against the freeze instead of looking for a stamp), and the
+  corpus-less reproduction has been measured
   inside a clean `git archive` export. What is still missing is the transcript that makes that a published
   measurement rather than a local run, and CI's own witness of the current tip. The status line stays
   `not_measured` until both exist: it is the frozen document's word, and re-stating a criterion is a new
   freeze, not an edit.
 
-The honest summary is that the gate's reproduction story is the strongest part of this tree today, and the
-ordinal and slice criteria are the weakest: their engines exist, their evidence does not.
+The honest summary is that the gate's reproduction story is the strongest part of this tree today. G4's
+slice criterion now has published evidence and is short of its own wording, not short of an artefact; the
+ordinal criterion is the one whose engine, evidence and wording disagree in a measured way; and G1 remains
+the criterion this corpus cannot meet at all.
 
 ## What is here, and what is not
 

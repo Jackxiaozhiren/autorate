@@ -1457,3 +1457,60 @@ digest in place, and `verify --protocol protocol.json` agrees in both lanes. The
 round used the byte comparison above and printed `rc=3 DIFFERS` five times; the honest reading of that run is
 that the control was wrong, not that the re-export moved a number -- the failure was recorded before the
 replacement existed, which is why the replacement ships with its own falsification.
+
+## 2026-10-13 -- G4's worst-slice refusal becomes a published run, and a blocker note of mine was wrong
+
+**The premise I had recorded was false, and it had been filed as a dependency on somebody else.** Task #86
+carried the note "the `language` key is absent from every committed records file, so `certify --groups
+language` must refuse at 2 by design; publishing a slice artefact needs a language-stamped combined file from
+a named producer". That was measured against a **top-level** `language` field. The committed MASSIVE rows
+declare their slices in `slices`: line 1 of `data/records_massive_de.jsonl` carries
+`"slices": {"language": "de", "mode": "choice", "option_count": 20, "regime": "clamped"}`, and `groups.py`
+conditions on exactly that mapping -- an undeclared key raises `UndeclaredGroupKey`, which is why the refusal I
+had predicted never happens. Nothing outside this repository was needed: the run is a function of three files
+that are already committed, and it costs six seconds.
+
+The correction matters beyond the task list. A blocker sentence that reads as an external dependency ("needs a
+named producer for a combined file") is a reason to stop working, and I had stopped. The defect was not the
+data and not the gate; it was that I queried the wrong shape and wrote the negative result down as a fact
+about the corpus rather than about my own probe.
+
+**What is published now.** `tools/language_slices.py` certifies the three committed record files -- 8,922
+cases, one per row -- as slices of `slices.language` at this freeze's rubric, and writes
+`data/slices_language.json` beside `docs/SLICES.md`. The run refuses, which is the whole claim G4 makes: 3
+slices, 0 certified, `any_slice_refused` true, worst slice `de`, each slice refused at the corrected budget
+(alpha and delta 0.05 / 3 = 0.016667, joint level 0.85), and `refused_by_size` empty -- a bound failure, not the
+size floor. The pooled marginal certificate over the same records is written into the same artefact beside the
+slices and refuses too, so the pooled number cannot be read as an average of the slices. `verify` recomputes
+the run from those three files rather than auditing its arithmetic: 70 field comparisons (13 top-level, 8 per
+slice, 6 per census row, 8 pooled, the envelope as one value, and rows-plus-digest per input file) and 5
+rubric rows, so a stale slice artefact is drift with a field name on it. The denominators move by 76 in each
+lane -- 166 to 242 corpus-less, 201 to 277 corpus-present -- and the inter-lane gap stays 35, because the run
+depends only on committed bytes.
+
+**Two refusals the producer owes and the rows prove.** A declared input that is missing stops the run before
+anything certifies: certifying 2 of 3 languages and publishing it as a language-slice run would describe a
+population differently than it is. And a row whose `case_id` names one language while its own `slices` says
+another is two subjects in one row -- which slice it lands in would depend on which field the tool believed --
+so `check_rows` re-derives the language from the row's bytes, never from the filename it happens to sit in.
+`tools/split_records.py` already proves that claim for the split direction; this is the merge direction
+inheriting it. Duplicate ids across files are refused for the same reason a per-slice denominator built from
+them would claim more independent cases than the corpus holds.
+
+**G4's status moves to `not_met`, and why not further.** The criterion's behaviour is demonstrated on the
+slices this repository scored, so `not_measured` would now assert less than the tree does -- the same mistake
+R-170 obliges a commit to fix in the same revision that makes it true. `certified` would assert more: the
+row's own measurement text names a (language x option-count) cross, and every committed MASSIVE row has
+`option_count` 20, so a two-key run is the same three slices and there is no cross evidence to publish; it
+names the literal word `NOT_CERTIFIABLE`, while the run emits `empty_feasible_set` reported as NOT CERTIFIED;
+and it names Khmer by example, whose figures this project measured but has not published per-case rows for.
+`not_met` is R-197's word for measured-and-short, and the three gaps are listed in the frozen note rather than
+smoothed over.
+
+**A third re-freeze, because the same rule cuts both ways.** Changing that note changes a value the loader
+reads, so the digest moves again: `4d06ffa482eb` to `ff9f16fd2b67`, with `frozen_at` unchanged at 2026-10-13.
+The six stamped artefacts and `docs/SEVERITY.md` are re-exported in this same commit, the field control reports
+no number moved for all six, and re-emitting the freeze under the stamped tree reproduces the same bytes. Two
+freezes in one day is churn, and it is the churn a claim change costs by design: the alternative -- editing a
+published note under a digest that no longer describes it -- is the R-234 defect this file has now recorded
+three times.
