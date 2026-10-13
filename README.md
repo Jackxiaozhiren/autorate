@@ -171,7 +171,8 @@ second place to keep them.
   rule's price; the set gate refuses on all four population variants that file walks. That is silence in a
   named direction, and it is not the criterion -- because the criterion's own wording lost. On the corner of
   the generator where the set gate does certify (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells
-  searched), its interval's top endpoint sits above the gold level in no evaluated case, so
+  searched), its interval's top endpoint sits above the gold level in none of the 600 evaluated records
+  (200 cases), so
   `P(Y > hi(X)) = 0` lies inside that certificate's own published marginal bound of 0.014867: a coverage claim
   over ordered intervals *does* yield a one-sided bound, and "multiclass conformal prediction cannot express
   one" is false for that construction. The difference that survives is narrower, and it is measured rather
@@ -179,9 +180,10 @@ second place to keep them.
   and leaves 36 evaluated records with an empty certified set and so with no top endpoint at all, while the set
   certificate publishes no price, no override rate and no named rule -- the severity artefact certifies a rule
   and states both quantities beside its bound, at the same `delta`. The status stays `not_measured` because the
-  narrowed claim has to be carried by a re-freeze (#89) rather than by prose that has already moved, and
-  because what remains is a wording question this project now answers in the narrow form, not a missing
-  experiment.
+  criterion is the wider sentence, and the narrowing lives in the frozen document that carries it
+  (`protocol.json`'s G3 note, at this digest) rather than in a re-worded criterion: retiring the wider wording
+  is a decision with a new freeze, and this section reads its statuses off that document instead of keeping a
+  second copy of them.
 - **G4, worst-slice certification refusing rather than averaging: `not_measured`.** The mechanism is on the
   CLI (`certify --groups`, plus the simultaneous correction), and a slice below the size floor is refused by
   name with its case count; what is missing is a published artefact for a slice this project scored. The two
@@ -190,7 +192,9 @@ second place to keep them.
   has no per-case data in this tree.
 - **G5, reproducible from a commit with no GPU, no network, no model: `not_measured` at the freeze.**
   `autorate verify --protocol protocol.json` is now a real command, `protocol.json` is committed and frozen,
-  every published certificate carries its digest inside, and the corpus-less reproduction has been measured
+  all six published certificates carry its digest inside (the five set artefacts and the ordinal severity one;
+  `data/resplit_200.json` is an experiment record rather than a certificate, so `verify` compares the rubric it
+  recorded against the freeze instead of looking for a stamp), and the corpus-less reproduction has been measured
   inside a clean `git archive` export. What is still missing is the transcript that makes that a published
   measurement rather than a local run, and CI's own witness of the current tip. The status line stays
   `not_measured` until both exist: it is the frozen document's word, and re-stating a criterion is a new

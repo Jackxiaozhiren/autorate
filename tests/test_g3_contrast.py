@@ -104,11 +104,12 @@ def test_where_the_set_gate_certifies_coverage_also_bounds_the_interval_top_rule
     """The measured narrowing of G3's wording, and the one quantity the set certificate does not carry.
 
     `shift = 0, error_rate = 0` is the corner of this generator where `certify_score` does certify (measured: 4
-    of the 64 knob cells, R-245). On the evaluation half the severity artefact itself names, the interval's top
-    endpoint reports above the gold level in no case, so `P(Y > hi(X)) = 0` sits inside the set certificate's
-    published marginal bound of 0.014867. That is the finding against the claim: for an ORDINAL interval set,
-    a coverage statement plus the top endpoint IS a one-sided bound, and the bare words "multiclass CP cannot
-    express a one-sided ordinal guarantee" are false for it.
+    of the 64 knob cells, R-245). On the 600 evaluation RECORDS the severity artefact itself names -- 200 cases,
+    three repeats each -- the interval's top endpoint reports above the gold level in none of them, so
+    `P(Y > hi(X)) = 0` sits inside the set certificate's published marginal bound of 0.014867. That is the
+    finding against the claim: for an ORDINAL interval set, a coverage statement plus the top endpoint IS a
+    one-sided bound, and the bare words "multiclass CP cannot express a one-sided ordinal guarantee" are false
+    for it.
 
     What the set certificate does not state is the cost of taking that rule. It moves the reported level above
     the model's own modal level on a large fraction of the non-empty cases, and on 36 records the certified set

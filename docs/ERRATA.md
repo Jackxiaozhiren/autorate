@@ -1392,3 +1392,68 @@ revision (byte-identical to `HEAD`, suite green afterwards), so nothing uncommit
 that had not yet been written. And the first version of the new row asserted `len(eval_ids) == n_eval_cases`,
 which the data contradicts -- 600 records against 200 cases, three repeats each -- so the row now states the two
 denominators separately rather than flattening the distinction the guarantee depends on.
+
+## 2026-10-13 -- the freeze re-emitted so G3, G5 and G1 say what the tree does (#89)
+
+`protocol.json` is the owner of the five criterion statuses and of the notes that explain them, and three of
+those notes had become false against the tree they describe. Editing the notes is a change to a value the
+loader reads, so the digest moves, and a moved digest invalidates every artefact stamped with the old one:
+this is the re-freeze the previous two sections kept deferring, and it is the reason they were written as
+prose pointing at `#89` rather than as the document's own words.
+
+**What was wrong, and what the note now states.**
+- **G3** named no artefact and said `certify_severity` does not exist in `src/` -- false since `7a2669e`. It
+  now names `data/cert_severity_ordinal.json`, `docs/SEVERITY.md` and `tests/test_g3_contrast.py`, and carries
+  the measurement that refuted its own wording: on the corner where the set gate certifies, the interval top is
+  above the gold level in 0 of the 600 evaluated records and `P(Y > hi(X)) = 0` sits inside that certificate's
+  published marginal bound (re-read from the object at `0.014867039231272057`), so a coverage claim over
+  ordered intervals *is* a one-sided bound. The status stays `not_measured` because the criterion is the wider
+  sentence, and the note now records the narrowing instead of leaving it in working-tree prose.
+- **G5** said `verify` has no `--protocol` at this freeze, so "the command as written cannot be run" -- false
+  since the flag landed and has been measured in every `git archive` export since. The note now says the flag
+  exists and is measured in a clean export, and keeps the two things that are actually missing: `docs/G5.md`
+  as the published transcript, and the fact that "every published number" is wider than today's gate because
+  the G4 slice and drift/contamination figures are not published at all.
+- **G1** said the 200-resplit measurement "is not part of this freeze either" -- false since `baa902c`. The
+  note now names its producer and its two artefacts and states what it shows: 0 of 200 splits certify for all
+  five published tasks, so their rates are published as undefined over a zero denominator rather than imputed.
+
+**No published number moved, and the check that says so was itself tested.** Byte-comparing a re-export against
+a committed artefact stopped being the right control when the artefacts began carrying `meta.protocol_digest`:
+a plain re-export writes no digest, so all six files differ by exactly that one key and the control reads
+`DIFFERS` while every number is untouched. The replacement walks both documents key by key and names every
+differing path except that single slot; it reports `NO NUMBER MOVED` for all six (five set certificates plus
+the ordinal severity one). It was falsified before it was cited: adding a field the artefact does not have is
+named as `bogus_new_field`, and moving one stored scalar by `5e-4` is named as `alpha` -- so the empty result
+above is a measurement, not a silence.
+
+**The freeze is a fixed point.** After re-exporting the six stamped artefacts, `autorate protocol --out
+protocol.json` -- which reuses the date already in the file and reads the certificates back for G1's counts
+and the envelope lines -- reproduces the same bytes and the same digest (`4d06ffa482eb…`, previously
+`012cbed36442…`). The first emission of this round was superseded inside the same working tree
+(`dddd18faf0a3…`), because the G3 note was still being corrected after it: a freeze's digest is a function of
+its own prose, which is exactly the coupling amendment §1 chose, and it is why the notes get finalised before
+the file is emitted rather than after. That matters because the document quotes values derived from the
+artefacts while the artefacts quote the document's digest: a second emission that differed would mean no
+digest could ever match both, and `verify --protocol` would be unpassable rather than merely red. `frozen_at`
+moves to 2026-10-13 by
+ruling (amendment §1: the date is inside the digest and is operator provenance, never computed), so the
+`2026-10-11` citations elsewhere in this file and in `protocol.py`'s comments stay as they are -- they name a
+dated section, not the current freeze.
+
+**One correction that is not a claim change.** `protocol.published_certificates()` documented `report.CERTS`
+and `report.MASSIVE_CERTIFICATES` as "the one owner of what is published". Since `SEVERITY_CERTS` and
+`RESPLIT_JSON` joined the publication tables that sentence is false, and a reader who trusted it would count
+the severity certificate as a decision task G1 never made. The docstring now names its own scope: it returns
+the *set* certificates G1's criterion is stated over, and the ordinal severity artefact and the resplit record
+are published by their own owners and enter the gate through their own arms. No behaviour changed. Related and
+now stated in the README: `data/resplit_200.json` carries no digest -- measured, `protocol_digest` appears
+nowhere in it -- because `verify` compares the rubric block it recorded against the freeze (`expect_rubric`,
+five fields) instead of looking for a stamp. So "every published certificate is stamped" is true of six and
+must not be read as "every published artefact is stamped".
+
+**Process.** `autorate verify` re-derives 166 /166 corpus-less and 201 /201 corpus-present with the new
+digest in place, and `verify --protocol protocol.json` agrees in both lanes. The first control run of this
+round used the byte comparison above and printed `rc=3 DIFFERS` five times; the honest reading of that run is
+that the control was wrong, not that the re-export moved a number -- the failure was recorded before the
+replacement existed, which is why the replacement ships with its own falsification.

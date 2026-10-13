@@ -133,11 +133,24 @@ NON_G1_CLAIMS = (
         "measurement": "the one-sided severity certificate (§6.4): `P(Y > â(X)) ≤ α`. If vanilla "
                        "multiclass set CP reproduces it, this criterion fails",
         "status": CLAIM_STATUS_NOT_MEASURED,
-        "artefacts": [],
-        "note": "the ordinal family and the set gate exist in `ordinal.py` and `certify_score.py`, and "
-                "no certificate this repository publishes states a one-sided severity bound: there is "
-                "no `certify_severity` in `src/`, so the criterion has no artefact to be read from. "
-                "Nothing in this document should be taken as claiming otherwise.",
+        "artefacts": ["data/cert_severity_ordinal.json", "docs/SEVERITY.md",
+                      "tests/test_g3_contrast.py"],
+        "note": "the ordinal certificate is published and re-derived (`autorate severity`, "
+                "`data/cert_severity_ordinal.json`, `docs/SEVERITY.md`, 20 comparisons in `verify`), and "
+                "the contrast the criterion asks for has now been counted -- and it went against this "
+                "row's original wording. On the population where this repository's ordinal SET gate "
+                "certifies (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells searched), the interval "
+                "top is above the gold level in none of the 600 evaluated records (200 cases), so "
+                "`P(Y > hi(X)) = 0` lies inside that "
+                "certificate's own published marginal bound of 0.014867: a coverage claim over ordered "
+                "intervals yields a one-sided bound by itself. The bare sentence 'multiclass CP cannot "
+                "express one' is therefore false for the ordinal interval construction, and what survives "
+                "is narrower -- the set certificate publishes no named reporting rule, no price and no "
+                "override rate, and its certified set is empty on 36 evaluated records, so the reader who "
+                "wants the one-sided number must derive it for a rule nobody certified; the severity "
+                "artefact certifies a named rule and states both quantities beside its bound. Status stays "
+                "`not_measured` because the criterion is worded as the wider claim, and this document "
+                "records the narrowing rather than quietly re-defining the row to fit it.",
     },
     {
         "id": "G4",
@@ -160,10 +173,14 @@ NON_G1_CLAIMS = (
                        "from per-case records alone; exit code + counts printed",
         "status": CLAIM_STATUS_NOT_MEASURED,
         "artefacts": [],
-        "note": "this document is the file the criterion names, and it exists now; the flag does not. "
-                "`verify` has no `--protocol` at this freeze, so the command as written cannot be run "
-                "and this row may not be cited as met: Plan D Task 2 wires the flag and Task 3 "
-                "measures it inside a `git archive` export, which is G5's literal transcript.",
+        "note": "this document is the file the criterion names, and the flag now exists and is measured: "
+                "`verify --protocol protocol.json` re-derives every comparison this freeze owns and exits "
+                "0 inside a clean `git archive` export -- no `.git`, no corpus, no model -- on every "
+                "pre-push simulation, and the plain `verify` shape agrees with it. What the row still does "
+                "not license is its own wording: 'every published number' is wider than the gate today, "
+                "because the worst-slice (G4) and drift/contamination figures are not published at all, "
+                "and the transcript that turns the repeated local simulation into a published measurement "
+                "(`docs/G5.md`, Plan D Task 3) does not exist yet.",
     },
 )
 
@@ -281,11 +298,15 @@ def require_frozen_at(value) -> str:
 # --- what the published tree says, read rather than remembered ------------------------------------
 
 def published_certificates() -> tuple:
-    """`(path, Certificate)` for every certificate this tree publishes, from the tables that own them.
+    """`(path, Certificate)` for every SET certificate this tree publishes, from the tables that own them.
 
-    `report.CERTS` and `report.MASSIVE_CERTIFICATES` are the one owner of what is published -- the
-    same two tables `verify` re-derives and `report` renders -- so the protocol cannot end up with a
-    third list that disagrees about which artefacts exist.
+    `report.CERTS` and `report.MASSIVE_CERTIFICATES` are the one owner of THIS list -- the same two
+    tables `verify` re-derives and `report` renders -- so the protocol cannot end up with a third list
+    that disagrees about which set artefacts exist. The list is not the whole of what is published:
+    `report.SEVERITY_CERTS` owns the ordinal severity artefact and `report.RESPLIT_JSON` owns the
+    resplit experiment, and neither belongs here because G1's criterion counts decision tasks the set
+    gate certifies. Reading `published_certificates` as "everything published" would let the severity
+    certificate be counted as a decision task it never made.
     """
     out = [(path, load_published(path, "report.CERTS", read_certificate))
            for path in sorted(CERTS.values())]
@@ -325,9 +346,14 @@ def _g1_claim(certs: tuple) -> dict:
         "refusal_reasons": reasons,
         "note": "every certificate this tree publishes refuses, so G1's certified task count is zero "
                 "and the criterion is not met. The refusals are the artefacts named above, and "
-                "`verify` re-derives them rather than transcribing them; the 200-resplit Monte-Carlo "
-                "violation-rate measurement the criterion's own column names is not part of this "
-                "freeze either.",
+                "`verify` re-derives them rather than transcribing them. The 200-resplit measurement the "
+                "criterion's second column names is now published -- `tools/resplit_experiment.py` is its "
+                "producer, `data/resplit_200.json` and `docs/RESPLIT.md` its record, and `verify` "
+                "compares 32 quantities the artefact asserts about itself plus its rubric against this "
+                "freeze -- and what it shows is a refusal pattern: all five decision tasks certify in 0 "
+                "of 200 splits, so their violation rate is published as undefined over a zero denominator "
+                "rather than imputed as 0.000, and the only rate in the table belongs to a synthetic "
+                "control that tests the machinery and is labelled as such.",
     }
 
 
