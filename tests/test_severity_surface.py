@@ -661,16 +661,71 @@ def test_the_published_severity_document_is_byte_reproducible(tmp_path, in_repo)
 
 
 def test_the_published_severity_document_carries_no_figure_the_artefact_does_not(tmp_path, in_repo):
-    """Derived prose (B1 Task 2d's rule): every number a reader sees is a number the artefact states."""
+    """Derived prose (B1 Task 2d's rule), widened: every figure a reader sees is one the artefact states.
+
+    The first version of this guard matched `\\d+\\.\\d+` only, and only in the text before the verbatim
+    summary, so it policed two decimals out of the dozen quantities on the page: `seed: 7`, `ahat: 3`, `a rubric
+    of 5 levels`, `600/600`, `200/200` and the 1200-record population were all invisible, and the whole
+    Envelope section was skipped -- a hand-typed integer in `render_severity` passed. Integers are the numbers a
+    reader is most likely to act on, so the bullet section is now checked in full, the envelope is compared as
+    the artefact's own strings, and the summary block is checked to be the artefact's `summary()` rather than
+    mined for digits: that block carries prior-art years (`2023`, `216:2346-2355`) which are quotations of a
+    citation, not figures the artefact states, and a guard that called them violations would be a guard a reader
+    learns to ignore.
+    """
     _label, _records, cert, _direction = report.published_severity()
-    text = (REPO / cli.SEVERITY_MD).read_text().split("## Verbatim summary")[0]
-    numbers = set(re.findall(r"\d+\.\d+", text))
-    from_artefact = {"%.6f" % cert.bound, "%.6f" % cert.price_bound, "%.6f" % cert.override_bound,
-                     "%.6f" % cert.measured_violation, "%.3f" % cert.alpha, "%.3f" % cert.delta,
-                     "%.2f" % cert.level}
-    assert numbers <= from_artefact, sorted(numbers - from_artefact)
-    assert str(cert.ahat) in text, text
+    text = (REPO / cli.SEVERITY_MD).read_text()
+    body, _, rest = text.partition("## Verbatim summary")
+    summary_block, _, envelope_block = rest.partition("## Envelope")
+
+    allowed = set()
+    for value in (cert.alpha, cert.delta, cert.level, cert.bound, cert.price_bound,
+                  cert.override_bound, cert.measured_violation):
+        for fmt in ("%.6f", "%.3f", "%.2f"):
+            allowed.add(fmt % value)
+    for key in ("seed", "rubric_levels", "total_labelled", "n_cal_cases", "n_eval_cases",
+                "violating_cases", "eval_violating_cases", "override_cases", "price_cases",
+                "skipped_no_gold", "skipped_wrong_qtype"):
+        if cert.meta.get(key) is not None:
+            allowed.add(str(cert.meta[key]))
+    for value in (cert.ahat, cert.n_cal, cert.n_eval, len(cert.envelope)):
+        allowed.add(str(value))
+
+    digest = str(cert.meta.get("protocol_digest"))
+    assert body.count(digest) == 1, "the document states the artefact's stamp exactly once"
+    # A hex digest is a run of digits to `\d+`, so the token is excised -- only after the line above has proved
+    # it is the artefact's own value. Any other digit run stays in the scan, including a different hex string.
+    found = set(re.findall(r"\d+\.\d+|\d+", body.replace(digest, "DIGEST")))
+    assert found <= allowed, sorted(found - allowed)
+    assert str(cert.ahat) in body, body
+    assert cert.summary() in summary_block, summary_block
+    envelope_lines = [line[2:] for line in envelope_block.splitlines() if line.startswith("- ")]
+    assert envelope_lines == list(cert.envelope), (envelope_lines, cert.envelope)
     assert not re.search(r"/(Users|home)/[A-Za-z0-9._-]+/", text), text
+
+
+def test_the_widened_derived_prose_guard_rejects_a_figure_the_artefact_does_not_state(tmp_path, in_repo):
+    """The row above is only worth its width if a typed integer reddens it -- proven here, on a copy.
+
+    Proven without editing production code: the committed document's own bytes are retyped to claim a reported
+    level of 4 instead of the artefact's 3. That is precisely the defect the byte-comparison row cannot see,
+    because a number hand-typed into `render_severity` reproduces itself exactly.
+    """
+    text = (REPO / cli.SEVERITY_MD).read_text()
+    tampered = text.replace("- reported level `ahat`: 3,", "- reported level `ahat`: 4,")
+    assert tampered != text, "the document no longer carries the bullet this proof edits"
+    _label, _records, cert, _direction = report.published_severity()
+    allowed = {fmt % v for v in (cert.alpha, cert.delta, cert.level, cert.bound, cert.price_bound,
+                                 cert.override_bound, cert.measured_violation)
+               for fmt in ("%.6f", "%.3f", "%.2f")}
+    allowed |= {str(cert.meta.get(k)) for k in ("seed", "rubric_levels", "total_labelled", "n_cal_cases",
+                                                "n_eval_cases")}
+    allowed |= {str(cert.ahat), str(cert.n_cal), str(cert.n_eval)}
+    body = tampered.partition("## Verbatim summary")[0]
+    digest = str(cert.meta.get("protocol_digest"))
+    assert body.count(digest) == 1
+    found = set(re.findall(r"\d+\.\d+|\d+", body.replace(digest, "DIGEST")))
+    assert not found <= allowed, "a typed ahat slipped through: the guard is still blind to integers"
 
 
 # --- the rubric ownership ruling ----------------------------------------------------------------
