@@ -356,9 +356,21 @@ class GroupsCertificate:
     only thing that may divide a budget), the uncorrected `alpha`/`beta`/`delta`, the corrected
     budgets -- of which `corrected_alpha` and `corrected_delta` are what this run SPENDS and
     `corrected_beta` is the counterfactual it does not -- `n_claims` per slice, and the resulting
-    family `level`. `refused_by_size` names the slices too small to bound -- the field is called that
-    and not `n_min_violations` because B3 Task 5 owns that name and the shape change together
-    (R-149/2).
+    family `level`.
+
+    `n_min_violations` is the name spec §10 gives it (line 208, and line 214 makes it and `envelope`
+    non-optional in the output shape): which slices refused, and why. Its entries are the richer record
+    `{group, n, floor, reason}` rather than the spec's example string
+    `"option_count:11+ : n=41 < 120"` -- that is the spec's fact carried in full, not a deviation from
+    it: the string states one slice's count and floor, and the row states the same two numbers plus the
+    slice as a name and the sentence that refused it, so a reader never has to re-run the floor to check
+    the published refusal. The requirement §10:214 places on this field is PRESENCE, not non-emptiness:
+    an empty list is the fact that no slice fell below the floor -- which is what the published language
+    run states -- while a serialized run lacking the key is a shape violation and `__post_init__` refuses
+    it. It was called `refused_by_size` until B3 Task 5 landed this name and this shape change together
+    (the deferral R-149/2 recorded); nothing in this build reads or writes that name any more, and no
+    alias bridges them -- a stale artefact is refused, not renamed. The count of these rows stays
+    published as `meta.n_refused_by_size`, which is the same fact in numbers.
     """
 
     groups: tuple
@@ -374,7 +386,7 @@ class GroupsCertificate:
     pooled: Optional[Certificate] = None
     worst: Optional[Certificate] = None
     worst_claim: dict = field(default_factory=dict)
-    refused_by_size: list = field(default_factory=list)
+    n_min_violations: list = field(default_factory=list)
     slice_census: list = field(default_factory=list)
     envelope: tuple = ()
     meta: dict = field(default_factory=dict)
@@ -389,6 +401,13 @@ class GroupsCertificate:
                              % (self.n_groups, len(self.per_group)))
         if not self.envelope:
             raise ValueError("every certificate needs a non-empty envelope of assumptions")
+        # Same enforcement STYLE as `envelope` above and `certificate.py:243-244`, opposite requirement:
+        # `envelope` has to be non-empty to mean anything, while `n_min_violations` only has to be
+        # PRESENT -- `[]` is a result and `None` is a shape violation (spec §10:214).
+        if self.n_min_violations is None:
+            raise ValueError("a Mondrian certificate cannot serialize without `n_min_violations`: "
+                             "spec §10:214 makes the key non-optional in the output shape, and an "
+                             "empty list already states that no slice was refused by the size floor")
         if self.n_groups < 1:
             raise ValueError("no slices to certify; a worst-of-0 claim is not a claim")
 
@@ -460,7 +479,7 @@ class GroupsCertificate:
         sizes = ("; refused by size (below the floor of %d cases, named, never averaged away): %s"
                  % (self.meta.get("min_cases_per_slice"),
                     ", ".join("%s(n=%d)" % (row["group"], row["n"])
-                              for row in self.refused_by_size)) if self.refused_by_size else "")
+                              for row in self.n_min_violations)) if self.n_min_violations else "")
         joint = ("; joint level %.4f over %d slices x %d claims at delta=%.3f corrected to %.6f per "
                  "slice (uncorrected alpha=%.3f beta=%.3f delta=%.3f)"
                  % (self.level, self.n_groups, self.n_claims, self.delta, self.corrected_delta,
@@ -481,7 +500,7 @@ class GroupsCertificate:
             "n_claims": self.n_claims, "level": self.level, "feasible": self.feasible,
             "thinnest": self.thinnest,
             "any_slice_refused": self.any_slice_refused,
-            "refused_by_size": self.refused_by_size, "slice_census": self.slice_census,
+            "n_min_violations": self.n_min_violations, "slice_census": self.slice_census,
             # Stringified exactly like `per_group` below, and for the same reason: a two-key
             # declaration (`--groups family,mode`) makes the group a TUPLE, and `json.dumps` refuses a
             # tuple key with `TypeError: keys must be str, int, float, bool or None` -- measured as rc
@@ -555,7 +574,7 @@ def certify_groups(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
     per_group: dict = {}
     rows: list = []
     census: list = []
-    refused_by_size: list = []
+    n_min_violations: list = []
     corrected_fields = {"corrected_alpha": corrected_alpha, "corrected_beta": corrected_beta,
                         "corrected_delta": corrected_delta_value, "n_claims": N_CLAIMS}
     for name, members in slices.items():
@@ -577,7 +596,7 @@ def certify_groups(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
             cert = Certificate.refused(Reason.N_BELOW_MIN, alpha=corrected_alpha, beta=beta,
                                        n_cal=0, n_eval=len(members), delta=corrected_delta_value,
                                        detail=why, meta=detail_meta, backend=backend, method=method)
-            refused_by_size.append({"group": name, "n": n_cases, "floor": floor, "reason": why})
+            n_min_violations.append({"group": name, "n": n_cases, "floor": floor, "reason": why})
         else:
             # One rule, one code path: the slice is certified by the pooled certifier at the
             # corrected budgets, so a slice-level bound and the published marginal bound cannot be
@@ -623,11 +642,11 @@ def certify_groups(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
         groups=declared, n_groups=g, alpha=alpha, beta=beta, delta=delta,
         corrected_alpha=corrected_alpha, corrected_beta=corrected_beta,
         corrected_delta=corrected_delta_value, n_claims=N_CLAIMS, per_group=per_group, pooled=pooled,
-        worst=per_group[claim["worst"]["group"]], worst_claim=claim, refused_by_size=refused_by_size,
+        worst=per_group[claim["worst"]["group"]], worst_claim=claim, n_min_violations=n_min_violations,
         slice_census=census, envelope=envelope,
         meta={"seed": seed, "method": method, "min_cases_per_slice": floor,
               "groups_declared": declared, "backend": backend,
-              "n_refused_by_size": len(refused_by_size),
+              "n_refused_by_size": len(n_min_violations),
               "slices_declared_but_empty": [row["group"] for row in census if not row["kept"]],
               "census_note": "every slice is in slice_census with its own skipped_no_gold / "
                              "skipped_wrong_qtype counts; a slice whose records all lack gold is "

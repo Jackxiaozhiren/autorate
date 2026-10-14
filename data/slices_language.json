@@ -61,6 +61,7 @@
     },
     "n_claims": 3,
     "n_groups": 3,
+    "n_min_violations": [],
     "per_group": {
       "de": {
         "alpha": 0.016666666666666666,
@@ -19249,7 +19250,6 @@
       "reason": "empty_feasible_set",
       "shape": 2
     },
-    "refused_by_size": [],
     "slice_cases": {
       "de": 2974,
       "en": 2974,

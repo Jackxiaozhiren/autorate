@@ -165,8 +165,8 @@ second place to keep them.
   one-sided severity certificate (`P(Y > â(X)) ≤ α`, three canonical bounds, its own refusal reasons) is a
   command, an artefact and a gate row now: `autorate severity` writes `data/cert_severity_ordinal.json` from
   the committed ordinal population, `docs/SEVERITY.md` renders it from those bytes, and `verify` re-derives
-  twenty comparisons of it in both lanes. The status does not move, because the criterion is a contrast and
-  not a certificate. A first measured contrast is committed (`tests/test_g3_contrast.py`): on the published
+  every published quantity of it in both lanes. The status does not move, because the criterion is a contrast
+  and not a certificate. A first measured contrast is committed (`tests/test_g3_contrast.py`): on the published
   ordinal population, at the rubric this freeze owns, this repository's ordinal set gate refuses --
   `empty_feasible_set`, publishing no `qhat`, no automation rate and no error bound of any kind -- while the
   severity gate certifies the one-sided bound, reports its measured held-out violation rate and states the
@@ -192,7 +192,7 @@ second place to keep them.
   the run -- and `verify` recomputes that run from the same bytes, 76 field comparisons plus 5 rubric
   rows, in
   both lanes. What it publishes is a refusal: 3 slices, 0 certified, worst slice `de`, each slice refused at
-  the corrected budget (alpha and delta 0.05 / 3 = 0.016667, joint level 0.85), and `refused_by_size` empty --
+  the corrected budget (alpha and delta 0.05 / 3 = 0.016667, joint level 0.85), and `n_min_violations` empty --
   so this is a bound failure, not the size floor. The pooled marginal certificate over the same records is
   published beside the slices and refuses too, which is the "rather than averaging" half: nothing in the
   artefact lets the pooled number stand in for the worst slice. Two things keep the row short of met: it is

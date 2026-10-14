@@ -182,7 +182,7 @@ def main(argv=None) -> int:
           % (run["thinnest"], run["any_slice_refused"], run["feasible"]))
     print("  pooled (marginal) certificate published beside them: feasible=%s reason=%s"
           % (run["pooled"]["feasible"], run["pooled"]["reason"]))
-    print("  refused by the size floor: %d" % len(run["refused_by_size"]))
+    print("  refused by the size floor: %d" % len(run["n_min_violations"]))
     return 0
 
 

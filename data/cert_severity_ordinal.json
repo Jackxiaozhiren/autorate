@@ -1239,7 +1239,7 @@
     "n_eval_cases": 200,
     "override_cases": 129,
     "price_cases": 126,
-    "protocol_digest": "aff4134358e60fe51e9f4b5dc5cbb8ab339ba4cacb4b05ec1e8b427c0aa90124",
+    "protocol_digest": "a59f6639c4d74eee1d06adc6b450f2483bda1871cdb779cda84956128fd5b972",
     "rubric_levels": 5,
     "rule": "1 - n_claims * max(alpha, beta), after every slice's budgets are divided by n_groups; n_groups therefore cancels and the family-wise level is CONSTANT in n_groups, which is the Bonferroni property spec 8.1 buys rather than an oversight of it",
     "seed": 7,

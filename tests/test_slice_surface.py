@@ -57,6 +57,20 @@ def _recorded(doc=None, rubric=None):
     return seen, mismatches
 
 
+def _mutated(tmp_path, name: str, mutate):
+    """The published artefact with one change applied, at a path a loader can be pointed at.
+
+    One property per plant, off a fresh read of the committed bytes, so a row cannot pass for a reason
+    unrelated to the shape rule it is testing. Written to a file because `read_slices` takes a path: the
+    mandate is about the bytes a reader holds, not about an in-process mapping.
+    """
+    doc = json.loads((REPO / report.SLICE_JSON).read_text())
+    mutate(doc)
+    path = tmp_path / ("slices-%s.json" % name)
+    path.write_text(json.dumps(doc, sort_keys=True))
+    return path
+
+
 def test_the_slice_run_refuses_the_worst_slice_rather_than_averaging_it(in_repo):
     """G4's own sentence, asserted on the published artefact: a refusal, named, with the pooled bound beside it."""
     run = _run()
@@ -71,8 +85,12 @@ def test_the_slice_run_refuses_the_worst_slice_rather_than_averaging_it(in_repo)
     assert run["thinnest"] in refused, (run["thinnest"], refused)
     # the pooled marginal certificate is published BESIDE the slices, not in place of them, and it refuses too
     assert "pooled" in run and run["pooled"]["feasible"] is False, run.get("pooled")
-    # and the refusal is a bound failure, not an artefact of the size floor: nothing was dropped for thinness
-    assert run["refused_by_size"] == [], run["refused_by_size"]
+    # and the refusal is a bound failure, not an artefact of the size floor: nothing was dropped for thinness.
+    # The key is the spec's own `n_min_violations` (§10:208, non-optional at :214) and the empty list IS the
+    # fact: presence is what the shape mandates, emptiness is a result. `meta.n_refused_by_size` is the same
+    # fact in numbers and keeps its own name, so the two cannot be mistaken for one another's alias.
+    assert "n_min_violations" in run, sorted(run)
+    assert run["n_min_violations"] == [], run["n_min_violations"]
     assert run["meta"]["n_refused_by_size"] == 0
 
 
@@ -105,7 +123,7 @@ def test_the_gate_re_derives_the_published_slice_run_from_the_committed_records(
                 + len(report.SLICE_GROUP_FIELDS) * 3
                 + len(report.SLICE_CENSUS_FIELDS) * 3
                 + len(report.SLICE_POOLED_FIELDS) + 1          # +1: the six envelope lines, as one value
-                + len(report.SLICE_WORST_FIELDS) + 1           # +1: `refused_by_size`, joined as one value
+                + len(report.SLICE_WORST_FIELDS) + 1           # +1: `n_min_violations`, joined as one value
                 + len(report.SLICE_INPUT_FIELDS) * 3)
     assert len(seen) == expected, (len(seen), expected)
     assert all(passed for _label, passed in seen), [l for l, p in seen if not p]
@@ -141,6 +159,66 @@ def test_a_slice_artefact_measured_at_another_budget_is_a_rubric_mismatch_not_a_
     _seen, mismatches = _recorded(doc=doc)
     flagged = sorted(label for label, passed in mismatches if not passed)
     assert flagged == ["slice rubric.delta"], flagged
+
+
+def test_a_slice_artefact_that_hides_a_size_floor_refusal_is_drift_the_arm_names(in_repo):
+    """The one joined row that reads `n_min_violations` has to be able to fail on THAT field.
+
+    Mutation: the published run claims a slice was refused by the size floor that the recomputation
+    certified. `feasible`, `any_slice_refused` and the census all keep saying the true thing, so a re
+    -derivation arm that read the field only for prose and never compared it would stay green here --
+    which is the half of §10:214 a value comparison, not a key check, is the answer to.
+    """
+    doc = json.loads((REPO / report.SLICE_JSON).read_text())
+    doc["run"]["n_min_violations"] = [{"group": "km", "n": 40, "floor": 120, "reason": "claimed"}]
+    seen, _mismatches = _recorded(doc=doc)
+    failed = sorted(label for label, passed in seen if not passed)
+    assert failed == ["slice n_min_violations"], failed
+
+
+def test_a_slice_run_missing_the_spec_key_is_refused_at_four_and_an_empty_one_is_not(
+        tmp_path, monkeypatch, in_repo, capsys):
+    """§10:214 answered at the artefact's door: the key is mandated, an empty list is a result.
+
+    Two mutations, one per direction, because the requirement is presence and not non-emptiness.
+    Deleting `n_min_violations` from the published `run` must refuse and reach the documented exit code
+    -- a loader that defaulted it to `[]` would let an artefact whose floor never ran verify green, and a
+    loader that raised an unmapped error instead would reach rc 1. Keeping the key with an empty list,
+    which is what this artefact actually states, must load. Reddened by that default (`run.get(key, [])`)
+    and, in the other direction, by a guard written `if not run[key]: raise`, which would refuse the
+    committed file for stating the truth.
+    """
+    absent = _mutated(tmp_path, "no-key", lambda doc: doc["run"].pop("n_min_violations"))
+    for module in (cli, report):
+        monkeypatch.setattr(module, "SLICE_JSON", str(absent))
+    assert main(["verify"]) == 4
+    captured = capsys.readouterr()
+    err = captured.err
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err, err
+    assert "report.SLICE_JSON" in err and "n_min_violations" in err, err
+    assert "Traceback" not in err, err
+    assert "re-derived" not in captured.out, "a run that cannot read the artefact earns no denominator"
+
+    emptied = _mutated(tmp_path, "empty-list", lambda doc: doc["run"].update(n_min_violations=[]))
+    assert report.read_slices(emptied)["run"]["n_min_violations"] == [], (
+        "the empty list is the fact that no slice refused by size: presence, not non-emptiness")
+
+
+def test_a_slice_artefact_written_under_the_retired_name_is_refused_not_renamed(tmp_path, in_repo):
+    """No compatibility alias, in either spelling: shape-1 bytes carry `refused_by_size` and are stale.
+
+    Reddened by the bridge this repository refuses -- `run.get("n_min_violations") or
+    run.get("refused_by_size")` -- which would let an artefact written before B3 Task 5's rename pass the
+    gate. The rename was a shape change, so those bytes are not this shape; the refusal has to say so, and
+    has to name both the key it needs and the one it found.
+    """
+    retired = _mutated(tmp_path, "old-name",
+                       lambda doc: doc["run"].update(refused_by_size=doc["run"].pop("n_min_violations")))
+    with pytest.raises(ValueError, match="refused_by_size") as caught:
+        report.read_slices(retired)
+    message = str(caught.value)
+    assert "n_min_violations" in message, message
+    assert "refused_by_size" in message, message
 
 
 def test_a_missing_slice_artefact_is_a_named_refusal_at_four(tmp_path, monkeypatch, in_repo, capsys):

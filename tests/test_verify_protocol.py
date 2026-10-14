@@ -324,3 +324,37 @@ def test_the_records_digest_and_inventory_digest_are_both_checked_in_both_lanes(
     bad.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     assert main(["verify", "--protocol", str(bad)]) == 4
     assert "inventory_digest" in capsys.readouterr().err
+
+
+def test_a_claim_note_that_counts_an_arm_must_count_what_the_arm_actually_does(tmp_path):
+    """R-260: a digit inside a claim note is a published figure no gate used to re-derive.
+
+    The G3 note says the severity arm makes "20 comparisons in `verify`". Driving that arm through
+    `verify`'s own callbacks with the field lists `cmd_verify` passes counts 19 -- so the frozen document
+    carried a number that its own artefact contradicts, in a project whose entire §11 claim is that every
+    published figure is re-derivable. This row is the gate that claim was missing: it compares the digit in
+    the note against the count the arm produces, so the next arm change reddens a test instead of quietly
+    falsifying a sentence in the freeze.
+
+    Red today, by design: the note half is a value `load_protocol` reads, so correcting it costs a new
+    freeze and a six-artefact re-export -- which is the controller's act, not something to sneak in here.
+    """
+    import json
+    import re
+
+    from autorate import report
+    from autorate.cli import SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS
+
+    doc = json.loads((REPO / "protocol.json").read_text())
+    note = next(c["note"] for c in doc["claims"] if c["id"] == "G3")
+    claimed = re.search(r"(\d+) comparisons", note)
+    assert claimed, "the G3 note no longer counts comparisons, so this row guards nothing: %r" % note[:80]
+
+    seen = []
+    report.rederive_severity(lambda label, actual, wanted: seen.append(label),
+                             lambda label, actual, wanted: seen.append(label),
+                             SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS,
+                             rubric=doc["rubric"], stamp=lambda cert: cert)
+    assert int(claimed.group(1)) == len(seen), (
+        "protocol.json's G3 note claims %s comparisons and the severity arm makes %d -- the digit and the "
+        "arm must not be kept by hand in two places" % (claimed.group(1), len(seen)))

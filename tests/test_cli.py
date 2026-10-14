@@ -179,8 +179,11 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # `len(PUBLISHED_DOCS)`, so the twenty added comparisons are 15 + 1 + 3 + 1.
     # G4's slice arm enters the same way, from its own field lists and from the counts the artefact carries:
     # the number of slices, census rows and declared inputs is read, never typed, so a fourth language
-    # joining the publication moves the formula with it instead of reddening a remembered integer. The `+1`
-    # is the envelope, compared as one value. Absent lane measured 201 before this arm and 277 after:
+    # joining the publication moves the formula with it instead of reddening a remembered integer. The two
+    # `+1`s are the values the arm compares whole instead of field by field: the six envelope lines, and
+    # `run["n_min_violations"]` (spec §10:208's key) joined into one list of slice names, because rows of
+    # dicts would drift on JSON's list-versus-tuple round-trip -- a fact about the file, not about the
+    # refusal. Absent lane measured 201 before this arm and 277 after:
     # 13 + 8x3 + 6x3 + 8 + 1 + 2x3 drift rows, 5 rubric rows, 1 document row.
     slice_doc = read_slices(REPO / SLICE_JSON)
     slice_run = slice_doc["run"]
@@ -1599,7 +1602,10 @@ def test_groups_on_the_cli_reaches_the_mondrian_surface_and_rc_follows_the_worst
     assert "worst-of-3 over 'family': slice tiny" in text, text
     doc = json.loads(out.read_text())
     assert doc["n_groups"] == 3 and doc["any_slice_refused"] is True
-    assert [row["group"] for row in doc["refused_by_size"]] == ["tiny"]
+    # the spec's own key (§10:208), present at the CLI surface too: the artefact a user writes with
+    # `--out` is the same shape `verify` re-derives, so a missing key here is the same shape violation.
+    assert "n_min_violations" in doc, sorted(doc)
+    assert [row["group"] for row in doc["n_min_violations"]] == ["tiny"]
     assert doc["thinnest"] == "tiny"
 
     ok = _root / "all_certified.json"
@@ -1631,7 +1637,7 @@ def test_every_rendered_slice_line_matches_the_artefact_that_was_written(group_f
         # stated in terms of the cases the slice HOLDS (its own reason string prints that number), and
         # a certifier verdict -- feasible or refused -- is stated in terms of the cases the certifier
         # was actually handed. Asserting one field for both would let either renderer slide.
-        if name in {row["group"] for row in doc["refused_by_size"]}:
+        if name in {row["group"] for row in doc["n_min_violations"]}:
             assert stated_n == doc["slice_cases"][name], (line, doc["slice_cases"])
         else:
             assert "eligible_cases" in census[name], (line, census[name])
@@ -1890,7 +1896,7 @@ def test_the_two_key_declaration_partitions_by_the_tuple_and_still_refuses_by_na
     assert doc["groups"] == ["family", "mode"] and doc["n_groups"] == 4
     assert doc["corrected_alpha"] == pytest.approx(0.05 / 4)
     assert doc["thinnest"] == ["f1", "slow"], doc["thinnest"]
-    assert [row["group"] for row in doc["refused_by_size"]] == [["f1", "slow"]], doc["refused_by_size"]
+    assert [row["group"] for row in doc["n_min_violations"]] == [["f1", "slow"]], doc["n_min_violations"]
     assert "f1" in result.stdout and "slow" in result.stdout, result.stdout
     # One flag, two spellings: the repeated form is the same run.
     repeated = run("certify", str(path), "--groups", "family", "--groups", "mode",
@@ -1911,7 +1917,7 @@ def test_certify_without_groups_still_writes_the_marginal_certificate_only(group
     result = run("certify", str(clear), "--out", str(out), "--seed", "7")
     assert result.returncode == 0, (result.stdout, result.stderr)
     doc = json.loads(out.read_text())
-    for leaked in ("n_groups", "per_group", "refused_by_size", "corrected_alpha", "pooled"):
+    for leaked in ("n_groups", "per_group", "n_min_violations", "corrected_alpha", "pooled"):
         assert leaked not in doc, leaked
     assert doc["feasible"] is True and doc["envelope"], doc
     assert "reason" in doc and doc["reason"] is None, doc
@@ -1960,7 +1966,11 @@ def test_a_multi_key_group_name_still_serialises_because_json_has_no_tuple_keys(
     # finer declaration shrinks the evidence each cell certifies on.
     assert result.returncode == 3, (result.stdout, result.stderr)
     assert doc["n_groups"] == 4 and doc["feasible"] is False
-    assert doc["any_slice_refused"] is True and doc["refused_by_size"] == []
+    # Presence, not non-emptiness: this run refused nothing by size, and the artefact still has to SAY
+    # so with the key present. A `to_dict` that dropped the key when the list was empty would leave a
+    # reader unable to tell "no slice fell below the floor" from "the floor never ran" (§10:214).
+    assert doc["any_slice_refused"] is True
+    assert "n_min_violations" in doc and doc["n_min_violations"] == [], sorted(doc)
     assert [row["reason"] for row in doc["per_group"].values()] == ["vacuous_quantile"] * 4
     # The exit code is reconstructible from the file: no reader should have to re-run the tool to know
     # whether the permission exists.

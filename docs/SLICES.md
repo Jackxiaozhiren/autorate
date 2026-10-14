@@ -15,7 +15,7 @@ refuse**, and the pooled bound must not be allowed to average that refusal away.
 - thinnest slice by case count: `de`
 - worst slice of the joint claim: `de`
 - the run certifies: False; any slice refused: True
-- slices refused by the size floor: 0 (none)
+- slices refused by the size floor (`n_min_violations`): 0 (none)
 
 ## Per slice
 

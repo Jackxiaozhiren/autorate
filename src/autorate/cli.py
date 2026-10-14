@@ -255,11 +255,11 @@ def _print_slices(cert) -> None:
     """
     claim = cert.worst_claim
     by_group_name = {row["group"]: row for row in claim["refusals"]}
-    # Which branch produced the verdict, read from the artefact's own size-floor list rather than from
+    # Which branch produced the verdict, read from the artefact's own `n_min_violations` list rather than from
     # `reason`: a certifier CAN refuse the population it was handed with `n_below_min` too (a slice
     # holding 140 cases of which 10 are labelled passes the floor and then has 10 cases split), and
     # that refusal is stated in terms of the cases it could read, not the cases on disk.
-    by_floor = {row["group"] for row in cert.refused_by_size}
+    by_floor = {row["group"] for row in cert.n_min_violations}
     rows = {row["group"]: row for row in cert.slice_census}
     for name, slice_cert in cert.per_group.items():
         held = cert.slice_cases[name]
@@ -285,11 +285,11 @@ def _print_slices(cert) -> None:
         else:
             why = by_group_name.get(name, {}).get("why", slice_cert.meta.get("detail", "refused"))
             print("  slice %s (n=%d cases): NOT CERTIFIED -- %s%s" % (name, n_cases, why, gap))
-    if cert.refused_by_size:
+    if cert.n_min_violations:
         print("  refused by size (below %d cases, the two halves of the split this rule certifies "
               "on): %s" % (cert.meta["min_cases_per_slice"],
                            ", ".join("%s(n=%d)" % (row["group"], row["n"])
-                                     for row in cert.refused_by_size)))
+                                     for row in cert.n_min_violations)))
     print("  worst-of-%d over %s: slice %s; joint level %.4f = 1 - %d claims x delta %.3f, with "
           "alpha/delta corrected to %.6f per slice"
           % (claim["n_groups"], ", ".join(repr(g) for g in cert.groups),

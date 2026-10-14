@@ -44,7 +44,9 @@ one consumer certifies a fiction (R-69).
 """
 from __future__ import annotations
 
+import json
 import random
+from dataclasses import fields
 
 import pytest
 
@@ -192,7 +194,7 @@ def test_the_size_floor_counts_cases_and_never_the_records_of_those_cases(repeat
     """F-1's guard, in the direction that REFUSES: `len(members)` for the case count reddens this row.
 
     Plant `n_cases = len(members)` at `certify_choice.py:539` and km's 120 rows clear the 120-case
-    floor, so `refused_by_size` goes empty, the census publishes 120 where the slice holds 40
+    floor, so `n_min_violations` goes empty, the census publishes 120 where the slice holds 40
     independent observations, and the slice's refusal becomes `empty_feasible_set` -- a different
     story about a different unit. Every one of those moves is asserted here in both directions: the
     published count IS the case count and IS NOT the record count.
@@ -205,10 +207,10 @@ def test_the_size_floor_counts_cases_and_never_the_records_of_those_cases(repeat
     assert census["km"]["records"] == 120 and census["km"]["cases"] == 40
     assert census["km"]["cases"] != census["km"]["records"], (
         "the fixture has to keep the two units apart or this row guards nothing")
-    assert [row["group"] for row in repeat_run.refused_by_size] == ["km"], (
+    assert [row["group"] for row in repeat_run.n_min_violations] == ["km"], (
         "40 cases is below MIN_CAL + MIN_EVAL = 120; 120 records is not, and the difference is the "
         "whole finding")
-    row = repeat_run.refused_by_size[0]
+    row = repeat_run.n_min_violations[0]
     assert row["n"] == 40 and row["floor"] == MIN_CASES_PER_SLICE
     assert row["n"] != census["km"]["records"], "the refusal may not publish the record count as n"
     assert "holds 40 independent cases" in row["reason"], row["reason"]
@@ -270,7 +272,7 @@ def test_the_floor_is_still_the_sum_of_the_two_halves_when_the_units_disagree(re
     km = next(row for row in repeat_run.slice_census if row["group"] == "km")
     assert km["cases"] == 40 < 120 <= km["records"] == 120, (
         "the slice clears the floor on rows and falls below it on cases: that is the unit")
-    assert GROUP_FLOOR_MESSAGE in repeat_run.refused_by_size[0]["reason"]
+    assert GROUP_FLOOR_MESSAGE in repeat_run.n_min_violations[0]["reason"]
     assert repeat_run.worst_claim["n_groups"] == 3 == repeat_run.n_groups
 
 
@@ -314,17 +316,20 @@ def test_the_pooled_verdict_and_the_per_slice_verdict_diverge_on_this_population
 
 
 def test_a_slice_too_small_to_bound_is_refused_by_name_not_averaged_away(cert):
-    """§8.1's refusal, and R-149/2's field name.
+    """§8.1's refusal, published under the name spec §10 gives it (line 208, mandated at line 214).
 
-    `refused_by_size` -- NOT `n_min_violations`, which B3 Task 5 owns together with the shape change;
-    the row below that pins the absence is the guard against a premature rename landing two names for
-    one thing on a published certificate.
+    RED in two directions, both named here because this row used to pin the opposite: its last
+    assertion was `assert not hasattr(cert, "n_min_violations")` (R-149/2's deferral, which recorded
+    that B3 Task 5 owns the name and the shape change together), and B3 Task 5 is this commit.
+    Reverting the rename reddens the first line below with `AttributeError: 'GroupsCertificate' object
+    has no attribute 'n_min_violations'`; re-adding `refused_by_size` to `to_dict` as a copy of the
+    same rows reddens the "one fact, one name" line.
     """
-    assert cert.refused_by_size == [{
+    assert cert.n_min_violations == [{
         "group": "tiny", "n": 10, "floor": MIN_CASES_PER_SLICE,
-        "reason": cert.refused_by_size[0]["reason"]}], "named, with its own n"
-    assert GROUP_FLOOR_MESSAGE in cert.refused_by_size[0]["reason"]
-    assert "MIN_CAL + MIN_EVAL" in cert.refused_by_size[0]["reason"], (
+        "reason": cert.n_min_violations[0]["reason"]}], "named, with its own n"
+    assert GROUP_FLOOR_MESSAGE in cert.n_min_violations[0]["reason"]
+    assert "MIN_CAL + MIN_EVAL" in cert.n_min_violations[0]["reason"], (
         "the floor names its owner, so a reader can tell a taste from a threshold")
     assert cert.thinnest == "tiny"
     # Averaged away would mean absent: the slice still holds a certificate and a census row, and both
@@ -340,9 +345,67 @@ def test_a_slice_too_small_to_bound_is_refused_by_name_not_averaged_away(cert):
     # companion, which use `_case_slice`.
     summary = cert.summary().lower()
     assert "refused" in summary or "not certified" in summary, cert.summary()
-    assert not hasattr(cert, "n_min_violations"), (
-        "R-149/2: that name is B3 Task 5's, with the shape change in the same commit")
+    payload = cert.to_dict()
+    assert "n_min_violations" in payload, (
+        ":214 -- a serialized certificate lacking the key fails validation")
+    assert "refused_by_size" not in payload, (
+        "one fact, one name: the retired field must not ride along beside the spec's, because a reader "
+        "who finds both cannot tell which one a loader trusts")
     assert "tiny(n=10)" in cert.summary(), "the summary names the slice, not just the count"
+
+
+def _rebuilt(run, **overrides):
+    """The same run, re-constructed with the named fields overridden, so a shape guard is reachable.
+
+    `certify_groups` cannot be coaxed into returning a run without the spec's key -- the field has a
+    default -- and the dataclass is frozen, so the only way to prove the guard bites rather than reads
+    as decoration is to rebuild the object with the field absent.
+    """
+    kwargs = {f.name: getattr(run, f.name) for f in fields(run)}
+    kwargs.update(overrides)
+    return GroupsCertificate(**kwargs)
+
+
+def test_an_empty_n_min_violations_is_a_fact_and_a_missing_one_is_a_shape_violation(cert):
+    """§10:214's asymmetry in both directions: an empty list states a fact, an absent key breaks shape.
+
+    Reddened by the two mutations this row exists to refuse. (1) A guard written `if not
+    self.n_min_violations: raise` -- copying `envelope`'s NON-EMPTINESS enforcement at
+    `certificate.py:243-244` where the brief asked for its enforcement STYLE -- reddens the `[]` lines,
+    because a run in which no slice fell below the floor has something true to say and must still
+    serialize the key; the published language run IS that case, so this is not a hypothetical.
+    (2) Deleting the presence guard reddens the `None` line. Neither direction may be dropped.
+    """
+    clears_floor = certify_groups(_family("ok", 200, sharpness=8.0, seed=6), groups=("family",), seed=7)
+    assert clears_floor.n_min_violations == [], clears_floor.to_dict()["n_min_violations"]
+    payload = clears_floor.to_dict()
+    assert "n_min_violations" in payload and payload["n_min_violations"] == [], (
+        "the key is the shape and the empty list is the fact: a serialization lacking it fails "
+        "validation even when there is nothing to report")
+    assert json.loads(clears_floor.to_json())["n_min_violations"] == [], (
+        "the bytes a reader loads must carry the key, not only the in-process mapping")
+    with pytest.raises(ValueError, match="n_min_violations"):
+        _rebuilt(cert, n_min_violations=None), "absence is refused at construction, not at the reader"
+    assert _rebuilt(cert, n_min_violations=[]).to_dict()["n_min_violations"] == [], (
+        "emptiness is legal: the guard polices presence")
+
+
+def test_the_old_field_name_is_refused_rather_than_read_as_an_alias(cert):
+    """A shape change is a shape change: nothing on the object or its bytes answers to the old name.
+
+    Reddened by the compatibility bridge the brief forbids -- an alias attribute, or a `to_dict` that
+    wrote `refused_by_size` beside `n_min_violations` so an old reader keeps working -- would pass every
+    other row in this file while leaving one published fact with two names. The loader side of the same
+    refusal (bytes that carry only the retired name) is
+    `tests/test_slice_surface.py::test_a_slice_artefact_written_under_the_retired_name_is_refused`.
+    """
+    payload = cert.to_dict()
+    assert "refused_by_size" not in payload, sorted(payload)
+    assert getattr(cert, "refused_by_size", None) is None, (
+        "no alias attribute: the retired name must not resolve to the new list")
+    assert [row["group"] for row in payload["n_min_violations"]] == ["tiny"], sorted(payload)
+    assert json.loads(cert.to_json()).get("refused_by_size") is None, (
+        "the serialized bytes carry one name for the one list")
 
 
 def test_the_floor_and_the_pools_own_minima_have_one_owner(cert):
@@ -357,7 +420,7 @@ def test_the_floor_and_the_pools_own_minima_have_one_owner(cert):
     assert MIN_CASES_PER_SLICE == MIN_CAL + MIN_EVAL == 120
     thin = _family("gap", 119, sharpness=8.0, seed=5) + _family("ok", 200, sharpness=8.0, seed=6)
     run = certify_groups(thin, groups=("family",), seed=7)
-    assert [row["group"] for row in run.refused_by_size] == ["gap"]
+    assert [row["group"] for row in run.n_min_violations] == ["gap"]
     assert run.per_group["gap"].feasible is False
     assert run.per_group["ok"].feasible is True, "the neighbour is not punished by the thin slice"
 
@@ -545,7 +608,7 @@ def test_the_group_refusals_are_attributed_only_to_the_reason_that_is_evidence(c
     for name in ("risky", "wide"):
         assert "NOT attributed to the slice structure" in by_group_name[name]["why"], name
         assert "vacuous_quantile" == by_group_name[name]["reason"], name
-    assert cert.refused_by_size and cert.worst_claim["slices_without_the_metric"] == []
+    assert cert.n_min_violations and cert.worst_claim["slices_without_the_metric"] == []
 
 
 def test_the_worst_slice_is_a_refusal_and_never_a_restatement_of_the_pooled_number(cert, pooled):
@@ -656,11 +719,11 @@ def test_the_artefact_serialises_with_the_correction_stated(cert):
     """
     payload = cert.to_dict()
     for key in ("n_groups", "corrected_alpha", "corrected_delta", "corrected_beta", "n_claims",
-                "level", "refused_by_size", "slice_census", "slice_cases", "slice_eligible_cases",
+                "level", "n_min_violations", "slice_census", "slice_cases", "slice_eligible_cases",
                 "per_group", "pooled", "worst_claim", "envelope"):
         assert key in payload, key
     assert payload["level"] == pytest.approx(1.0 - payload["n_claims"] * cert.delta)
-    assert payload["refused_by_size"][0]["group"] == "tiny"
+    assert payload["n_min_violations"][0]["group"] == "tiny"
     assert "joint level 0.8500" in cert.summary()
     assert cert.to_json().startswith("{")
     assert "per_group" in cert.to_json()

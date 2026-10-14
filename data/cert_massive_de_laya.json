@@ -3271,7 +3271,7 @@
     "multi_label": 1487,
     "n_cal_cases": 1487,
     "n_eval_cases": 1487,
-    "protocol_digest": "aff4134358e60fe51e9f4b5dc5cbb8ab339ba4cacb4b05ec1e8b427c0aa90124",
+    "protocol_digest": "a59f6639c4d74eee1d06adc6b450f2483bda1871cdb779cda84956128fd5b972",
     "seed": 7,
     "skipped_no_gold": 0,
     "skipped_wrong_qtype": 0,

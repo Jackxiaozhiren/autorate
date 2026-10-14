@@ -136,7 +136,7 @@ NON_G1_CLAIMS = (
         "artefacts": ["data/cert_severity_ordinal.json", "docs/SEVERITY.md",
                       "tests/test_g3_contrast.py"],
         "note": "the ordinal certificate is published and re-derived (`autorate severity`, "
-                "`data/cert_severity_ordinal.json`, `docs/SEVERITY.md`, 20 comparisons in `verify`), and "
+                "`data/cert_severity_ordinal.json`, `docs/SEVERITY.md`, 19 comparisons in `verify`), and "
                 "the contrast the criterion asks for has now been counted -- and it went against this "
                 "row's original wording. On the population where this repository's ordinal SET gate "
                 "certifies (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells searched), the interval "
@@ -169,7 +169,7 @@ NON_G1_CLAIMS = (
                 "run from the same bytes -- 70 field comparisons plus 5 rubric rows. The published run "
                 "refuses: 3 slices, 0 certified, `any_slice_refused` true, the worst slice named `de`, every "
                 "slice refused at the corrected budget (alpha and delta 0.05 / 3 = 0.016667, joint level "
-                "0.85), and `refused_by_size` empty -- so the refusal is a bound failure, not a thin-slice "
+                "0.85), and `n_min_violations` empty -- so the refusal is a bound failure, not a thin-slice "
                 "floor. The pooled marginal certificate over the same records is published beside the "
                 "slices and refuses too (`empty_feasible_set`, exact bound above the budget), which is the "
                 "'rather than averages' half of the sentence: nothing in the artefact lets the pooled number "

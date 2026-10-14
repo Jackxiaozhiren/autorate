@@ -578,7 +578,7 @@ SLICE_RECORDS = ("data/records_massive_de.jsonl",
 SLICE_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
 # Four field lists, one owner each: the arm and the denominator that counts it read these (`R-168`), and an
 # operator tampering with one published value has to be named by exactly one label.
-# `worst_claim` and `refused_by_size` are in here because they ARE G4: the first names the slice whose
+# `worst_claim` and `n_min_violations` are in here because they ARE G4: the first names the slice whose
 # refusal the criterion is about, the second says whether the size floor rather than a bound did the
 # refusing. `thinnest` is neither -- it is the fewest-case slice with an alphabetical tie-break -- so a list
 # that stopped at it would re-derive everything except the two claims being published.
@@ -588,7 +588,7 @@ SLICE_COMPARE_FIELDS = ("feasible", "any_slice_refused", "n_groups", "n_claims",
 # The joint worst-of-G claim, in the fields a reader of `docs/SLICES.md` is being asked to trust. These are
 # named rather than compared as one `worst_claim` dictionary because that dictionary carries tuples and
 # nested rows: a whole-mapping comparison drifts on JSON's list-versus-tuple round-trip, which is a
-# representation fact about the file, not a disagreement about the claim. `refused_by_size` gets the same
+# representation fact about the file, not a disagreement about the claim. `n_min_violations` gets the same
 # treatment as one joined row, so an artefact that hid a size-floor refusal is named.
 SLICE_WORST_FIELDS = ("group", "joint_level", "joint_level_risk", "level", "metric")
 SLICE_GROUP_FIELDS = ("feasible", "reason", "n_cal", "n_eval", "qhat", "autorate",
@@ -598,6 +598,16 @@ SLICE_CENSUS_FIELDS = ("cases", "records", "eligible_cases", "kept",
 SLICE_POOLED_FIELDS = ("feasible", "reason", "n_cal", "n_eval", "qhat", "autorate",
                        "conditional_error_bound", "marginal_error_bound")
 SLICE_INPUT_FIELDS = ("rows", "digest")
+# The spec's own name for the size-floor refusals (§10:208, and :214 makes the key non-optional in the
+# output shape), spelled once so the loader's presence check, the arm's comparison label and the document's
+# bullet all read the same string: a fourth spelling anywhere else is a fourth owner of a published field
+# name. `certify_choice.GroupsCertificate` owns the field itself; this is the artefact-side name for it.
+SLICE_N_MIN_KEY = "n_min_violations"
+# The name the field carried before B3 Task 5 landed this name and this shape change together (the deferral
+# R-149/2 recorded). It is declared ONLY so `read_slices` can refuse an artefact that carries it: no read in
+# this build falls back to it, because a silent fallback would let a stale artefact verify green, and a shape
+# change is a shape change.
+SLICE_RETIRED_N_MIN_KEY = "refused_by_size"
 
 
 def read_slices(path: Path) -> dict:
@@ -606,6 +616,8 @@ def read_slices(path: Path) -> dict:
     Shape only, and `ValueError` on purpose: `load_published` turns that into the named refusal at exit 4 for
     a table-declared artefact. The checks that a *value* is wrong belong to `rederive_slices`, which is the
     one holding the recomputation -- a reader here would need a second copy of the certifier to say more.
+    What this function does police is the shape spec §10:214 mandates: the size-floor refusals arrive under
+    `SLICE_N_MIN_KEY`, and a document without that key is refused rather than defaulted.
     """
     doc = json.loads(Path(path).read_text())
     if not isinstance(doc, dict):
@@ -621,6 +633,22 @@ def read_slices(path: Path) -> dict:
     absent = sorted(set(SLICE_COMPARE_FIELDS) - set(run))
     if absent:
         raise ValueError("the slice experiment's `run` is missing %s" % absent)
+    # Spec §10:214: the key is not optional in the output shape, so its absence is refused HERE rather than
+    # defaulted. The requirement is PRESENCE and not non-emptiness -- `[]` is the fact that no slice fell
+    # below the size floor, which is what the committed artefact states -- and the retired name is checked
+    # only to be named in the refusal, never read as a fallback: an artefact written before the rename is
+    # stale, and forgiving it would let the floor go unrun.
+    if SLICE_N_MIN_KEY not in run:
+        raise ValueError(
+            "the slice experiment's `run` carries no %r key, which spec §10:214 makes non-optional in the "
+            "output shape: an empty list is the fact that no slice was refused by the size floor, so the "
+            "key's absence is a shape violation and not a result%s -- regenerate it with `python3 "
+            "tools/language_slices.py --out %s --doc %s --force`"
+            % (SLICE_N_MIN_KEY,
+               (", and it carries %r in its place: that is the name this field had before the rename that "
+                 "changed its shape, and this build reads one name with no fallback to the other"
+                % SLICE_RETIRED_N_MIN_KEY) if SLICE_RETIRED_N_MIN_KEY in run else "",
+               SLICE_JSON, SLICE_MD))
     if not isinstance(doc["inputs"], list):
         raise ValueError("the slice experiment's `inputs` is a %s, not a list of the files it read"
                          % type(doc["inputs"]).__name__)
@@ -643,7 +671,7 @@ def read_slices(path: Path) -> dict:
     _named_list(run.get("envelope"), "run.envelope", strings=True)
     for name, value in (("inputs", doc["inputs"]),
                         ("run.slice_census", run.get("slice_census")),
-                        ("run.refused_by_size", run.get("refused_by_size"))):
+                        ("run.%s" % SLICE_N_MIN_KEY, run[SLICE_N_MIN_KEY])):
         _row_list(value, name, ("group",) if name != "inputs" else SLICE_INPUT_FIELDS)
     if not isinstance(run.get("per_group"), dict) or any(
             not isinstance(cert, dict) for cert in run["per_group"].values()):
@@ -762,8 +790,8 @@ def rederive_slices(expect, expect_rubric, rubric=None) -> None:
     fresh_worst, published_worst = worst_of(fresh), worst_of(published)
     for name in SLICE_WORST_FIELDS:
         expect("slice worst_claim.%s" % name, fresh_worst.get(name), published_worst.get(name))
-    expect("slice refused_by_size", _join_groups(fresh.get("refused_by_size")),
-           _join_groups(published.get("refused_by_size")))
+    expect("slice %s" % SLICE_N_MIN_KEY, _join_groups(fresh.get(SLICE_N_MIN_KEY)),
+           _join_groups(published.get(SLICE_N_MIN_KEY)))
 
     recorded_inputs = {str(row.get("path")): row for row in doc["inputs"]}
     for row in inputs:
@@ -776,7 +804,7 @@ def rederive_slices(expect, expect_rubric, rubric=None) -> None:
 
 
 def _group_of(row) -> str:
-    """The slice name a `refused_by_size` entry carries, whether it is a row or a bare name."""
+    """The slice name a `n_min_violations` entry carries, whether it is a row or a bare name."""
     return str(row.get("group")) if isinstance(row, dict) else str(row)
 
 
@@ -821,8 +849,9 @@ def render_slices(doc: dict) -> str:
         "- thinnest slice by case count: `%s`" % run["thinnest"],
         "- worst slice of the joint claim: `%s`" % _worst_group(run),
         "- the run certifies: %s; any slice refused: %s" % (run["feasible"], run["any_slice_refused"]),
-        "- slices refused by the size floor: %d (%s)"
-        % (len(run.get("refused_by_size", [])), _join_groups(run.get("refused_by_size", [])) or "none"),
+        "- slices refused by the size floor (`%s`): %d (%s)"
+        % (SLICE_N_MIN_KEY, len(run.get(SLICE_N_MIN_KEY, [])),
+           _join_groups(run.get(SLICE_N_MIN_KEY, [])) or "none"),
         "",
         "## Per slice",
         "",
