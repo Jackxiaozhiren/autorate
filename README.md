@@ -62,6 +62,7 @@ uv run --frozen autorate certify data/records_feishu.jsonl --backend laya --out 
 uv run --frozen autorate compare data/cert_laya.json data/cert_jev.json
 uv run --frozen autorate gate data/records_feishu.jsonl --cert data/cert_jev.json --limit 5
 uv run --frozen autorate report --out docs/RESULTS.md   # write the published numbers
+uv run --frozen autorate report --full               # write docs/REPORT.md, one document for a reviewer
 uv run --frozen autorate verify                          # re-derive them, fail on drift
 ```
 
@@ -103,33 +104,42 @@ timestamp, so a re-run is byte-comparable, and it quotes no path or machine name
 machine without the corpus reproduces the same bytes -- which is what lets CI run the
 gate at all.
 
+`docs/REPORT.md` is the same kind of file for a reader who wants one document instead of
+seven: `autorate report --full` emits it, `verify` re-derives it byte for byte under the same
+rule, and every figure in it is read out of an artefact rather than typed into a sentence --
+the certificate shape from `certificate.py`, the five gates from `protocol.json`'s `claims`
+array, each refusal from the artefact that refused, the related work from the rows of
+`docs/VERIFICATION.md` that are `verified`. The flag is additive on purpose: `autorate report`
+with no flag still writes `docs/RESULTS.md`, byte for byte the file this gate has always
+compared.
+
 That fallback has a stated limit, and `verify` prints it: with the corpus absent, the
 upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 `data/inventory.md.json`, not recomputed. The snapshot is policed from the environment
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 248 /248 values` where the corpus is absent, `re-derived 283 /283
+prints say so: `re-derived 249 /249 values` where the corpus is absent, `re-derived 284 /284
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 283: every CI run is a 248 run, on both of its arms. Green CI is
+alone can never reach the 284: every CI run is a 249 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 248 run proves a lot inside that lane. Every published number that is a function of a
+A 249 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all six published certificates, each from the committed
 records it was actually made from, G4's slice run from the three committed MASSIVE record files
 it names inside itself, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
 for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
-for byte, and the MASSIVE rows from their committed pin. What a 242 run cannot prove is what its own
-disclosure says in so
-many words -- `this run cannot see whether that snapshot went stale`. The gap is exactly 35
+for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows from their committed pin. What a 249 run
+cannot prove is what its own disclosure says in so many words --
+`this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 248 /248.
+had drifted from the corpus would agree with itself and report 249 /249.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,

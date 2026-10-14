@@ -1545,3 +1545,57 @@ producer's malformed-line and backend-absent paths still answer rc 1. The two bl
 **Also corrected in code, not prose:** `inputs[].rows` had two owners (all JSON lines in the producer, the
 backend's Records in the gate) that agreed only because every committed row is `laya`; the producer now calls
 `report.slice_inputs`, so the artefact's own input table is the same value the gate re-derives.
+
+## 2026-10-14 -- Plan D Task 4: `docs/REPORT.md` joins the gate, and the denominators move by one
+
+`autorate report --full` writes `docs/REPORT.md` from `src/autorate/techreport.py`, the document joins
+`cli.PUBLISHED_DOCS`, and `verify` byte-compares it in both lanes. The two lines the gate printed, measured
+on this tree:
+
+```
+re-derived 249 /249 values          # corpus absent, rc 0
+re-derived 284 /284 values          # corpus present, rc 0
+```
+
+They were `248 /248` and `283 /283`. One document row each, which is the whole of the movement: the arm is
+a byte comparison and not a field list, so `tests/test_cli.py`'s denominator formula absorbed it through
+`len(PUBLISHED_DOCS)` without a term being added, and the inter-lane gap stays 35. `README.md` now carries
+these numbers, including the `242` it had kept as a stale second mention of the absent lane -- one figure,
+three spellings, and only `249` is what the command prints.
+
+**Five defects the parked renderer carried, and the row that caught each.** The task's implementer died
+mid-work with the module written and the document never emitted, so nothing had yet run the renderer
+against a byte comparison.
+
+1. The ordinal bullet printed the `Record` objects `report.published_severity()` hands back instead of the
+   records *path* -- one line of 322,756 characters, 322 kB of a 42 kB document. The figure-coverage row
+   could not see it: its assertion read `records_path in text` and, once the object is not a `Path`, the
+   quickest repair was `str(records_path) in text`, which the buggy line satisfies by construction. The
+   assertion now names `report.SEVERITY_CERTS[label][0]`, the path the table declares, and it was red
+   before the renderer was changed.
+2. The pinned-build sentence reached the page as `Read from \`%s\`` -- a two-element list where the author
+   meant one string with a `%` substitution, so the template printed verbatim and the sentence lost the file
+   it was pointing at.
+3. The split-quantile bullets printed `published \`qhat\`=None` for both feishu artefacts. A refused
+   certificate holds no set size; the clause is now written only when the artefact carries one, which is the
+   rule the rest of the tree already obeys (the inventory table prints `not opened` for the same reason).
+4. Fixing (2) by substituting `inventory.MASSIVE_PIN_PATH` put an absolute machine path into the document --
+   that constant is resolved from the package location so the loader works from any directory. The
+   machine-path guard row caught it on the rendered text, and the sentence prints `MASSIVE_PIN_LABEL`, the
+   repository-relative name, as the published basis sentences already do.
+5. `read_ledger` opened `docs/VERIFICATION.md` with a bare `Path.read_text`, so an absent ledger escaped as
+   `FileNotFoundError`, which `cli.main` maps to exit 2 -- the operator blamed for a path the module
+   declared. It now goes through `load_published` and refuses at 4 naming `techreport.LEDGER_MD`, pinned at
+   module level and in the gate's own missing-artefact case list.
+
+**One assertion that was never running.** The coverage row's last loop tested `row["id"] in
+techreport.RELATED_WORK`, and that table is a tuple of `(group title, rows)` pairs, so a bare id was
+compared against tuples, was never a member, and every quoted row's `opened` date went unchecked while the
+row printed green. It reads `techreport.cited_ids()` now.
+
+**A fixture that refused on the wrong file.** `tests/test_cli.py`'s missing- and unreadable-artefact case
+lists staged the artefacts the documents are rendered *from* but not the documents themselves, so a scratch
+tree lacked `data/inventory.md` as well as the planted defect and the gate refused on whichever table entry
+came first. Right exit code, wrong witness, and it stayed invisible while the only document case was the
+table's first row. `stage_documents` now copies what `cli.PUBLISHED_DOCS` declares, read from the table, and
+the two new tail-of-table cases (`docs/REPORT.md`, `docs/VERIFICATION.md`) name the file they plant.

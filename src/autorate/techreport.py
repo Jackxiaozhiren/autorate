@@ -172,7 +172,8 @@ def read_ledger(path) -> tuple:
     narrower thing the report needs -- that a bullet it renders is the row's own claim cell and nothing
     else's.
     """
-    text = Path(path).read_text(encoding="utf-8")
+    text = load_published(Path(path), "techreport.LEDGER_MD",
+                          lambda p: p.read_text(encoding="utf-8"))
     rows = []
     for number, raw in enumerate(text.splitlines(), start=1):
         line = raw.lstrip()
@@ -287,7 +288,7 @@ def _what_a_certificate_is(inputs: ReportInputs) -> list:
     rows = inputs.certificate_rows()
     published = sorted({cert.reason for _p, _t, cert in rows if not cert.feasible and cert.reason})
     envelopes = [len(cert.envelope) for _p, _t, cert in rows]
-    label, _records_path, severity, direction = inputs.severity
+    label, _records, severity, direction = inputs.severity
     return [
         "## What a certificate is",
         "",
@@ -336,9 +337,12 @@ def _mechanism(inputs: ReportInputs) -> list:
         if table != "report.CERTS":
             continue
         index = math.ceil((1.0 - cert.alpha) * (cert.n_cal + 1))
-        quantile_lines.append("    - `%s`: `ceil((1 - %s) * (%d + 1))` = %d of %d calibration scores,"
-                              " published `qhat`=%s"
-                              % (path, cert.alpha, cert.n_cal, index, cert.n_cal, cert.qhat))
+        # A refused certificate holds no set size, so the clause about it is written only when the
+        # artefact carries one: printing `qhat=None` would put the renderer's own gap in the document.
+        published = (", published `qhat`=%s" % cert.qhat if cert.qhat is not None
+                     else ", and this artefact publishes no `qhat` at all")
+        quantile_lines.append("    - `%s`: `ceil((1 - %s) * (%d + 1))` = %d of %d calibration scores%s"
+                              % (path, cert.alpha, cert.n_cal, index, cert.n_cal, published))
     unit_lines = ["- `%s`: %s" % (path, cert.meta["unit_note"])
                   for path, _table, cert in inputs.certificate_rows() if cert.meta.get("unit_note")]
     methods = ", ".join("`%s` -> `%s`" % (name, METHODS[name].__name__) for name in sorted(METHODS))
@@ -461,7 +465,7 @@ def _claims(inputs: ReportInputs) -> list:
 def _refusals(inputs: ReportInputs) -> list:
     rows = inputs.certificate_rows()
     certified = [path for path, _t, cert in rows if cert.feasible]
-    label, records_path, severity, direction = inputs.severity
+    label, _records, severity, direction = inputs.severity
     doc, slices = inputs.resplit, inputs.slices
     run = slices["run"]
     lines = [
@@ -498,7 +502,8 @@ def _refusals(inputs: ReportInputs) -> list:
         "",
         "- artefact `%s`, certified from `%s`, at direction `%s`: the publication table"
         " `report.SEVERITY_CERTS` names the rule and `verify` re-derives at it, rather than reading the"
-        " rule back out of the bytes it is checking" % (SEVERITY_CERTS[label][1], records_path, direction),
+        " rule back out of the bytes it is checking"
+        % (SEVERITY_CERTS[label][1], SEVERITY_CERTS[label][0], direction),
         "- verdict: %s" % ("certified" if severity.feasible else "`%s`" % severity.reason),
         "- `%s`: %s" % (SEVERITY_CERTS[label][1], severity.summary()),
         "- its population is synthetic ordinal data with known answers, and the artefact states that in"
@@ -601,8 +606,8 @@ def _envelope(inputs: ReportInputs) -> list:
         "",
         "### The pinned build behind the MASSIVE figures",
         "",
-        "Read from `%s` through `inventory.massive_pin`, which polices its counts against each other",
-        "before anything is printed:",
+        "Read from `%s` through `inventory.massive_pin`, which polices its counts against each other"
+        " before anything is printed:" % MASSIVE_PIN_LABEL,
         "",
     ] + ["- `%s`: %s" % (name, pin[name]) for name in MASSIVE_PIN_FIELDS] + [
         "",
