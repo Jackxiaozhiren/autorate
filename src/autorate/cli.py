@@ -27,11 +27,27 @@ from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORD
                      rederive_slices, render_resplit, render_severity, render_slices,
                      write_report)
 from .severity import DIRECTIONS, certify_severity
+from .techreport import REPORT_MD, load_inputs, render_report
 
 EXIT_CERTIFIED = 0
 EXIT_NOT_CERTIFIABLE = 3
 EXIT_USAGE = 2
 EXIT_DRIFT = 4
+
+# What each published code MEANS, stated once beside the codes that own it. The technical report prints
+# this table instead of writing its own sentence about the exit contract, so a code added here appears
+# there and a code retired here cannot survive in a document nobody re-reads. The values are the
+# constants above, never re-typed.
+EXIT_CODE_MEANINGS = (
+    (EXIT_CERTIFIED, "certified: the certificate holds, or every published number reproduced"),
+    (EXIT_USAGE, "usage: an input this command was handed is wrong, whether the operator named its path "
+                 "or a default supplied it"),
+    (EXIT_NOT_CERTIFIABLE, "not certifiable: the run measured and refused. A result, printed and "
+                           "written, not a crash"),
+    (EXIT_DRIFT, "drift: the committed state cannot reproduce what it publishes -- a number that "
+                 "disagrees, or a published artefact this repository's own tables declare and this run "
+                 "cannot read"),
+)
 
 
 class UsageError(ValueError):
@@ -633,11 +649,20 @@ def _rendered_inventory(inv: dict) -> str:
 
 
 def cmd_report(args) -> int:
+    """Write one of the two published documents, from the inputs and from nothing typed.
+
+    `--full` selects the single technical report (`docs/REPORT.md`) instead of the results table
+    (`docs/RESULTS.md`), and the DEFAULT stays the results table: `verify` byte-compares that file, so a
+    command whose no-flag output changed would break the gate for every reader who never heard of the
+    new flag. Both outputs go through the same `write_report`, so both create the directory they name.
+    """
     records = load_records(Path(RECORDS))
     inv, _ = _inventory()
-    out = Path(args.out)
-    write_report(build_report(inv, certify_all(records),
-                              {b: len(rs) for b, rs in records.items()}), out)
+    full = getattr(args, "full", False)
+    out = Path(args.out or (REPORT_MD if full else RESULTS))
+    text = (_render_techreport_doc(inv, records) if full else
+            build_report(inv, certify_all(records), {b: len(rs) for b, rs in records.items()}))
+    write_report(text, out)
     print("wrote %s" % out)
     return 0
 
@@ -734,6 +759,11 @@ PUBLISHED_DOCS = (
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
     (RESPLIT_MD, lambda inv, records: _render_resplit_doc()),
     (SLICE_MD, lambda inv, records: _render_slice_doc()),
+    # Plan D Task 4's single technical report. LAST in the table on purpose: the rc-4 rows in
+    # `tests/test_cli.py` plant one absent or unreadable published artefact at a time and assert the
+    # refusal names it, and a document that is read first would mask the ones behind it. Order is not a
+    # formatting choice here -- it decides which failure a reader is told about.
+    (REPORT_MD, lambda inv, records: _render_techreport_doc(inv, records)),
 )
 
 
@@ -757,6 +787,22 @@ def _render_slice_doc() -> str:
     """
     doc = load_published(SLICE_JSON, "report.SLICE_JSON", read_slices)
     return render_slices(doc)
+
+
+def _render_techreport_doc(inv, records) -> str:
+    """Plan D Task 4's single technical report, rendered out of the artefacts and nothing else.
+
+    The freeze it describes is the one `cli.PROTOCOL_JSON` declares -- read through `load_published`, so
+    an absent or unreadable protocol is the named refusal at exit 4 rather than a traceback -- and its
+    own digest is printed in the document, so a reader can tell which freeze the report is a reading of.
+    The two tables the report quotes rather than remembers are this file's: `PUBLISHED_DOCS` (resolved
+    when the render runs, so a document added to the table appears in the document) and
+    `EXIT_CODE_MEANINGS`.
+    """
+    protocol = load_published(PROTOCOL_JSON, "cli.PROTOCOL_JSON", load_protocol)
+    return render_report(load_inputs(protocol, inv, records,
+                                     tuple(path for path, _render in PUBLISHED_DOCS),
+                                     EXIT_CODE_MEANINGS))
 
 
 def _render_severity_doc() -> str:
@@ -1114,8 +1160,17 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--limit", type=int, default=20)
     g.set_defaults(fn=cmd_gate)
 
-    r = sub.add_parser("report", help="write docs/RESULTS.md from the inputs")
-    r.add_argument("--out", default=str(RESULTS))
+    r = sub.add_parser("report", help="write the published report from the inputs: docs/RESULTS.md, or "
+                                     "the single technical report with --full")
+    r.add_argument("--out", default=None,
+                   help="where to write (default docs/RESULTS.md, or docs/REPORT.md with --full)")
+    r.add_argument("--full", action="store_true",
+                   help="write `docs/REPORT.md` -- one document that assembles the certificate shape, the "
+                        "mechanism, the five gates as the freeze states them, every refusal, the envelope "
+                        "and known limits, reproduction and the cited related work. Like every published "
+                        "document it is generated from the artefacts, carries no timestamp and no machine "
+                        "path, and `verify` byte-compares it; the default output is unchanged, because "
+                        "`docs/RESULTS.md` is byte-compared too.")
     r.set_defaults(fn=cmd_report)
 
     a = sub.add_parser(
