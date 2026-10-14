@@ -1668,3 +1668,56 @@ tree lacked `data/inventory.md` as well as the planted defect and the gate refus
 came first. Right exit code, wrong witness, and it stayed invisible while the only document case was the
 table's first row. `stage_documents` now copies what `cli.PUBLISHED_DOCS` declares, read from the table, and
 the two new tail-of-table cases (`docs/REPORT.md`, `docs/VERIFICATION.md`) name the file they plant.
+
+## 2026-10-14 -- the spec's own API block, who owns an exit code, and the README's two denominators
+
+Three corrections that share one shape: a claim that was checked by a person instead of by a command.
+
+**Spec section 10 now says what the objects are.** Rulings D-c and D-e were recorded in the ledger and never
+written into the document, so it still printed `cert.risk_bound` -- a field no shape carries, since
+`certificate.Certificate` owns `conditional_error_bound` and `marginal_error_bound` and the name was retired
+by R-20/R-31 -- and one `certify` entry that does not exist. Re-reading the dataclasses for the amendment
+surfaced a third divergence neither ruling covered: `n_min_violations` belongs to
+`certify_choice.GroupsCertificate` while the bounds belong to `Certificate`, and the old block printed them
+side by side as though a single object had all of them. `tests/test_verification_table.py` now polices every
+`object.field` attribution in that block against the shipped dataclasses. Two things about the guard are
+load-bearing: it strips comments before attributing, because the amendment's own header line names
+`cert.risk_bound` in order to say it was retired, and a guard that scanned it would fail the sentence that
+fixes the defect it polices; and it carries its own negative control, which plants the retired name into a
+code line and re-attributes `grouped.n_min_violations` to `cert`, requiring the predicate to name exactly
+those two. Both plants were run, not asserted.
+
+**The slice producer's exit codes are keyed to who named the path** (ledger R-272). `tools/language_slices.py`
+answered 2 for six refusal shapes, four of which complain about bytes at paths in `report.SLICE_RECORDS`
+that no operator flag can name or repair. Those four now answer 4, the code that already means "the checkout
+cannot reproduce what it publishes"; the two refusals about an argument the operator typed (an existing
+`--out` without `--force`, and a `--doc` at undeclared paths) stay at 2. `SliceInputRefusal` moved from
+`ValueError` to `RuntimeError` for the reason `PublishedArtefactUnavailable` documents -- a `ValueError` base
+would fall into the usage mapping -- and that move is what lets the file name `records.MissingRecordField` and
+`groups.UndeclaredGroupKey` in its handler without a widened `except ValueError` that could swallow a refusal
+raised on purpose (the failure B1 Task 1 recorded). One measured shape had no class to name: a committed case
+that states no value for a key the other rows do declare reaches `groups.py:163` and raises a bare
+`ValueError`, so it is converted at the producer's own call site and keeps the certifier's words; giving it a
+class is a fix for every caller of `by_group` and is filed, not quietly done here.
+
+Two disclosures that belong with this change rather than beside it. `tests/test_slice_surface.py`'s
+existing assertion that `refuse_missing_inputs` returns 2 moved to 4: the number changed because the policy
+did, and its message assertions are untouched, which is the test that the ruling moved an attribution rather
+than a claim about behaviour. And `groups.py`'s module docstring still says an `UndeclaredGroupKey` is "a
+`ValueError`, so the CLI exits 2" -- true of `autorate.cli`, which reads an operator-supplied corpus, and no
+longer a general truth about the class, since the same class exits 4 from a tool whose inputs the publication
+table declared.
+
+**`README.md`'s denominators are now policed, both of them.** The absent-lane count has been quoted stale
+twice in one document -- a `242` survived in a sentence about what the run *cannot* prove after every other
+mention had moved -- and both lanes changed again when `docs/REPORT.md` joined the byte-compared documents, so
+the gate now prints `249 /249` without the corpus and `284 /284` with it. Neither figure is a field any
+artefact owns, so nothing re-derived them until now: `tests/test_verify_protocol.py` runs the absent lane,
+derives the present lane from the committed snapshot (`9` `SOURCE.json` digests plus the `26` snapshot keys a
+corpus-less run cannot recompute), checks that derivation against a real second run whenever this machine can
+see the corpus -- which it did, printing "measured directly" -- and refuses any lane-shaped number that names
+neither lane. Proven able to fail by planting `242` back into the document: the row went red naming both real
+denominators, and the file was restored byte-identically, with the restore checked. `docs/G5.md`'s `248/248`
+and `283/283` are deliberately outside the guard's reach: they are a record of the commit that transcript
+names, and the spaced `N /N values` form that quotes a command is what the row reads, while the archive's
+`N/N` is a citation of a measurement at another revision.

@@ -358,3 +358,86 @@ def test_a_claim_note_that_counts_an_arm_must_count_what_the_arm_actually_does(t
     assert int(claimed.group(1)) == len(seen), (
         "protocol.json's G3 note claims %s comparisons and the severity arm makes %d -- the digit and the "
         "arm must not be kept by hand in two places" % (claimed.group(1), len(seen)))
+
+
+def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, monkeypatch, tmp_path):
+    """Every denominator `README.md` quotes in the command's own spelling is one this gate really prints.
+
+    Why the row exists. The absent-lane count has been left stale in prose twice inside one document -- a
+    `242` survived in a sentence about what the run *cannot* prove long after every other mention moved --
+    and both lanes changed again when `docs/REPORT.md` joined the byte-compared documents. No artefact owns
+    either figure, so nothing re-derived them: they lived in a person's memory of a terminal, which is the
+    same failure class `docs/G5.md` was written to close, one layer down.
+
+    Scope, deliberately narrow. Two shapes are policed: `N /N values`, the command's own output form, and
+    `a N run`, the prose form that names a lane. `README.md` also transcribes `docs/G5.md`, whose lanes
+    belong to the commit that transcript names (`248/248`, `283/283` -- written with no space around the
+    slash). Those are a record of a measurement at another revision and are true of it; a guard that
+    indicted them would be a guard against honest citation, so the spaced form is the tell between "this is
+    what the command prints" and "this is what the archive said".
+
+    The corpus-present lane is *derived* rather than run, because the archive is not a committed file and a
+    row that only passes on one machine is a row CI cannot see (the same reasoning that keeps the transcript
+    guard deriving its 35-check gap). It is checked directly as well whenever this machine can see the
+    corpus, so a derivation that drifts from the real second lane is caught here, not in prose.
+
+    Red if: a quoted output line disagrees with the run, its two halves disagree with each other, a
+    lane-shaped number names neither lane, the lanes no longer differ by the comparisons the committed
+    snapshot owns, or either lane stops being quoted at all.
+    """
+    import re
+
+    from autorate.cli import SNAPSHOT_MACHINE_KEYS
+
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus_here"))
+    text = re.sub(r"\s+", " ", (REPO / "README.md").read_text())
+
+    rc = main(["verify", "--protocol", "protocol.json"])
+    printed = capsys.readouterr().out
+    assert rc == 0, (rc, printed[-400:])
+    measured = re.search(r"re-derived (\d+) /(\d+) values", printed)
+    assert measured, printed[-400:]
+    assert measured.group(1) == measured.group(2), measured.groups()
+    n_absent = int(measured.group(1))
+
+    inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
+    non_machine = [k for k in inv if k not in SNAPSHOT_MACHINE_KEYS]
+    gap = len(inv["digests"]) + len(non_machine)
+    n_present = n_absent + gap
+
+    corpus_root = REPO.parent / "laya-0.3.20" / "research" / "benchmarks" / "feishu_zh"
+    if (corpus_root / "data" / "manifest.json").is_file():
+        monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(corpus_root))
+        rc = main(["verify", "--protocol", "protocol.json"])
+        present_out = capsys.readouterr().out
+        assert rc == 0, (rc, present_out[-400:])
+        direct = re.search(r"re-derived (\d+) /(\d+) values", present_out)
+        assert direct and direct.group(1) == direct.group(2), present_out[-400:]
+        assert int(direct.group(1)) == n_present, (
+            "the corpus-present lane prints %s but the committed snapshot says it should be %s = %s + %d "
+            "digests + %d non-machine keys -- the derivation this row falls back to on other machines is "
+            "the thing that just disagreed with the real run"
+            % (direct.group(1), n_present, n_absent, len(inv["digests"]), len(non_machine)))
+        checked = "measured directly"
+    else:
+        checked = "derived from the committed snapshot (corpus not visible here)"
+
+    quoted = sorted({int(m.group(1)) for m in re.finditer(r"\b(\d+) /(\d+) values", text)
+                     if m.group(1) == m.group(2)})
+    assert quoted, "README.md no longer quotes a lane denominator, so this row has nothing to check"
+    unknown = sorted(set(quoted) - {n_absent, n_present})
+    assert not unknown, (
+        "README.md quotes %s as `N /N values`, which matches neither lane: this tree's `verify` prints "
+        "%s with the corpus absent and %s with it present (%s) -- a remembered number, not a derived one"
+        % (unknown, n_absent, n_present, checked))
+    missing = sorted({n_absent, n_present} - set(quoted))
+    assert not missing, (
+        "README.md stopped quoting %s, which is what one of the two lanes prints; the document has to name "
+        "both denominators or a reader cannot tell a corpus-less CI run from a local one" % missing)
+
+    named = sorted({int(m.group(1)) for m in re.finditer(r"\ba (\d{3}) run\b", text, re.IGNORECASE)})
+    assert named, "README.md no longer names a lane in prose, so the second shape has nothing to check"
+    stray = sorted(set(named) - {n_absent, n_present})
+    assert not stray, (
+        "README.md calls something `a %s run`, which is neither lane this gate prints (%s absent, %s "
+        "present)" % (", ".join(str(s) for s in stray), n_absent, n_present))

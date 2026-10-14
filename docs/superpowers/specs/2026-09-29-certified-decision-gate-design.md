@@ -194,23 +194,42 @@ Method: certify the **same** model on the in-training stratum and the held-out s
 ## 10. Public API surface
 
 ```python
-from autorate import certify, Gate
+# Amended 2026-10-14 by rulings D-c and D-e, and by re-reading the dataclasses rather than this block.
+# The original showed one `certify` entry carrying every field below, which was never the shipped surface:
+# `cert.risk_bound` does not exist under that name, and the group key belongs to a different call than the
+# score field. An alias that accepted the old shape would have given one published number two owners --
+# R-20/R-31 deleted exactly that conflation once already, in the bound rather than the API.
 
-cert = certify(records, alpha=0.05, beta=0.01,
-               groups=["language", "option_count"], score_field="answer_confidence")
+from autorate.certify_choice import certify_choice          # the set gate, over per-case records
+from autorate.gate import Gate
 
-cert.autorate            # 0.612  -- fraction automatable at alpha, point estimate
-cert.autorate_ci         # (0.571, 0.651)  Clopper-Pearson at cert.level; lower < upper asserted
-cert.risk_bound          # joint and conditional, labelled separately
-cert.feasible            # True, or False + reason code
-cert.envelope            # ["exchangeability within group assumed", "marginal, not group-conditional",
-                         #  "no label-noise allowance", "n_g >= n_min in 48 of 51 groups"]
-cert.n_min_violations    # ["option_count:11+ : n=41 < 120"]  -- which slices refused, and why
+cert = certify_choice(records, alpha=0.05, beta=0.05, delta=0.05)     # -> certificate.Certificate
+
+cert.autorate                    # fraction automatable at alpha, point estimate
+cert.autorate_ci                 # (lower, upper) Clopper-Pearson at cert.level; lower < upper asserted
+cert.conditional_error_bound     # conditioned on the group the certificate was certified over
+cert.marginal_error_bound        # over the population as a whole, labelled as such
+cert.feasible                    # True, or False + reason code
+cert.envelope                    # the assumptions the bound does NOT buy back
+
+# With a group key the same call returns a different object, and it does not carry the bounds above.
+grouped = certify_choice(records, groups=["language"], alpha=0.05, beta=0.05, delta=0.05)
+grouped.feasible                 # -> certify_choice.GroupsCertificate
+grouped.envelope
+grouped.n_min_violations         # which slices were refused for size, and why: rows carrying the group,
+                                 # the count, the floor and the reason, not bare strings
 
 g = Gate(cert)
-g.decide(record)         # {"action": "auto"|"escalate"|"abstain", "certified": true, "bound": 0.05, "why": "singleton APS set"}
+g.decide(record)         # {"action": "auto"|"escalate"|"abstain", "certified": true, "bound": 0.05, "why": ...}
 ```
 
+The ordinal surfaces are separate callables with their own artefact shapes and are not reachable through
+`certify_choice`: `autorate.certify_score.certify_score` for the closed-set interval guarantee, and
+`autorate.severity.certify_severity` (CLI `autorate severity`) for the one-sided bound, whose
+`severity.SeverityCertificate` carries `feasible` and `envelope` and neither an automation rate nor a bound
+under the set gate's names. `protocol.json`'s rubric block governs the published choice rule only; the other
+certifiers' own defaults are pinned against that owner rather than read from it, because a seed or a floor that
+moved silently re-rolls every bound measured on it.
 `envelope` and `n_min_violations` are **not optional in the output shape**: any serialized certificate lacking them fails validation. That is the encoding of the author's standing "Evidence boundary" practice into a runtime artifact, and it is the difference between this and a metrics script.
 
 CLI: `autorate certify records.jsonl --alpha 0.05 --out cert.json` · `autorate audit laya` · `autorate verify --protocol protocol.json` · `autorate compare cert_a.json cert_b.json`.
@@ -349,9 +368,14 @@ below says what is missing and who owns closing it.
    `cli.SEVERITY_COMPARE_FIELDS` and `cli.SEVERITY_RUBRIC_FIELDS` counts **19** (same method measures massive
    48, resplit 37, slices 81). Recorded here because §11's testing strategy claims every published figure is
    re-derivable, and a figure inside a claim note is a published figure that no gate re-derives today.
+   *(Superseded later the same day by the sixth freeze: the note reads 19, and item 5's row now compares the
+   digit in any claim note against the count the arm produces. The sentence above is kept as what was true
+   when it was written.)*
 4. **§2 G5 now has a witness at a named revision, and the no-network scope is narrower than the criterion's
    prose.** `autorate verify --protocol protocol.json` printed `re-derived 248 /248 values` at exit 0 on three
    CI jobs (ubuntu, macos, offline arm) for commit `56b3f76` — the frozen comparison is platform-witnessed
    across two libc families. The scope limit is stated in the transcript itself: the no-network claim covers
    the gate steps, not the `uv sync` that provisions them, and the corpus-present lane cannot be reproduced by
    any runner because the archive is not a committed file.
+
+5. **§10's API block now names the object each field lives on.** Rulings D-c and D-e were taken in the ledger and never written here, so the document kept showing `cert.risk_bound` and a single `certify` entry that the code does not have; re-reading the dataclasses found a third divergence neither ruling covered -- bounds from `certificate.Certificate` and `n_min_violations` from `certify_choice.GroupsCertificate` printed as one object's attributes. `§10` now separates them, and `tests/test_verification_table.py::test_every_field_named_by_the_spec_api_block_lives_on_that_object` checks each `object.field` against that object's own dataclass, so an invented or misplaced attribute reddens a test instead of becoming folklore.

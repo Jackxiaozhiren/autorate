@@ -2,6 +2,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 DOC = Path(__file__).resolve().parents[1] / "docs" / "VERIFICATION.md"
 ALLOWED = {"verified", "withdrawn"}
 
@@ -205,3 +207,99 @@ def test_the_block_check_proves_it_can_fire():
                if not head.strip().startswith("| id | claim |")]
     assert orphans, "the check cannot see a headerless row"
     assert not [h for h, _ in _table_blocks(body) if not h.strip().startswith("| id | claim |")]
+
+
+# --------------------------------------------------------------- spec API surface (rulings D-c / D-e)
+
+def _spec_api_block() -> str:
+    """The fenced python block under spec section 10, exactly as the document carries it."""
+    text = _spec_text()
+    start = text.index("## 10. Public API surface")
+    fence = text.index("```python", start)
+    end = text.index("```", fence + len("```python"))
+    return text[fence + len("```python"):end]
+
+
+def _api_objects() -> dict:
+    """The two shapes section 10 documents, read from their dataclasses rather than from prose."""
+    import dataclasses
+    import importlib
+
+    certificate = importlib.import_module("autorate.certificate")
+    certify_choice = importlib.import_module("autorate.certify_choice")
+    out = {}
+    for key, cls in (("cert", certificate.Certificate), ("grouped", certify_choice.GroupsCertificate)):
+        out[key] = ({f.name for f in dataclasses.fields(cls)}
+                    | {a for a in dir(cls) if not a.startswith("_")})
+    return out
+
+
+def _attributed_fields(block: str) -> tuple:
+    """Every `object.field` the block attributes, with comments removed first.
+
+    Comment-stripping is the whole point, not a nicety: the amendment's header lines name `cert.risk_bound`
+    in order to say it was retired. A guard that scanned them would fail the sentence that fixes the defect it
+    is policing -- the same trap the withdrawn-row guard above had to step around.
+    """
+    code = "\n".join(line.split("#")[0] for line in block.splitlines())
+    return tuple(re.findall(r"\b(cert|grouped)\.([a-z_]+)", code))
+
+
+@pytest.mark.parametrize("object_name,attr", [
+    ("cert", "autorate"), ("cert", "autorate_ci"), ("cert", "conditional_error_bound"),
+    ("cert", "marginal_error_bound"), ("cert", "feasible"), ("cert", "envelope"),
+    ("grouped", "feasible"), ("grouped", "envelope"), ("grouped", "n_min_violations"),
+])
+def test_the_api_objects_expose_every_field_the_amendment_attributes(object_name, attr):
+    """The premise the guard below stands on: each named object really carries the field section 10 cites.
+
+    Red if a dataclass loses a field section 10 cites. This is NOT the negative control for the row below --
+    it proves the sets being consulted are the shipped shapes; the next row proves the guard can fail.
+    """
+    assert attr in _api_objects()[object_name], (
+        object_name, attr, sorted(_api_objects()[object_name])[:8])
+
+
+def test_the_api_guard_proves_it_can_fire():
+    """Negative control: the same predicate must refuse a planted attribution, in two ways.
+
+    The first plant moves the retired name `cert.risk_bound` out of the comment and into a code line, which
+    is exactly the edit that let the invented field survive in the document. The second re-attributes a real
+    field to the wrong object -- `n_min_violations` belongs to `GroupsCertificate` and `Certificate` does not
+    carry it -- so a check that only asked "does this field exist somewhere" would stay green.
+    """
+    objects = _api_objects()
+    block = _spec_api_block()
+
+    planted = block.replace("cert.autorate  ", "cert.autorate\n cert.risk_bound      ")
+    assert _attributed_fields(block) != _attributed_fields(planted), "the plant did not land in the parsed text"
+    assert sorted({(o, f) for o, f in _attributed_fields(planted) if f not in objects[o]}) == \
+        [("cert", "risk_bound")]
+
+    swapped = block.replace("grouped.n_min_violations", "cert.n_min_violations")
+    assert _attributed_fields(block) != _attributed_fields(swapped), "the plant did not land in the parsed text"
+    missing = sorted({(o, f) for o, f in _attributed_fields(swapped) if f not in objects[o]})
+    assert missing == [("cert", "n_min_violations")], (
+        "re-attributing a real field to the wrong object must be named by the predicate, got %s" % (missing,))
+
+
+def test_every_field_section_10_attributes_lives_on_that_object():
+    """Section 10 printed two objects' fields as one's, and named a bound that was never shipped.
+
+    Rulings D-c and D-e were recorded in the ledger and never written into the spec, so the document still
+    showed `cert.risk_bound` (no shape carries it; `Certificate` names `conditional_error_bound` and
+    `marginal_error_bound`) and a single `certify` entry that does not exist. Re-reading the dataclasses
+    surfaced a third divergence neither ruling covered: `n_min_violations` belongs to `GroupsCertificate`
+    while the bounds belong to `Certificate`, and the old block printed them side by side as though one
+    object had all of them.
+
+    Red if: a field the block attributes to `cert` or `grouped` is absent from that object's dataclass, or the
+    block stops attributing any field to a named object (an unattributed `cert.<field>` is the ambiguity that
+    let the invented name survive).
+    """
+    objects = _api_objects()
+    cited = _attributed_fields(_spec_api_block())
+    assert len(cited) >= 8, "section 10 stopped attributing fields to objects: %r" % (cited,)
+    missing = sorted({(obj, field) for obj, field in cited if field not in objects[obj]})
+    assert not missing, (
+        "spec section 10 attributes fields to objects that do not carry them: %s" % (missing,))
