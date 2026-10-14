@@ -12,8 +12,9 @@
 #     and a deliberate fetch that has to fail), because "no model" and "no network" are properties, not
 #     intentions;
 #   * both lanes run, so the two denominators and the gap between them are printed rather than described;
-#   * three falsifications are planted and restored byte-identically, because a green that cannot go red is
-#     not evidence.
+#   * four falsifications are planted, each checked that it actually moved the bytes it aimed at, and each
+#     restored with the restore checked rather than assumed, because a green that cannot go red is not
+#     evidence and a defect that never fired is not a falsification;
 #
 # Scratch paths never reach the transcript: every recorded value passes through `mask`, and
 # `tools/g5_transcript.py` refuses to write a document that still matches a machine-path shape. The corpus
@@ -37,11 +38,12 @@ RECORD="$WORK/record.tsv"
 mkdir -p "$EXPORT" "$WORK/home"
 : > "$RECORD"
 
-# Both spellings of the scratch path, because macOS resolves its own temp root through `/private`: the
-# interpreter reports `sys.prefix` as `/private/var/folders/.../g5-XXXX/...` while `mktemp -d` returned the
-# same directory as `/var/folders/...`. Masking only the literal `mktemp` gave a record whose prefix line the
-# emitter was right to refuse -- measured, not predicted: the first run of this script stopped here, at the
-# emitter, and wrote nothing.
+# Both spellings of the scratch path, because macOS resolves its own temp root through the `/private`
+# prefix: the interpreter reports `sys.prefix` as the resolved spelling while `mktemp -d` handed back the
+# short one, and they are one directory. Masking only the literal `mktemp` gave a record whose prefix line
+# the emitter was right to refuse -- measured, not predicted: the first run of this script stopped here, at
+# the emitter, and wrote nothing. Both spellings are named here as a relation, never as a path with a
+# directory under it: `tests/test_g5_transcript.py` scans this file for the instantiated shape.
 WORK_REAL=$(cd "$WORK" && pwd -P)
 mask() { sed -e "s|$WORK_REAL|<export-dir>|g" -e "s|$WORK|<export-dir>|g"; }
 put() { # put <dotted.key> <value...> : one masked line per key, so the emitter has a flat schema to read
@@ -111,13 +113,22 @@ AUTORATE_FEISHU_ROOT="$CORPUS" step lane_present \
 # was written to show, so the drift half is planted separately, at step four, on a value the loader cannot
 # veto: a published artefact's stamped digest.
 restore_check() { # restore_check <record-prefix> <backup> <target>
+  put "$1.target" "$3"
   cp "$2" "$3" || { put "$1.restored" "RESTORE FAILED (copy back) for $3"; return; }
   if cmp -s "$2" "$3"; then put "$1.restored" "$3 restored byte-identical"
   else put "$1.restored" "RESTORE FAILED (differs) for $3"; fi
 }
+plant_check() { # plant_check <record-prefix> <backup> <target> : did the defect actually move the bytes?
+  # A `sed` whose pattern no longer matches, or a setter that raised, used to record rc 0 and publish a
+  # "falsification" that falsified nothing: every later row stayed green because nothing was asked to change.
+  # The note is the mechanism -- `tools/g5_transcript.py` refuses a transcript that carries one, so a plant
+  # that did not fire stops the document rather than passing for evidence.
+  cmp -s "$2" "$3" && put "$1.note" "PLANT DID NOT LAND for $3"
+}
 
 cp protocol.json "$WORK/protocol.orig"
 sed -i '' 's/"alpha": 0.05/"alpha": 0.07/' protocol.json
+plant_check tamper_protocol "$WORK/protocol.orig" protocol.json
 AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir step tamper_protocol \
   "move rubric.alpha to 0.07 in the export's protocol.json (measured: the loader refuses at 2)" \
   "$BIN" verify --protocol protocol.json
@@ -125,13 +136,15 @@ restore_check tamper_protocol "$WORK/protocol.orig" protocol.json
 
 cp data/records_feishu.jsonl "$WORK/records.orig"
 cp data/records_ordinal_synthetic.jsonl data/records_feishu.jsonl
+plant_check swap_records "$WORK/records.orig" data/records_feishu.jsonl
 AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir step swap_records \
-  "replace data/records_feishu.jsonl with another valid self-consistent file (expect rc 4 on the records digest)" \
+  "replace data/records_feishu.jsonl with another valid self-consistent records file (measured: rc 4 from report.BACKENDS in build_report, which names the backend no certificate covers -- the records digest is never reached, because the artefact refusal aborts cmd_verify first)" \
   "$BIN" verify --protocol protocol.json
 restore_check swap_records "$WORK/records.orig" data/records_feishu.jsonl
 
 cp data/inventory.md.json "$WORK/inventory.orig"
 printf '[]\n' > data/inventory.md.json
+plant_check wrong_shape_snapshot "$WORK/inventory.orig" data/inventory.md.json
 AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir step wrong_shape_snapshot \
   "put the JSON array [] at data/inventory.md.json (expect rc 4 as a named refusal)" \
   "$BIN" verify --protocol protocol.json
@@ -143,7 +156,7 @@ fi
 restore_check wrong_shape_snapshot "$WORK/inventory.orig" data/inventory.md.json
 
 cp data/cert_laya.json "$WORK/cert.orig"
-$PY3 - <<'INNER'
+$PY3 - <<'INNER' || put tamper_artefact_digest.note "plant setter failed (heredoc rc nonzero)"
 import json, pathlib
 target = pathlib.Path("data/cert_laya.json")
 doc = json.loads(target.read_text())
@@ -151,6 +164,7 @@ digest = doc["meta"]["protocol_digest"]
 doc["meta"]["protocol_digest"] = ("1" if digest[0] == "0" else "0") + digest[1:]
 target.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
 INNER
+plant_check tamper_artefact_digest "$WORK/cert.orig" data/cert_laya.json
 AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir step tamper_artefact_digest \
   "change one hex digit of data/cert_laya.json meta.protocol_digest (expect rc 4 as drift on the stamped meta)" \
   "$BIN" verify --protocol protocol.json
