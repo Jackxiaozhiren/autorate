@@ -10,6 +10,12 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, because `tests/test_g5_transcript.py` reads the `protocol.json` of the commit the
+          # transcript NAMES. The default shallow checkout keeps only HEAD, so the digest and ancestry rows
+          # failed on the runner with "invalid object name" while passing in every real clone and skipping
+          # inside a `git archive` export -- measured, not designed around.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v4
         with: { python-version: "3.12" }
       - run: uv sync --frozen --extra dev
@@ -73,6 +79,12 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, because `tests/test_g5_transcript.py` reads the `protocol.json` of the commit the
+          # transcript NAMES. The default shallow checkout keeps only HEAD, so the digest and ancestry rows
+          # failed on the runner with "invalid object name" while passing in every real clone and skipping
+          # inside a `git archive` export -- measured, not designed around.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v4
         with: { python-version: "3.12" }
       - run: uv sync --frozen --extra dev

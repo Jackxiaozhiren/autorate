@@ -88,3 +88,20 @@ def test_a_bare_verify_step_is_named_rather_than_waved_through():
 def test_the_predicate_keys_on_the_command_not_on_spacing(form):
     """A tab-continuation or a double space must not hide a step from the guard."""
     assert VERIFY_RX.search("- run: uv run --frozen %s" % form)
+
+
+def test_the_runner_fetches_the_history_the_transcript_rows_need():
+    """`fetch-depth: 0` is not a preference; two G5 rows read an earlier commit's freeze.
+
+    Measured on CI run 38503812390: the default shallow checkout gave the runner one commit in its object
+    database, `git show <named>:protocol.json` failed with "Not a valid object name", and the transcript's
+    digest and ancestry rows went red on the platform while passing in every full clone and skipping inside a
+    `git archive` export. Reproduced locally with a `file://` clone at depth 1 (1 object) and the same fetch
+    unshallowed (208 objects, the object present). Plant: drop `fetch-depth: 0` from a checkout step and this
+    row names the step instead of letting the failure surface three files away.
+    """
+    lines = WORKFLOW.read_text().splitlines()
+    checkouts = [i for i, line in enumerate(lines) if "actions/checkout@" in line]
+    assert checkouts, "the workflow no longer checks the repository out, so the transcript rows have no runner"
+    shallow = [lines[i].strip() for i in checkouts if "fetch-depth: 0" not in "\n".join(lines[i:i + 8])]
+    assert not shallow, "checkout steps without full history: %s" % shallow
