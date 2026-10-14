@@ -255,7 +255,11 @@ def test_the_producer_refuses_a_declared_input_file_it_cannot_find(tmp_path, mon
     (missing / "records_massive_sw.jsonl").unlink()
     monkeypatch.chdir(missing)
     code, err = language_slices.refuse_missing_inputs(missing)
-    assert code == 2, code
+    # 4, not 2 (ledger R-272): the absent file is a path `report.SLICE_RECORDS` declares and no operator
+    # argument names, so it is the checkout failing to reproduce what it publishes -- the same reasoning
+    # `docs/SLICES.md:5` already gives its reader ("refuses the artefact at exit 4 if it is absent or
+    # unreadable"). The message assertions below are unchanged: the ruling moved a code, not a sentence.
+    assert code == 4, code
     assert "records_massive_sw.jsonl" in err and "records_massive_de.jsonl" not in err, err
 
 

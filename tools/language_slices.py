@@ -22,9 +22,15 @@ it lands in would depend on which field the reader believes. `split_records.py` 
 split direction; `check_rows` inherits it here, and also proves the id set does not collide across files --
 a repeated id would be one observation counted twice, which is exactly how a per-slice denominator inflates.
 
-*Exit codes are the tool's contract.* 0 when the document is written (a refusing run is a legitimate
-publication -- that is what G4 asked for), 2 for the refusals above and for an existing `--out` without
-`--force`. Nothing escapes un-mapped: the refusals are this file's own exception types.
+*Exit codes are the tool's contract, and the axis is who named the path.* 0 when the document is
+written (a refusing run is a legitimate publication -- that is what G4 asked for). 2 for the two refusals
+about an argument the operator typed: an existing `--out` without `--force`, and a `--doc` at paths the
+publication table does not declare. 4 for every refusal about bytes at a path this file declares
+(`report.SLICE_RECORDS`), because no flag of the operator's names or repairs those paths -- the same
+distinction `autorate verify` draws, and the one `docs/SLICES.md` already states to its reader. Wrong-shaped
+declared content is refused too: a `slices` value that is not a mapping by name in `check_rows`, and a
+record the loader or the certifier refuses (`records.MissingRecordField`, `groups.UndeclaredGroupKey`) by
+class at `main`'s boundary. Every shape measured to escape this file exits inside the 0/2/4 set.
 """
 from __future__ import annotations
 
@@ -33,19 +39,23 @@ import json
 import sys
 from pathlib import Path
 
-from autorate import report
+from autorate import groups, records, report
 from autorate.certificate import ALPHA, BETA, DELTA, METHOD, SEED
 from autorate.certify_choice import certify_choice
+from autorate.cli import EXIT_DRIFT, EXIT_USAGE
 
 ARTEFACT = report.SLICE_JSON
 PRODUCER = "tools/language_slices.py"
 
 
-class SliceInputRefusal(ValueError):
-    """A declared input is missing, collides, or describes its own row twice.
+class SliceInputRefusal(RuntimeError):
+    """A declared input is missing, collides, describes its own row twice, or has no readable shape.
 
-    A `ValueError` so an operator sees a usage refusal rather than a traceback, and so the reason names the
-    row: "one of the inputs was wrong" is not actionable when the file holds 2,974 rows.
+    A `RuntimeError`, not a `ValueError`, for the reason `report.PublishedArtefactUnavailable` gives: the
+    code for "the checkout cannot reproduce what it publishes" is 4, and a `ValueError` base would fall into
+    the usage mapping instead. It is also what lets `main` name the two loader and certifier classes without
+    a widened `except ValueError` swallowing this refusal -- the failure B1 Task 1 recorded. The message
+    still names the row, because "one of the inputs was wrong" is not actionable when the file holds 2,974.
     """
 
 
@@ -63,7 +73,7 @@ def declared_inputs(directory=None) -> list:
 
 
 def refuse_missing_inputs(directory=None) -> tuple:
-    """`(2, message)` naming every declared input that is not there, or `(0, "")`.
+    """`(EXIT_DRIFT, message)` naming every declared input that is not there, or `(0, "")`.
 
     Checked before any certifying, because certifying 2 of 3 languages and publishing it as a language-slice
     run would state a population the artefact describes differently than it is. The message names only the
@@ -73,8 +83,8 @@ def refuse_missing_inputs(directory=None) -> tuple:
     if not missing:
         return 0, ""
     where = " under %s" % directory if directory is not None else ""
-    return 2, ("%s declares %d input file(s) this run needs and %s cannot be found: %s. Nothing was written"
-               % (PRODUCER, len(report.SLICE_RECORDS), where, ", ".join(missing)))
+    return EXIT_DRIFT, ("%s declares %d input file(s) this run needs and %s cannot be found: %s. Nothing "
+                        "was written" % (PRODUCER, len(report.SLICE_RECORDS), where, ", ".join(missing)))
 
 
 def check_rows(per_file) -> None:
@@ -89,7 +99,14 @@ def check_rows(per_file) -> None:
         for row in rows:
             case_id = str(row.get("case_id", ""))
             parts = case_id.split("/")
-            stated = (row.get("slices") or {}).get(report.SLICE_GROUP_KEY)
+            slices = row.get("slices")
+            if slices is not None and not isinstance(slices, dict):
+                raise SliceInputRefusal(
+                    "%s: row %r declares %s as a %s, not a mapping -- the slice key this run conditions on "
+                    "cannot be read out of a value of that shape, and guessing it would certify a population "
+                    "the bytes do not state"
+                    % (path, row.get("id"), report.SLICE_GROUP_KEY, type(slices).__name__))
+            stated = (slices or {}).get(report.SLICE_GROUP_KEY)
             if len(parts) >= 2 and stated is not None and parts[1] != stated:
                 raise SliceInputRefusal(
                     "%s: row %r states case_id %r, whose language segment is %r, but declares "
@@ -122,8 +139,20 @@ def build_document() -> dict:
     # re-reads, so `inputs[].rows` has one owner. Two definitions of it -- every JSON line here, the backend's
     # Records there -- agree only while every committed row happens to be that backend, and "happens to" is
     # not a contract.
-    records, inputs = report.slice_inputs()
-    run = certify_choice(records, groups=[report.SLICE_GROUP_KEY], **rubric).to_dict()
+    batch, inputs = report.slice_inputs()
+    try:
+        run = certify_choice(batch, groups=[report.SLICE_GROUP_KEY], **rubric).to_dict()
+    except ValueError as exc:
+        # Refused here rather than by a blanket clause in `main`, because this shape has no class to name:
+        # measured, a committed case that states no value for a key the OTHER rows do declare reaches
+        # `groups.py:163` and raises a bare `ValueError` (`UndeclaredGroupKey` is the sibling for "no record
+        # declares the key at all", which IS named and IS caught in `main` by class). Converting at the call
+        # site keeps the certifier's own words in the refusal and still lands on 4; giving that shape its own
+        # class in `groups.py` is the deeper fix and is filed rather than done here, because it belongs to
+        # every caller of `by_group` and not to this tool. `SliceInputRefusal` is a RuntimeError, so this
+        # clause cannot swallow a refusal this file raises on purpose.
+        raise SliceInputRefusal("the certifier refused these rows: %s: %s"
+                                % (type(exc).__name__, exc)) from exc
     return {
         "backend": report.SLICE_BACKEND,
         "group_key": report.SLICE_GROUP_KEY,
@@ -144,7 +173,7 @@ def main(argv=None) -> int:
     out = Path(args.out)
     if out.exists() and not args.force:
         print("%s: %s already exists; pass --force to replace it" % (PRODUCER, out), file=sys.stderr)
-        return 2
+        return EXIT_USAGE
     # The document quotes the artefact at its published path, so it may only be written by the run that
     # produces that artefact, and only at the paths the publication table declares -- the same rule the
     # severity `--doc` guard enforces: a document naming the published paths while carrying figures from
@@ -153,16 +182,22 @@ def main(argv=None) -> int:
         print("%s: --doc publishes %s, which quotes the artefact at its declared path, so it requires "
               "--out %s --doc %s (this run named --out %s --doc %s). Nothing was written"
               % (PRODUCER, report.SLICE_MD, ARTEFACT, report.SLICE_MD, args.out, args.doc), file=sys.stderr)
-        return 2
+        return EXIT_USAGE
     code, message = refuse_missing_inputs()
     if code:
         print(message, file=sys.stderr)
         return code
     try:
         doc = build_document()
-    except (SliceInputRefusal, report.PublishedArtefactUnavailable) as exc:
-        print("%s: %s" % (PRODUCER, exc), file=sys.stderr)
-        return 2
+    except (SliceInputRefusal, report.PublishedArtefactUnavailable,
+            records.MissingRecordField, groups.UndeclaredGroupKey) as exc:
+        # 4, not 2: every class in this tuple is a complaint about bytes at a path the publication table
+        # declared. The two that are not this file's own are named here rather than caught as `ValueError`,
+        # because a blanket `except ValueError` would also swallow a refusal this file raises on purpose --
+        # R-115's ruling on the identical escape, read the other way round.
+        print("%s: DECLARED INPUT UNREADABLE (%s): %s -- this run is a function of %s. Nothing was written"
+              % (PRODUCER, type(exc).__name__, exc, ", ".join(sorted(report.SLICE_RECORDS))), file=sys.stderr)
+        return EXIT_DRIFT
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
