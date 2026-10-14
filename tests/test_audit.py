@@ -1203,3 +1203,32 @@ def test_a_stale_published_unit_sentence_would_be_caught(monkeypatch, tmp_path, 
         "the row failed, but not because of the planted unit word: %s" % message[:200])
     assert "no unit sentence rendered" not in message, (
         "the row failed on an empty render rather than on the stale artefact")
+
+
+def test_the_audit_names_the_second_harness_that_carries_the_name(laya_choice):
+    """#31: upstream publishes the field name `confidence` in TWO of its own harnesses, on two scales.
+
+    `docs/AUDIT.md` already discloses that `laya/common.py` defines the name twice (273 as `max(p)`, 289 as
+    the entropy scale) and that the response key is filled by the second. What it did not say, and what this
+    row now requires, is that upstream's own evaluation harness disagrees with its runtime about the same
+    key: `research/eval/laya_eval.py:265` writes the per-case record's `confidence` as
+    `round(float(probs.max()), 6)` -- the FIRST definition -- while the archived corpus this audit reads
+    carries the SECOND under that key (measured, `scales.scale_attribution`: `laya/choice` is
+    `entropy_only` over 192 of 192 rows, worst row distance to the entropy scale 2.23e-4).
+
+    So a reader holding "a file with a `confidence` field from laya" cannot tell which quantity they have
+    without knowing which program wrote it. That is this repository's thesis in one line, and it is evidence
+    about upstream's surfaces rather than about a model, which is why it belongs in the published artefact
+    and not in a comment.
+
+    RED if the renderer stops naming the harness, the site, or the value it writes. This row was written
+    before the sentence existed, so its first run was red on all three.
+    """
+    text = render_audit({"laya": audit_fields(laya_choice, gate=0.85)})
+    assert "research/eval/laya_eval.py:265" in text, text[:400]
+    assert "probs.max()" in text, "the harness's own expression must be quoted, not paraphrased"
+    assert "two harnesses" in text, "the sentence has to say the collision is between surfaces, not definitions"
+    # and the published document, read live: a doc that drifted from the renderer is what `verify` catches,
+    # but this row is the one that says WHICH sentence it is checking.
+    published = AUDIT_MD.read_text()
+    assert "research/eval/laya_eval.py:265" in published, "docs/AUDIT.md was not regenerated for this change"

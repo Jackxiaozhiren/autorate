@@ -188,6 +188,12 @@ UPSTREAM_ANSWER_BUILDER = ("laya/agent.py:684, where the response's `confidence`
 # in the reader's own words.
 LOCAL_RECORD_KEY = ("`readers/feishu_zh.py`, which stores the archive's `confidence` under the "
                     "record key `scores[\"reported_confidence\"]`")
+# The second harness inside upstream that carries the same field name on the OTHER scale. Cited by file and
+# line so a reader can open it: `research/eval/laya_eval.py` writes its per-case record with `confidence` set
+# to `probs.max()`, while the runtime's response key holds the entropy scale. Which one a file holds is a
+# fact about the program that wrote it, and that is the disclosure #31 asked to be published.
+UPSTREAM_EVAL_HARNESS = ("`research/eval/laya_eval.py:265`, upstream's evaluation harness, writes each case "
+                         "record's `confidence` as `round(float(probs.max()), 6)`")
 
 
 def _checked_fields(fields: Sequence) -> tuple:
@@ -875,8 +881,13 @@ def render_audit(audits: dict) -> str:
         "and it is the second of the two that fills that key: %s. Which scale the carried value is "
         "actually on is measured per slice by `scales.scale_attribution` and printed with each "
         "backend below, so each row names both the definition it was read as and the attribution "
-        "verdict for its own slice."
-        % (UPSTREAM_ANSWER_CONFIDENCE, UPSTREAM_ENTROPY_CONFIDENCE, UPSTREAM_ANSWER_BUILDER))
+        "verdict for its own slice. The name is carried on two scales by two harnesses inside "
+        "upstream's own tree: %s -- the evaluation harness -- which is the first definition, while "
+        "the response key above is filled by the second. A field name therefore does not say which "
+        "quantity a file holds; only the program that wrote it does, and the `attributed scale` "
+        "column is this repository's measurement of which one the audited corpus carries."
+        % (UPSTREAM_ANSWER_CONFIDENCE, UPSTREAM_ENTROPY_CONFIDENCE, UPSTREAM_ANSWER_BUILDER,
+           UPSTREAM_EVAL_HARNESS))
     curve_bullet = (
         "- risk-coverage curve: spec \u00a77.3 asks for the frontier, not one gate, so each field "
         "below prints the sweep `frontier` made over `lambda` at this run's own `delta = %.2f`, "
