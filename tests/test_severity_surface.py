@@ -454,9 +454,9 @@ def test_the_ordinal_arm_is_counted_in_both_lanes_and_the_total_is_derived(tmp_p
 
     Two statements: the corpus-less total equals the formula over the same owners the gate loops over (the
     `test_cli.py` derivation carries the same arithmetic, so neither can be quietly narrowed), and emptying
-    the severity table moves the total by exactly the rows that table adds -- so a row that stopped being
-    counted cannot hide inside a number that happens to match. In-process, because a subprocess would not
-    see the patched tables.
+    the severity table moves the total by exactly the rows that table adds, document rows included -- so a
+    row that stopped being counted cannot hide inside a number that happens to match. In-process, because a
+    subprocess would not see the patched tables.
     """
     def absent_total():
         monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus"))
@@ -480,11 +480,19 @@ def test_the_ordinal_arm_is_counted_in_both_lanes_and_the_total_is_derived(tmp_p
     # denominator claim that would have passed on one row of twenty.
     monkeypatch.setattr(cli, "SEVERITY_CERTS", {})
     monkeypatch.setattr(report, "SEVERITY_CERTS", {})
+    # Two document rows go with the ordinal arm, not one. `docs/SEVERITY.md` renders the artefact, and
+    # `docs/REPORT.md` reads it through `report.published_severity()` in its own certificate section, so a
+    # hypothetical tree with no ordinal publication has no technical report either -- emptying the table and
+    # dropping one document leaves the gate refusing on the other, which is exactly what this row measured
+    # when Task 4 joined the table. The delta is therefore the arm plus one row per document dropped, and
+    # the dropped rows are read from the filter rather than typed.
+    dropped = tuple(row for row in cli.PUBLISHED_DOCS
+                    if str(row[0]) in {str(cli.SEVERITY_MD), str(cli.REPORT_MD)})
+    assert len(dropped) == 2, dropped
     monkeypatch.setattr(cli, "PUBLISHED_DOCS",
-                        tuple(row for row in cli.PUBLISHED_DOCS
-                              if str(row[0]) != str(cli.SEVERITY_MD)))
+                        tuple(row for row in cli.PUBLISHED_DOCS if row not in dropped))
     without_severity = absent_total()
-    assert with_severity - without_severity == rows + 1, (with_severity, without_severity)
+    assert with_severity - without_severity == rows + len(dropped), (with_severity, without_severity)
 
 
 def _drift_labels(err):
@@ -510,9 +518,11 @@ def test_an_edited_published_severity_artefact_is_drift_four_not_a_pass(tmp_path
     """The new arm must be able to fail on the new numbers, or it is decoration beside them.
 
     The whole refusal set is pinned, not three `any()` probes: an `ahat` edit moves the field, the summary
-    that quotes it, and `docs/SEVERITY.md` that renders it (measured, in that order), and `meta` is NOT in
-    the set because the producer echoes only `alpha`/`delta`/`seed` there. A fourth line appearing beside
-    these is a claim this row would rather see than swallow.
+    that quotes it, `docs/SEVERITY.md` that renders it (measured, in that order) and `docs/REPORT.md`, whose
+    certificate section prints the ordinal `ahat` beside its own count, and `meta` is NOT in the set because
+    the producer echoes only `alpha`/`delta`/`seed` there. A line appearing beside these is a claim this row
+    would rather see than swallow -- which is how the technical report's fourth line was found rather than
+    waived: a published figure now has two documents, and an edit to it reddens both.
 
     Both non-obvious members were planted. Editing the summary so it stops quoting `ahat` dropped
     `cert ordinal.summary` and reddened this row. Editing the document's own `ahat` bullet did NOT drop the
@@ -523,7 +533,8 @@ def test_an_edited_published_severity_artefact_is_drift_four_not_a_pass(tmp_path
     code = main(["verify", "--protocol", "protocol.json"])
     assert code == 4, code
     assert _drift_labels(capsys.readouterr().err) == {
-        "cert ordinal.ahat", "cert ordinal.summary", "%s byte-identical" % cli.SEVERITY_MD}
+        "cert ordinal.ahat", "cert ordinal.summary", "%s byte-identical" % cli.SEVERITY_MD,
+        "%s byte-identical" % cli.REPORT_MD}
 
 
 def test_a_severity_artefact_produced_without_a_protocol_refuses_by_name(tmp_path, monkeypatch, in_repo,

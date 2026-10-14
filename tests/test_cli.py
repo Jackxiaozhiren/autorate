@@ -77,6 +77,24 @@ def stage_published(work):
         shutil.copy(REPO / rel, work / rel)
 
 
+def stage_documents(work):
+    """Copy into `work` every document the gate's own document table declares.
+
+    `stage_published` brings the artefacts the documents are rendered FROM; this brings the documents the
+    byte comparison reads. The difference matters as soon as the planted defect is not the table's first
+    entry: a scratch tree that also lacks `data/inventory.md`, say, refuses on whichever entry comes first,
+    which is the right exit code for the wrong witness. The paths are read from `cli.PUBLISHED_DOCS`, so a
+    document added to the table is staged here too and no list inside this file has to remember it (R-168).
+    """
+    from autorate.cli import PUBLISHED_DOCS
+
+    for path, _render in PUBLISHED_DOCS:
+        source = REPO / path
+        if source.is_file():
+            (work / path).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source, work / path)
+
+
 def stage_committed_tree(work, directories=("data", "docs")):
     """Copy the committed published trees AND the freeze into a scratch checkout.
 
@@ -162,7 +180,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # before MAJ-3, and it is what a future narrowing of `PUBLISHED_DOCS` has to edit first.
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
                                                          "docs/AUDIT.md", "docs/SEVERITY.md",
-                                                         "docs/RESPLIT.md", "docs/SLICES.md"}, PUBLISHED_DOCS
+                                                         "docs/RESPLIT.md", "docs/SLICES.md",
+                                                         "docs/REPORT.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
@@ -185,6 +204,11 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # dicts would drift on JSON's list-versus-tuple round-trip -- a fact about the file, not about the
     # refusal. Absent lane measured 201 before this arm and 277 after:
     # 13 + 8x3 + 6x3 + 8 + 1 + 2x3 drift rows, 5 rubric rows, 1 document row.
+    # Plan D Task 4's technical report adds exactly one term, the document row already carried by
+    # `len(PUBLISHED_DOCS)`: the arm is a byte comparison, not a field list, so the formula moves on its own
+    # and the only thing to edit here is the membership literal above. Measured: absent lane 248 before the
+    # document joined the table and 249 after, present lane 283 to 284, both rc 0 -- the inter-lane gap
+    # stays 35, because the report is rendered from committed bytes in both lanes.
     slice_doc = read_slices(REPO / SLICE_JSON)
     slice_run = slice_doc["run"]
     expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
@@ -650,12 +674,17 @@ def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_
         # only way this site can fail to read is a decode error -- which is a ValueError, and belongs
         # to the same class as a certificate whose JSON will not parse.
         ("docs/RESULTS.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
+        # Last in `PUBLISHED_DOCS`, and corrupt rather than absent: its own render succeeds, so the only
+        # thing this site can be refusing is the bytes the table says to compare against. Plan D Task 4's
+        # technical report is the row that proves the table's tail behaves like its head.
+        ("docs/REPORT.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
     ]
     for rel, table, corrupt, needs_snapshot in cases:
         work = tmp_path / rel.replace("/", "-").replace(".", "-")
         (work / "data").mkdir(parents=True)
         shutil.copytree(REPO / "docs", work / "docs")
         stage_published(work)
+        stage_documents(work)
         if needs_snapshot:
             shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
         (work / rel).write_bytes(corrupt if isinstance(corrupt, bytes) else corrupt.encode())
@@ -970,25 +999,35 @@ def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_pat
     reproduce its
     own published numbers.
 
-    One row per read path, because there are four and they are four different lines of code: the feishu
-    certificate loop in `cmd_verify`, `report.massive_certificates()`'s certificate read, its records
-    read, and the document loop. A refusal added to one of them and missing from the other three would
-    pass a test that only had the first row.
+    One row per read path, because they are separate lines of code: the feishu certificate loop in
+    `cmd_verify`, `report.massive_certificates()`'s certificate read, its records read, the document loop,
+    the document loop's tail entry (Plan D Task 4's technical report), and the claim ledger that report
+    opens while it renders. A refusal added to one of them and missing from the others would pass a test
+    that only had the first row.
     """
     cases = [
         ("data/cert_laya.json", "report.CERTS", False),
         ("data/cert_massive_de_laya.json", "report.MASSIVE_CERTIFICATES", False),
         ("data/records_massive_sw.jsonl", "report.MASSIVE_CERTIFICATES", False),
-        # First in `PUBLISHED_DOCS`, so this row refuses on it and not on the `data/inventory.md`
-        # beside it that this scratch tree also lacks: whichever missing file the gate reaches first
-        # is the one the refusal is allowed to name.
+        # First in `PUBLISHED_DOCS`. Every document the table declares is staged, so the refusal below can
+        # only be about the file this case removed -- table order no longer decides which absence a reader
+        # is told about (see `stage_documents`).
         ("docs/RESULTS.md", "cli.PUBLISHED_DOCS", True),
+        # Last in the same table: the technical report is rendered after six other documents, so a gate
+        # that refused on something else first would never reach it -- and its render reads two further
+        # table-declared artefacts of its own, which is the next row.
+        ("docs/REPORT.md", "cli.PUBLISHED_DOCS", True),
+        # The claim ledger `techreport.read_ledger` opens while rendering that last document. No argument
+        # names this path either, and before `read_ledger` went through `load_published` an absent ledger
+        # answered `FileNotFoundError` -- exit 2, the operator blamed for a file the module declared.
+        ("docs/VERIFICATION.md", "techreport.LEDGER_MD", True),
     ]
     for rel, table, needs_snapshot in cases:
         work = tmp_path / rel.replace("/", "-").replace(".", "-")
         (work / "data").mkdir(parents=True)
         shutil.copytree(REPO / "docs", work / "docs")
         stage_published(work)
+        stage_documents(work)
         if needs_snapshot:
             shutil.copy(REPO / "data" / "inventory.md.json", work / "data" / "inventory.md.json")
         (work / rel).unlink()

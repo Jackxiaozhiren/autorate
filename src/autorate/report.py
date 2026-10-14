@@ -902,10 +902,18 @@ def render_slices(doc: dict) -> str:
     return "\n".join(lines)
 
 
-def _first_clause(gap: str) -> str:
-    """The clause a published bullet quotes, with an explicit marker when it is cut."""
-    head = gap.split(";")[0]
-    return head[:78] + ("..." if len(head) > 78 else "")
+def first_clause(text: str, sep: str = ";", width: int = 78) -> str:
+    """The clause a published bullet quotes, with an explicit marker when it is cut.
+
+    `sep` and `width` are parameters rather than a second helper because `docs/REPORT.md` quotes a
+    different artefact's clauses -- the claim ledger's rows, which are sentences long and semicolon-poor
+    -- and a copy of this function with its own limits is two owners of one formatting rule. A caller
+    that wants a width cap and no clause boundary passes `sep=None`. The defaults are
+    `docs/RESULTS.md`'s own behaviour, unchanged: the gaps line it renders is byte-compared, so an
+    edited default would move a published document.
+    """
+    head = text if sep is None else text.split(sep)[0]
+    return head[:width] + ("..." if len(head) > width else "")
 
 
 def _audit_scores(inv: dict) -> tuple:
@@ -1220,7 +1228,7 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
         ]
     lines += [
         "- gaps: %d recorded, first clause each (full text in `data/inventory.md.json`): %s"
-        % (len(inv["gaps"]), "; ".join(_first_clause(g) for g in inv["gaps"])),
+        % (len(inv["gaps"]), "; ".join(first_clause(g) for g in inv["gaps"])),
         "",
         "## Is n big enough to certify?",
         "",
