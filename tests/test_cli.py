@@ -67,10 +67,11 @@ def stage_published(work):
     the tamper it planted.
     """
     from autorate.cli import PROTOCOL_JSON
-    from autorate.report import (CERTS, MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS,
-                                 SLICE_JSON)
+    from autorate.report import (CERTS, G1_FEASIBILITY_JSON, MASSIVE_CERTIFICATES, RECORDS,
+                                 RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON)
 
-    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON} | set(CERTS.values())
+    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON, G1_FEASIBILITY_JSON}
+             | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
              | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
     for rel in sorted(names):
@@ -158,11 +159,13 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     from autorate.cli import (PIN_DERIVED_KEYS, PUBLISHED_DOCS, SEVERITY_COMPARE_FIELDS,
                               SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
-    from autorate.report import (CERTS, MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
+    from autorate.report import (CERTS, G1_FEASIBILITY_JSON, G1_FEASIBILITY_REFERENCE_FIELDS,
+                                 G1_FEASIBILITY_ROW_FIELDS, G1_FEASIBILITY_RUBRIC_FIELDS,
+                                 MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
                                  SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
                                  SLICE_GROUP_FIELDS, SLICE_INPUT_FIELDS, SLICE_JSON, SLICE_POOLED_FIELDS,
                                  SLICE_RECORDS, SLICE_RUBRIC_FIELDS, SLICE_WORST_FIELDS,
-                                 read_resplit, read_slices,
+                                 read_g1_feasibility, read_resplit, read_slices,
                                  resplit_invariants)
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
@@ -181,6 +184,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
                                                          "docs/AUDIT.md", "docs/SEVERITY.md",
                                                          "docs/RESPLIT.md", "docs/SLICES.md",
+                                                         "docs/FEASIBILITY.md",
                                                          "docs/REPORT.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
@@ -209,8 +213,20 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # and the only thing to edit here is the membership literal above. Measured: absent lane 248 before the
     # document joined the table and 249 after, present lane 283 to 284, both rc 0 -- the inter-lane gap
     # stays 35, because the report is rendered from committed bytes in both lanes.
+    # Task #97's feasibility-ceiling arm enters the slice way, from its own field lists and from the row
+    # counts the artefact carries: one producer row compared whole (`+1`), every ladder figure except the
+    # `n` the rows are matched on and the `size_from` that quotes caller-owned paths, every task column
+    # except the `task` key and the two caller-owned pointer columns, and one rubric row per field the
+    # freeze owns. Measured on the committed bytes: absent lane 249 before this arm and 508 after
+    # (1 + 6x9 + 6x33 drift rows, 5 rubric rows, 1 document row), present lane 284 to 543; the gap stays
+    # 35 because nothing in the arm reads the corpus. That run exits 4 on exactly one DRIFT line:
+    # `docs/REPORT.md` quotes `cli.PUBLISHED_DOCS` and its document-of-tables line moves when a document
+    # joins the table; the file is fenced off this task, and `autorate report --full` in the controller's
+    # round re-emits the one derived line -- measured on that re-emit, both lanes print 508 /508 and
+    # 543 /543 at rc 0.
     slice_doc = read_slices(REPO / SLICE_JSON)
     slice_run = slice_doc["run"]
+    feas_doc = read_g1_feasibility(REPO / G1_FEASIBILITY_JSON)
     expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
                 + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
                 + len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
@@ -224,6 +240,10 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + len(SLICE_WORST_FIELDS) + 1
                 + len(SLICE_RECORDS) * len(SLICE_INPUT_FIELDS)
                 + len(SLICE_RUBRIC_FIELDS)
+                + 1
+                + (len(G1_FEASIBILITY_REFERENCE_FIELDS) - 2) * len(feas_doc["reference"])
+                + (len(G1_FEASIBILITY_ROW_FIELDS) - 3) * len(feas_doc["rows"])
+                + len(G1_FEASIBILITY_RUBRIC_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 
@@ -674,10 +694,18 @@ def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_
         # only way this site can fail to read is a decode error -- which is a ValueError, and belongs
         # to the same class as a certificate whose JSON will not parse.
         ("docs/RESULTS.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
+        # Task #97's ceiling artefact: read by `rederive_g1_feasibility` before the document loop, so an
+        # unparseable copy must come back as the named refusal on `report.G1_FEASIBILITY_JSON` rather
+        # than as a `TypeError` out of the arm at rc 1.
+        ("data/g1_feasibility.json", "report.G1_FEASIBILITY_JSON", "{not the ceiling document", False),
         # Last in `PUBLISHED_DOCS`, and corrupt rather than absent: its own render succeeds, so the only
         # thing this site can be refusing is the bytes the table says to compare against. Plan D Task 4's
         # technical report is the row that proves the table's tail behaves like its head.
         ("docs/REPORT.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
+        # The ceiling's own document, in the same table one entry before the report: its render is a
+        # function of the artefact, which this scratch tree holds intact, so the refusal below can only
+        # be about these unreadable bytes.
+        ("docs/FEASIBILITY.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
     ]
     for rel, table, corrupt, needs_snapshot in cases:
         work = tmp_path / rel.replace("/", "-").replace(".", "-")
@@ -1009,10 +1037,18 @@ def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_pat
         ("data/cert_laya.json", "report.CERTS", False),
         ("data/cert_massive_de_laya.json", "report.MASSIVE_CERTIFICATES", False),
         ("data/records_massive_sw.jsonl", "report.MASSIVE_CERTIFICATES", False),
+        # Task #97's ceiling: `rederive_g1_feasibility` reads it through `report.G1_FEASIBILITY_JSON`
+        # before the document loop, so its absence must refuse as the table's own failure -- the
+        # artefact a published G1 claim is stored in is as declared as the certificates beside it.
+        ("data/g1_feasibility.json", "report.G1_FEASIBILITY_JSON", False),
         # First in `PUBLISHED_DOCS`. Every document the table declares is staged, so the refusal below can
         # only be about the file this case removed -- table order no longer decides which absence a reader
         # is told about (see `stage_documents`).
         ("docs/RESULTS.md", "cli.PUBLISHED_DOCS", True),
+        # The ceiling's document, byte-compared one entry before the report: emitted by the producer's
+        # `--doc` run and re-rendered from the artefact by the gate, so its absence contradicts the
+        # publication table exactly like its head row's does.
+        ("docs/FEASIBILITY.md", "cli.PUBLISHED_DOCS", True),
         # Last in the same table: the technical report is rendered after six other documents, so a gate
         # that refused on something else first would never reach it -- and its render reads two further
         # table-declared artefacts of its own, which is the next row.

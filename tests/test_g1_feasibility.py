@@ -340,3 +340,218 @@ def test_the_rubric_is_the_freezes_and_nobody_retypes_a_zero_five(rubric):
     producer_text = (REPO / "tools" / "g1_feasibility.py").read_text()
     assert "0.05" not in producer_text, "the producer retyped the rubric it is handed"
 
+
+# --- the wiring: the same arm `verify` runs, the same document `verify` byte-compares, the producer ----
+#
+# The rows above pin the arithmetic. The rows below pin the publication: the gate's re-derivation of
+# every figure (with its count read from the artefact's own rows and the field lists, never typed), the
+# document as a byte-for-byte render of the artefact, the committed bytes' own hygiene (no machine path,
+# no timestamp, producer named), and the tool's exit-code contract. Each can be turned red by one plant,
+# and each row names the plant it is watching for.
+
+
+def _drive_arm(rubric, monkeypatch, mutate=None):
+    """Run the real `rederive_g1_feasibility` in the repo tree, optionally mutating only the PUBLISHED
+    ceiling document (never the certificates the recomputation reads), and return (drift, mismatch) labels.
+
+    The plant hooks `read_g1_feasibility` rather than the file: the artefact on disk is a committed byte
+    the test must not touch, and the recomputation's two inputs -- the published document and the
+    certificates read fresh -- have to stay independently reachable, or a mutation could redden the
+    honest side and pass for the arm working.
+    """
+    if mutate is not None:
+        original = report.read_g1_feasibility
+
+        def patched(path):
+            from copy import deepcopy
+            doc = deepcopy(original(path))
+            mutate(doc)
+            return doc
+
+        monkeypatch.setattr(report, "read_g1_feasibility", patched)
+    drift, mismatches = [], []
+    report.rederive_g1_feasibility(
+        lambda label, actual, wanted: drift.append((label, actual == wanted)),
+        lambda label, actual, wanted: mismatches.append((label, actual == wanted)),
+        rubric)
+    return drift, mismatches
+
+
+def test_the_gate_re_derives_the_ceiling_field_by_field_and_its_count_is_derived_not_typed(rubric,
+                                                                                           monkeypatch):
+    """The arm's own denominator: every published figure is one comparison, counted from the artefact.
+
+    Consumer #2 of the four that move with a published arm (R-255): this count is read from
+    `G1_FEASIBILITY_REFERENCE_FIELDS`, `G1_FEASIBILITY_ROW_FIELDS` and the committed document's own row
+    numbers, so a field list narrowed in `report.py` or a task row deleted from the artefact has to move
+    this row -- and `tests/test_cli.py`'s gate denominator -- before it can pass silently.
+    """
+    doc = report.read_g1_feasibility(REPO / report.G1_FEASIBILITY_JSON)
+    seen, mismatches = _drive_arm(rubric, monkeypatch)
+    # `-2` and `-3`: the row keys (`n`, `task`) and the caller-owned pointers (`size_from`,
+    # `artefact`, `table`) are not reproduction claims -- see `rederive_g1_feasibility`'s skips; the
+    # comparison count here reads the same field lists, so a skip removed from the arm moves this too.
+    expected = (1 + len(doc["reference"]) * (len(report.G1_FEASIBILITY_REFERENCE_FIELDS) - 2)
+                + len(doc["rows"]) * (len(report.G1_FEASIBILITY_ROW_FIELDS) - 3))
+    assert len(seen) == expected, (len(seen), expected)
+    assert all(passed for _label, passed in seen), [l for l, p in seen if not p]
+    assert len(mismatches) == len(report.G1_FEASIBILITY_RUBRIC_FIELDS)
+    assert all(p for _l, p in mismatches), mismatches
+
+
+def test_a_moved_k_max_in_the_published_ceiling_is_drift_the_arm_names_by_field(rubric, monkeypatch):
+    """The re-derivation must be able to fail on THIS artefact, or the arm is a formality beside it.
+
+    One plant, one label: `massive/en`'s record-unit `k_max` moved by one in the published document
+    while the certificates stay the committed truth. The arm recomputes 22, names exactly that field,
+    and nothing else moves -- which is also the proof that the recomputation reads the certificates and
+    not the artefact's own answers.
+    """
+    def mutate(doc):
+        for row in doc["rows"]:
+            if row["task"] == "massive/en":
+                row["k_max_records"] = 23
+    seen, _mismatches = _drive_arm(rubric, monkeypatch, mutate)
+    failed = sorted(label for label, passed in seen if not passed)
+    assert failed == ["g1 massive/en.k_max_records"], failed
+
+
+def test_a_ceiling_measured_at_another_budget_is_a_rubric_mismatch_not_a_drift(rubric, monkeypatch):
+    """R-20/R-31's two prefixes, on this arm: a different delta in the artefact is the freeze disagreeing.
+
+    The plant moves the artefact's recorded `delta` only. The recomputation runs at the freeze's own
+    rubric (that is what `cmd_verify` hands in), so the numbers keep agreeing -- the disagreement is
+    with the budget the file claims, and it prints on the mismatch line, not as a `DRIFT:` prefix.
+    """
+    def mutate(doc):
+        doc["rubric"]["delta"] = 0.10
+    _seen, mismatches = _drive_arm(rubric, monkeypatch, mutate)
+    flagged = sorted(label for label, passed in mismatches if not passed)
+    assert flagged == ["g1 rubric.delta"], flagged
+
+
+def test_the_feasibility_document_is_a_byte_render_of_its_artefact_and_sits_in_the_table():
+    """`docs/FEASIBILITY.md` is rendered from the published bytes and `verify` byte-compares it.
+
+    The table membership is asserted from `cli.PUBLISHED_DOCS` itself, not a remembered list: a document
+    deleted from the table (or emitted by a different reading than the gate's) reddens here first.
+    """
+    from autorate import cli
+
+    doc = report.read_g1_feasibility(REPO / report.G1_FEASIBILITY_JSON)
+    text = (REPO / report.G1_FEASIBILITY_MD).read_text()
+    assert report.render_g1_feasibility(doc) == text
+    assert report.G1_FEASIBILITY_MD in {path for path, _render in cli.PUBLISHED_DOCS}, cli.PUBLISHED_DOCS
+    # The render can fail: the same document over an artefact with one figure moved must not match it.
+    from copy import deepcopy
+    moved = deepcopy(doc)
+    moved["reference"][0]["k_max"] = (moved["reference"][0]["k_max"] or 0) + 1
+    assert report.render_g1_feasibility(moved) != text
+
+
+def test_the_published_ceiling_bytes_carry_no_machine_path_no_timestamp_and_name_their_producer():
+    """The artefact and its document are tracked-tree material: no path identifies this machine there.
+
+    Patterns are built from pieces so this file does not become the offender it is looking for -- the
+    convention `tests/test_cli.py` states for the same reason. The tracked scan (`git ls-files`) will
+    cover both files once they are committed; this row is the emit-side check that does not wait for
+    the commit, because a file left untracked is never scanned by that guard.
+    """
+    import json as _json
+    import re
+
+    artefact_text = (REPO / report.G1_FEASIBILITY_JSON).read_text()
+    doc_text = (REPO / report.G1_FEASIBILITY_MD).read_text()
+    path_rx = re.compile("/" + "(Users|home)/[A-Za-z0-9._-]+/")
+    date_rx = re.compile("20" + r"\d\d-\d\d-\d\d")
+    assert not path_rx.search(artefact_text), path_rx.search(artefact_text)
+    assert not path_rx.search(doc_text), path_rx.search(doc_text)
+    assert not date_rx.search(artefact_text + doc_text), date_rx.search(doc_text)
+    doc = _json.loads(artefact_text)
+    assert sorted(doc) == ["producer", "reference", "rows", "rubric"], sorted(doc)
+    assert doc["producer"] == "tools/g1_feasibility.py", doc["producer"]
+    # The guards bite: one plant per shape, on a copy of the bytes, not on the files.
+    assert path_rx.search(doc_text + "\nseen in /" + "Users/someone/x\n")
+    assert date_rx.search(doc_text + "\nwritten 20" + "26-01-01\n")
+
+
+def test_the_producer_writes_the_committed_bytes_and_exits_3_on_a_ceiling_that_refuses(rubric,
+                                                                                       tmp_path,
+                                                                                       monkeypatch,
+                                                                                       capsys):
+    """The tool's result line and its bytes: rc 3 is a refusal that still published everything.
+
+    Measured, not remembered: on this evidence base no scored task certifies, so the honest exit code
+    is 3 -- and the artefact is written BEFORE the code says so, byte-identical to the committed file
+    (the producer determinism the README's publication story depends on).
+    """
+    from copy import deepcopy
+
+    from tools import g1_feasibility
+
+    monkeypatch.chdir(REPO)
+    out = tmp_path / "g1_feasibility.json"
+    rc = g1_feasibility.main(["--out", str(out)])
+    assert rc == 3, (rc, capsys.readouterr())
+    assert out.read_text() == (REPO / report.G1_FEASIBILITY_JSON).read_text()
+    printed = capsys.readouterr().out
+    assert "claim G1 = not_certifiable" in printed, printed
+    # The rc-0 branch can fail too: with three rows certified the same main returns 0, not 3.
+    flipping = deepcopy(report.build_g1_feasibility(rubric))
+    for row in flipping["rows"][:3]:
+        row["feasible"] = True
+
+    def fake_build(_rubric):
+        return deepcopy(flipping)
+    monkeypatch.setattr(report, "build_g1_feasibility", fake_build)
+    second = tmp_path / "flipped.json"
+    assert g1_feasibility.main(["--out", str(second)]) == 0
+    assert "G1's bar (3) is met" in capsys.readouterr().out
+
+
+def test_the_producers_usage_arm_names_what_the_operator_typed(tmp_path, monkeypatch, capsys):
+    """rc 2 lives and dies by who named the path: existing --out, --doc off its table, bad --protocol.
+
+    Each refusal is asserted with its own message content because the codes are shared by three
+    different inputs: "already exists", the `--doc` guard's declared-paths sentence, and the
+    `--protocol does not exist` line. Green-on-arrival only where the tool actually refuses; the
+    `--force` pass below is the plant's other side -- flip one condition and the row reddens.
+    """
+    from tools import g1_feasibility
+
+    monkeypatch.chdir(REPO)
+    out = tmp_path / "g1_feasibility.json"
+    out.write_text("already here\n")
+    assert g1_feasibility.main(["--out", str(out)]) == 2
+    assert "already exists" in capsys.readouterr().err
+    assert g1_feasibility.main(["--out", str(out), "--force"]) != 2  # the refusal is the flag, not the path
+    assert g1_feasibility.main(["--out", str(tmp_path / "other.json"),
+                                "--doc", str(report.G1_FEASIBILITY_MD)]) == 2
+    err = capsys.readouterr().err
+    assert "--doc publishes" in err and "Nothing was written" in err, err
+    assert g1_feasibility.main(["--protocol", str(tmp_path / "nope.json"),
+                                "--out", str(tmp_path / "p.json")]) == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_a_table_declared_certificate_that_is_not_in_the_checkout_is_the_producers_rc_4(
+        tmp_path, monkeypatch, capsys):
+    """The exit-4 arm at the act of publishing: the table declared the path, so the tree is at fault.
+
+    The plant is one entry of `report.CERTS` pointed at a file that is not there -- the same shape as
+    a checkout that lost a committed certificate. It must reach 4 with the named refusal's own words,
+    not 2 (nobody typed this path) and not a traceback at 1, and it must write nothing.
+    """
+    from tools import g1_feasibility
+
+    monkeypatch.chdir(REPO)
+    monkeypatch.setitem(report.CERTS, "jev", "data/not_in_this_checkout.json")
+    out = tmp_path / "g1_feasibility.json"
+    rc = g1_feasibility.main(["--out", str(out)])
+    assert rc == 4, (rc, capsys.readouterr())
+    err = capsys.readouterr().err
+    assert "PUBLISHED ARTEFACT UNAVAILABLE" in err, err
+    assert "report.CERTS" in err and "data/not_in_this_checkout.json" in err, err
+    assert "Traceback" not in err, err
+    assert not out.exists(), "a refused publication must not leave half its artefact behind"
+
