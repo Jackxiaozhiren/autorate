@@ -30,7 +30,9 @@ publication table does not declare. 4 for every refusal about bytes at a path th
 distinction `autorate verify` draws, and the one `docs/SLICES.md` already states to its reader. Wrong-shaped
 declared content is refused too: a `slices` value that is not a mapping by name in `check_rows`, and a
 record the loader or the certifier refuses (`records.MissingRecordField`, `groups.UndeclaredGroupKey`) by
-class at `main`'s boundary. Every shape measured to escape this file exits inside the 0/2/4 set.
+class at `main`'s boundary, with the three placement refusals `groups.py` raises (`UnhashableSliceValue`,
+`CaseLeakage`, `UnplacedCase`) named by class at the certifying call and any other usage-class refusal
+keeping the same mapping. Every shape measured to escape this file exits inside the 0/2/4 set.
 """
 from __future__ import annotations
 
@@ -142,17 +144,24 @@ def build_document() -> dict:
     batch, inputs = report.slice_inputs()
     try:
         run = certify_choice(batch, groups=[report.SLICE_GROUP_KEY], **rubric).to_dict()
-    except ValueError as exc:
-        # Refused here rather than by a blanket clause in `main`, because this shape has no class to name:
-        # measured, a committed case that states no value for a key the OTHER rows do declare reaches
-        # `groups.py:163` and raises a bare `ValueError` (`UndeclaredGroupKey` is the sibling for "no record
-        # declares the key at all", which IS named and IS caught in `main` by class). Converting at the call
-        # site keeps the certifier's own words in the refusal and still lands on 4; giving that shape its own
-        # class in `groups.py` is the deeper fix and is filed rather than done here, because it belongs to
-        # every caller of `by_group` and not to this tool. `SliceInputRefusal` is a RuntimeError, so this
-        # clause cannot swallow a refusal this file raises on purpose.
+    except (groups.UndeclaredGroupKey, groups.UnhashableSliceValue,
+            groups.CaseLeakage, groups.UnplacedCase) as exc:
+        # R-272 filed this conversion as a workaround, and its reason is gone: the shape that used to
+        # reach `groups.py:163` as a bare `ValueError` -- a committed case stating nothing for a key the
+        # other rows do state -- now arrives as `UnplacedCase`, so the refusal keys on the CLASS rather
+        # than on the absence of one. `UndeclaredGroupKey` is named here too, which keeps its message
+        # byte-for-byte what this clause printed before. `SliceInputRefusal` is a RuntimeError, so no
+        # `ValueError` clause in this file can swallow a refusal this file raises on purpose.
         raise SliceInputRefusal("the certifier refused these rows: %s: %s"
                                 % (type(exc).__name__, exc)) from exc
+    except ValueError as exc:
+        # Every OTHER usage-class refusal keeps the mapping `bdc1aad` measured for it: 4, named, with the
+        # certifier's words. It is kept blanket on purpose. Narrowing it to the classes above would not
+        # change those four -- they are already handled by name -- it would let an unclassified
+        # `ValueError` out of `build_document`, match nothing in `main`'s tuple, and escape as rc 1, the
+        # one code this file's own contract forbids.
+        raise SliceInputRefusal("the certifier refused the batch with a refusal this file has no class "
+                                "for: %s: %s" % (type(exc).__name__, exc)) from exc
     return {
         "backend": report.SLICE_BACKEND,
         "group_key": report.SLICE_GROUP_KEY,

@@ -5,6 +5,7 @@ contract, because a grouping that cannot fail is a grouping whose numbers nobody
 """
 import pytest
 
+from autorate import groups
 from autorate.case_count import case_key
 from autorate.groups import UndeclaredGroupKey, by_group, group_counts, group_key
 from autorate.records import Record
@@ -47,6 +48,23 @@ def test_the_leakage_refusal_names_the_key_and_both_records_not_only_the_case():
     assert "family" in text, text
     assert "a-0" in text and "a-1" in text, text
     assert "'f0'" in text and "'f1'" in text, text
+
+
+def test_the_leakage_refusal_carries_its_own_class_and_not_only_the_words():
+    """RED until `groups.CaseLeakage` exists: one case carrying two values for one key has to be
+    keyable by class, because a caller that has to recognise it from its message is R-272's filed gap
+    (`tools/language_slices.py` converts this shape at its own call site and can only name it by text).
+
+    Asserting the exact type, and the words, together: the class is the new half and the wording is the
+    half `tests/test_groups.py` already owns, and a change that swapped one for the other would pass a
+    row that only looked at one of them.
+    """
+    recs = [choice_record(id="a-0", case_id="a", repeat=0, slices={"family": "f0"}),
+            choice_record(id="a-1", case_id="a", repeat=1, slices={"family": "f1"})]
+    with pytest.raises(groups.CaseLeakage) as excinfo:
+        by_group(recs, ("family",))
+    assert type(excinfo.value) is groups.CaseLeakage, type(excinfo.value)
+    assert "case a cannot be placed in one group" in str(excinfo.value), str(excinfo.value)
 
 
 def test_a_case_lands_in_exactly_one_group_and_no_case_is_dropped():
@@ -100,6 +118,24 @@ def test_a_case_that_states_no_value_for_a_declared_key_is_a_refusal_not_a_dropp
     assert "family" in str(excinfo.value), str(excinfo.value)
 
 
+def test_the_unplaced_case_refusal_carries_its_own_class_and_not_only_the_words():
+    """RED until `groups.UnplacedCase` exists: this is the shape R-272 could not name.
+
+    Ledger R-272 (`bdc1aad`) reached it from the slice producer and had to convert it at its own call
+    site because `groups.py:163` answered a bare `ValueError`, which the producer's `except ValueError`
+    could only describe by quoting the message. The class is what every other caller of `by_group` was
+    left waiting for, so this row asserts the class AND the sentence: the class makes the refusal
+    keyable, the sentence is what a reader of a refusal actually gets.
+    """
+    recs = [choice_record(id="a-0", case_id="a", slices={"family": "f0"}),
+            choice_record(id="b-0", case_id="b", slices={"mode": "fast"})]
+    with pytest.raises(groups.UnplacedCase) as excinfo:
+        by_group(recs, ("family",))
+    assert type(excinfo.value) is groups.UnplacedCase, type(excinfo.value)
+    assert "case b states no value for the declared slice key 'family'" in str(excinfo.value), (
+        str(excinfo.value))
+
+
 def test_a_key_no_record_states_is_never_declared_while_a_gap_in_one_case_is_not():
     """The two refusals are different stories for the producer.
 
@@ -134,6 +170,40 @@ def test_a_slice_value_that_cannot_be_a_dict_key_is_refused_before_the_grouping_
     with pytest.raises(ValueError, match="case a") as excinfo:
         by_group(recs, ("family",))
     assert "family" in str(excinfo.value), str(excinfo.value)
+
+
+def test_the_unhashable_slice_value_refusal_carries_its_own_class_and_not_only_the_words():
+    """RED until `groups.UnhashableSliceValue` exists: "a slice value that cannot be a group key" is a
+    different fix from "a case that states no value", and a caller that keys on the class has to be
+    able to tell them apart -- both are refusals of the producer's data, neither is a runtime failure.
+    """
+    recs = [choice_record(id="a-0", case_id="a", slices={"family": ["f0", "f1"]})]
+    with pytest.raises(groups.UnhashableSliceValue) as excinfo:
+        by_group(recs, ("family",))
+    assert type(excinfo.value) is groups.UnhashableSliceValue, type(excinfo.value)
+    assert "which cannot be a group key" in str(excinfo.value), str(excinfo.value)
+
+
+def test_each_placement_class_is_a_valueerror_and_the_three_are_not_one_class():
+    """Two contracts in one row, both about what a caller may rely on.
+
+    *ValueError base.* `cli.main` maps `ValueError` to exit 2 and has no arm for these three shapes, so
+    the base class IS the exit code: re-parenting any of them to `RuntimeError` (the drift/read shape
+    `report.PublishedArtefactUnavailable` uses) would move a usage refusal off 2, which is the action
+    this repository treats as forbidden. `UndeclaredGroupKey`'s docstring says the same about itself.
+
+    *Three distinct classes.* A caller that keys on the class only gets a diagnosis if the classes do
+    not contain each other; collapsing `CaseLeakage` into `UnplacedCase` would keep every message row
+    green while making "which of the two producer bugs is this" unanswerable again.
+    """
+    placement = (groups.UnhashableSliceValue, groups.CaseLeakage, groups.UnplacedCase)
+    for cls in placement:
+        assert issubclass(cls, ValueError), cls
+        assert not issubclass(cls, UndeclaredGroupKey), cls
+    for cls in placement:
+        for other in placement:
+            if cls is not other:
+                assert not issubclass(cls, other), (cls, other)
 
 
 def test_an_empty_batch_names_no_groups_instead_of_one_empty_group():

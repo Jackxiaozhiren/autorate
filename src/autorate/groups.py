@@ -60,6 +60,27 @@ class UndeclaredGroupKey(ValueError):
     """
 
 
+class UnhashableSliceValue(ValueError):
+    """A declared slice value that cannot be a dict key: the producer's own bytes are what is wrong and
+    nothing moved, so the base is the usage class (`ValueError`, which `cli.main` maps to exit 2) rather
+    than a drift class or the runtime shape `report.PublishedArtefactUnavailable` carries.
+    """
+
+
+class CaseLeakage(ValueError):
+    """One case carrying two values for the same declared key, so it lands in two groups at once: a bug
+    in the input record set, which is the usage class (`ValueError`, exit 2), not a number that shifted
+    under a regime change and not a runtime failure of this build.
+    """
+
+
+class UnplacedCase(ValueError):
+    """A case that states no value for a key the other rows do state, so it belongs to no group: the
+    batch cannot be partitioned as declared, which is the usage class (`ValueError`, exit 2) rather than
+    a drift or runtime class. Ledger R-272 filed this name; callers had to match the message text.
+    """
+
+
 def _declared_keys(groups: Sequence[str]) -> tuple:
     """Validate the declaration itself and return it as a tuple of names.
 
@@ -150,17 +171,17 @@ def _grouped_by_case(recs: list, keys: tuple) -> dict:
             for r in members:
                 value = r.slices.get(key, _ABSENT)
                 if value is not _ABSENT and not is_hashable_key(value):
-                    raise ValueError(_unhashable_message(r, case, key))
+                    raise UnhashableSliceValue(_unhashable_message(r, case, key))
                 seen.setdefault(value, []).append(r.id)
             if len(seen) > 1:
-                # `ValueError`, not `ArithmeticError`: nothing moved. The drift class would say a
+                # A `ValueError` subclass, not `ArithmeticError`: nothing moved. The drift class would say a
                 # number shifted under a regime change, and the reader would go looking for drift
                 # instead of the producer bug this is -- an input record set that cannot be
                 # partitioned, which is the usage class.
-                raise ValueError(_leakage_message(case, key, seen))
+                raise CaseLeakage(_leakage_message(case, key, seen))
             value = next(iter(seen))
             if value is _ABSENT:
-                raise ValueError(_unplaced_message(case, key, members))
+                raise UnplacedCase(_unplaced_message(case, key, members))
             values.append(value)
         placed[case] = (tuple(values), members)
     return placed
@@ -175,8 +196,9 @@ def by_group(records: Iterable, groups: Sequence[str]) -> dict:
 
     `UndeclaredGroupKey` (a `ValueError`, so `cli.main` maps it to exit 2) when no record in the
     batch declares one of the keys (the producer never set it),
-    `ValueError` when the batch declares a key but some case cannot be placed by it -- either its
-    records disagree, or none of them states it.
+    `UnhashableSliceValue`, `CaseLeakage` or `UnplacedCase` (each a `ValueError`, so each exit 2) when the
+    batch declares a key but a case cannot be placed by it -- a value that cannot be a group key, records
+    that disagree about one, or no record of the case stating it at all.
     """
     keys = _declared_keys(groups)
     recs = list(records)

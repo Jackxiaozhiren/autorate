@@ -13,8 +13,9 @@ None of it was tested at the entry point. `tests/test_slice_surface.py` drives `
 `return 0`, left the suite green. `docs/ERRATA.md` says so out loud at the disclosure that closes task #86 --
 "the rows written to close it were reverted rather than shipped half-right, so `tools/language_slices.py`'s
 refusals are still unasserted through its own command". Those are the gaps this file closes. Six rows drive the
-real `main(argv)`, each docstring naming the production change that reddens it, and a seventh pins three
-measured shapes that escape `main` entirely.
+real `main(argv)`, each docstring naming the production change that reddens it, a seventh pins three measured
+shapes that escape `main` entirely, and an eighth pins the clause that keeps a refusal this file has no class
+for inside the same contract.
 
 Three rules this file holds itself to.
 
@@ -36,7 +37,8 @@ Two different things are pinned here, and they were red and green in different o
 deleted silently. All three were proven falsifiable by mutating a scratch copy of the producer and running
 this file against it: dropping the overwrite guard (row 1), dropping the `--doc` path guard (row 2), and
 `return 2` -> `return 0` in `refuse_missing_inputs` (row 6's control is the run that shows the guards are
-guards rather than unconditional refusals).
+guards rather than unconditional refusals). Row 8 arrived the same way, for the same reason, and was
+falsified by deleting the blanket clause it polices.
 
 *Rows 3, 4, 5 and 7 were written red* and are the contract R-272 adopts: a defect in bytes at a
 table-declared path is the checkout's failure, so it exits 4, not the operator's usage error at 2. Measured
@@ -334,17 +336,21 @@ def test_a_declared_input_that_is_wrong_shaped_is_refused_by_name_at_four(produc
     * `slices` a bare string instead of a mapping, which died on `check_rows`'s `.get` as an `AttributeError`;
     * a line that parses as JSON but is not a `Record` (`autorate.records.MissingRecordField`), raised inside
       `report.slice_inputs()`;
-    * a row that states no value for the slice key at all (`ValueError` from `groups.by_group`).
+    * a row that states no value for the slice key at all (`ValueError` from `groups.by_group`, which is
+      `groups.UnplacedCase` since task #98 named it).
 
     Three different fixes, one per refusing layer, and none of them a widened catch:
     `check_rows` refuses the non-mapping `slices` by name at its own raise site (catching `AttributeError`
     centrally would land a genuine bug inside a refusal -- the failure B1 Task 1 recorded when a widened
     `except ValueError` swallowed a policy refusal); `records.MissingRecordField` and
     `groups.UndeclaredGroupKey` are named in `main`'s tuple BY CLASS; and the third shape -- a committed case
-    that states no value for a key the other rows DO declare -- reaches `groups.py:163` and raises a bare
-    `ValueError` with no class to name, so it is converted at the producer's own call site and keeps the
-    certifier's words. Giving that shape its own class belongs to every caller of `by_group` and is filed,
-    not silently done here. All of this is safe only because `SliceInputRefusal` is now a `RuntimeError`, so
+    that states no value for a key the other rows DO declare -- reached `groups.py:163` and raised a bare
+    `ValueError` with no class to name, so it was converted at the producer's own call site and kept the
+    certifier's words. Giving that shape its own class belongs to every caller of `by_group` and was filed,
+    not silently done here; task #98 closed that filing, so the shape now arrives as `groups.UnplacedCase`
+    and `build_document` keys on the class. The sentence this row asserts is that clause's, which is what
+    makes deleting it visible here instead of silent -- row 8 asserts the other clause's sentence.
+    All of this is safe only because `SliceInputRefusal` is now a `RuntimeError`, so
     no `except ValueError` in this file can swallow a refusal the file raises on purpose.
 
     RED if any of the three stops being refused: the first by name, the others by the mapping. Asserting a
@@ -388,3 +394,44 @@ def test_a_declared_input_that_is_wrong_shaped_is_refused_by_name_at_four(produc
                               cwd=str(root), capture_output=True, text=True)
         assert proc.returncode == EXIT_DRIFT, (leaf, proc.returncode, proc.stderr[-300:])
         assert "Traceback" not in proc.stderr, (leaf, proc.stderr[-300:])
+
+
+def test_a_refusal_this_file_has_no_class_for_still_lands_on_four_and_not_on_one(
+        producer, tmp_path, monkeypatch, capsys):
+    """RED if `build_document`'s blanket `except ValueError` clause is deleted, or narrowed to exactly the
+    four classes it now names: an unclassified `ValueError` would then leave `build_document`, match nothing
+    in `main`'s tuple, and reach the operator as rc 1 -- the code this file's docstring forbids, and the
+    escape `bdc1aad` measured and closed.
+
+    Task #98 gave the three placement refusals `groups.by_group` raises their own classes, so the first
+    clause keys on the class and this clause keys on the absence of one. Two clauses, two sentences, and
+    each is asserted only here: the wrong-shape row above pins the sentence the class-keyed clause prints,
+    this row pins the sentence the blanket clause prints AND asserts the other sentence is absent. Neither
+    clause can therefore be deleted with the suite green, which is the gap this file's own opening records
+    about task #86 -- helpers driven directly, `main`'s mapping unpoliced.
+
+    The certifier is replaced rather than the rows crafted, because the shape this clause guards is a
+    `ValueError` this file has no name for, which by construction is none of the four named classes and no
+    record set produces it. The process leg is not repeated here: a monkeypatch does not cross into the
+    child, and the real-process half of the rc-1 contract is asserted in the row above.
+    """
+    _scratch_checkout(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    def _unnamed_refusal(*args, **kwargs):
+        raise ValueError('a refusal no class here covers')
+
+    monkeypatch.setattr(producer, "certify_choice", _unnamed_refusal)
+    out = tmp_path / "artefact.json"
+
+    assert producer.main(["--out", str(out)]) == EXIT_DRIFT, (
+        "a refusal about bytes at a declared path is the checkout's failure even when this file cannot "
+        "name it: no operator flag repairs it and rc 1 is outside the published contract")
+    err = capsys.readouterr().err
+    assert "a refusal no class here covers" in err, (err, "the certifier's own words must survive")
+    assert "ValueError" in err, (err, "an unnamed refusal has to be reported as unnamed")
+    assert "refusal this file has no class for" in err, err
+    assert "the certifier refused these rows" not in err, (
+        err, "the class-keyed clause did not speak, so this refusal came from the blanket one")
+    assert "Traceback" not in err, err
+    assert not out.exists(), "the refused run wrote an artefact built on a batch it called unreadable"
