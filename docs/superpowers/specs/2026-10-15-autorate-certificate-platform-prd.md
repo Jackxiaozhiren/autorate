@@ -5,8 +5,9 @@
 **Evidence companion** [`2026-10-15-platform-evidence-snapshot.md`](2026-10-15-platform-evidence-snapshot.md) - every external number lives there, with the command that produced it.
 **Implements** the method defined in `docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md` (the "method spec"). This PRD does not change the method; it builds a delivery surface for it.
 
-> **How to use this document.** Open it from inside a coding agent working in the repository at
-> `/Users/jackson/laya/autorate` and treat Sections 0-13 as your operating instructions. Do not
+> **How to use this document.** Open it from inside a coding agent working in the repository that
+> contains this file - from this file's own directory, `git rev-parse --show-toplevel` prints the
+> repository root - and treat Sections 0-13 as your operating instructions. Do not
 > paste it into a chat window and do not summarise it: the file is the source of truth, and a
 > truncated paste loses Section 12's rails, which are the part that keeps the work safe. One
 > milestone per session, in the order in Section 7.
@@ -77,7 +78,7 @@ it before any source file changes). A pipeline's exit code is not its stages' ex
 a log and `echo "NAME_EXIT=$?"` immediately after each command.
 
 ```bash
-cd /Users/jackson/laya/autorate
+cd "$(git rev-parse --show-toplevel)"
 git rev-parse --abbrev-ref HEAD; git rev-parse --short HEAD            # B1 identity
 git status --short                                                      # B2 must be empty of others' work
 uv run --frozen autorate verify --protocol protocol.json               # B3 the honesty gate
@@ -829,7 +830,8 @@ section list, and have the report land on disk at a unique path before it is sum
 ### 13.4 First-run opener (verbatim, for a new session)
 
 ```text
-Work in the repository at "/Users/jackson/laya/autorate".
+Work in the repository that contains this file; from the directory holding the PRD,
+"git rev-parse --show-toplevel" prints its root.
 
 Read
 docs/superpowers/specs/2026-10-15-autorate-certificate-platform-prd.md in full.
