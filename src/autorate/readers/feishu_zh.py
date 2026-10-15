@@ -252,8 +252,15 @@ def records_from_line(obj: dict, backend: str, quarantine: Optional[list] = None
                 predicted="true" if p_true >= 0.5 else "false",
                 slices={**base_slices, "ask": ask},
                 scores={"reported_confidence": confidence, "noul": p_true,
-                        # upstream sets confidence to P(yes): a confident "no" and a
-                        # low-confidence answer arrive as the same number.
+                        # Upstream fills a noul ask's `confidence` with max(P(true), P(false)) -- the answer
+                        # scale over both slots -- not with P(yes). Measured on the committed archive: all
+                        # 768 laya noul asks satisfy reported == max(probs), and the 9 asks where
+                        # P(true) < 0.5 are the only ones that can tell the two definitions apart. So this
+                        # flag records the coincidence that the larger slot happens to be the affirmative,
+                        # which is why it is True on 759 rows and False on those 9; it is not a property of
+                        # what the ask meant. Pinned by
+                        # tests/test_reader_feishu.py::test_a_noul_confidence_is_the_answer_scale_and_the_
+                        # flag_only_marks_that_coincidence rather than by this comment alone.
                         "noul_confounded_with_yes": confidence == p_true,
                         "act_probability": (a.get("action") or {}).get("act_probability")},
                 seed=0, u=0.0, meta=meta,

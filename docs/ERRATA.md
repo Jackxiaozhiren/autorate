@@ -1747,3 +1747,34 @@ harnesses". It was written red first -- its first run failed on the citation ass
 stops -- and `verify` still prints
 `249 /249` without the corpus and `284 /284` with it, both rc 0 -- the audit's prose is a byte-compared document,
 so a sentence that drifted from the renderer would have refused rather than shipped.
+
+## 2026-10-14 -- a noul `confidence` is the answer scale, not P(yes): what the reader's comment claimed
+
+`src/autorate/readers/feishu_zh.py` carried the comment "upstream sets confidence to P(yes): a confident
+'no' and a low-confidence answer arrive as the same number", and the flag beside it,
+`noul_confounded_with_yes`, was presented as the thing that comment describes. Measured against the
+committed archive through the reader itself, over all 768 laya `four_noul` asks:
+
+- **768 of 768** satisfy `reported_confidence == max(P(true), P(false))` -- the answer scale over both
+  slots;
+- **759** additionally satisfy `reported_confidence == P(true)`, because for those the affirmative *is* the
+  larger slot;
+- **9** do not: there the published number is `P(false)`, and the flag is False.
+
+So upstream's field is `max(p, 1-p)`, and the flag marks the coincidence that `P(true) >= 0.5`. The comment
+was wrong in a way that is hard to notice from data, because the wrong reading and the right reading differ on
+9 rows out of 768 -- and those 9 are the only evidence either way, which is why they are now asserted rather
+than commented. The flag's *computation* was never wrong; what was wrong is that a reader could take its name
+and its comment for a semantic property of the ask ("confounded with yes") when it is a statement about which
+slot happened to be larger. `tests/test_reader_feishu.py::test_a_noul_confidence_is_the_answer_scale_and_the_flag_only_marks_that_coincidence`
+builds both cases with a published confidence of 0.6213 -- once at `P(true) = 0.6213`, once at
+`P(true) = 0.3787` -- so the two hypotheses get different answers and the row can tell them apart. It was
+proved able to fail by planting `confidence == max(p_true, 1 - p_true)` into the reader: the row reddened on
+the second fixture, and the reader was restored byte-identically with the restore checked.
+
+Two things deliberately not done. The flag's **name is kept**: it is written into the committed corpus (1,536
+occurrences in `data/records_feishu.jsonl`), whose digest `protocol.json` pins as `corpus.records_digest`, so
+renaming it would move a frozen value and re-stamp every artefact built on that corpus -- that is a freeze
+round's decision with an errata entry of its own, not a comment fix. And the same false claim appears in the
+Plan A plan document at `docs/superpowers/plans/2026-09-29-autorate-plan-a-foundation-and-choice-certification.md:1001`
+and `:1080`; plan text is dated, so it is left as written and named here instead of being quietly rewritten.

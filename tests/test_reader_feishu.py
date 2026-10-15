@@ -517,3 +517,53 @@ def test_a_mode_that_spells_the_internal_bucket_does_not_borrow_its_name(tmp_pat
     assert stats2["lines_malformed"] == 1, stats2
     assert stats2["lines_kept"] + sum(stats2["lines_quarantined_only"].values()) \
         == stats2["lines_read"] == 4, stats2
+
+
+def _noul_line(confidence, p_true, ask="urgent"):
+    """One `four_noul` archive line whose ask states `p_true` and a published confidence."""
+    return {"id": "noul-0", "mode": "four_noul", "repeat": 0, "status": "ok", "family": "f",
+            "request_sha256": "sha-noul-0",
+            "response": {"model": "m", "answers": {ask: {
+                "type": "noul", "noul": p_true, "confidence": confidence}}}}
+
+
+def test_a_noul_confidence_is_the_answer_scale_and_the_flag_only_marks_that_coincidence():
+    """#32: what `noul_confounded_with_yes` really computes, said as a test rather than a comment.
+
+    Upstream fills a noul ask's `confidence` with `max(P(true), P(false))` -- the answer scale over both
+    slots -- not with P(yes). The comment this row replaces asserted the latter, which is *observed* to be
+    true on almost every row and is therefore easy to believe: when P(true) >= 0.5 the two definitions are
+    the same number. The 9 laya rows in the committed archive where P(true) < 0.5 are the only ones that
+    can tell the hypotheses apart, so both hypotheses get a fixture here rather than an argument.
+
+    Two lines, both with confidence 0.6213:
+      * P(true) = 0.6213 -> the flag is True, and the reason is that P(true) happens to be the larger slot;
+      * P(true) = 0.3787 -> the published number is still 0.6213 (P(false)), the flag is False, and a
+        reader who believed "confidence = P(yes)" would expect 0.3787.
+
+    Red if the expression behind the flag changes, or if the flag becomes something a reader could take for
+    a semantic property of the ask: the assertions tie it to `p_true >= 0.5` and to the scale identity, and
+    neither is a tautology of the reader's own expansion.
+    """
+    from autorate.readers.feishu_zh import records_from_line
+    from autorate.records import max_confidence
+
+    high, low = [], []
+    for sink, p_true in ((high, 0.6213), (low, 0.3787)):
+        quarantine = []
+        recs = [r for r in records_from_line(_noul_line(0.6213, p_true), "laya", quarantine)
+                if r.qtype == "noul"]
+        assert len(recs) == 1, (p_true, recs, quarantine)
+        assert not quarantine, quarantine
+        sink.extend(recs)
+        r = recs[0]
+        assert r.options == ("false", "true"), r.options
+        assert r.scores["reported_confidence"] == 0.6213
+        assert r.scores["reported_confidence"] == pytest.approx(max_confidence(r.probs), abs=1e-9), (
+            "the published number is not the answer scale over both slots: %r" % (r.scores,))
+
+    assert high[0].scores["noul_confounded_with_yes"] is True
+    assert low[0].scores["noul_confounded_with_yes"] is False
+    for p_true, rec in ((0.6213, high[0]), (0.3787, low[0])):
+        assert bool(rec.scores["noul_confounded_with_yes"]) == (p_true >= 0.5), (
+            "the flag stopped marking the coincidence it names: P(true)=%r" % p_true)
