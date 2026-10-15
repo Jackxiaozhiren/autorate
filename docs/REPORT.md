@@ -248,7 +248,7 @@ and no corpus: every input is a committed file, and the two lanes the command ca
 different denominators on purpose -- the corpus-absent lane transcribes the inventory snapshot it
 cannot contradict and says so in its own disclosure line.
 
-- documents `verify` byte-compares (`cli.PUBLISHED_DOCS`, 7 of them, this file among them): `docs/RESULTS.md`, `data/inventory.md`, `docs/AUDIT.md`, `docs/SEVERITY.md`, `docs/RESPLIT.md`, `docs/SLICES.md`, `docs/REPORT.md`
+- documents `verify` byte-compares (`cli.PUBLISHED_DOCS`, 8 of them, this file among them): `docs/RESULTS.md`, `data/inventory.md`, `docs/AUDIT.md`, `docs/SEVERITY.md`, `docs/RESPLIT.md`, `docs/SLICES.md`, `docs/FEASIBILITY.md`, `docs/REPORT.md`
 - the records every table above is built on: `data/records_feishu.jsonl` (jev=959 rows, laya=960 rows)
 - the inventory the document arm read: `data/inventory.md.json`
 - digests the freeze named in advance, which are the two checks in that gate that are not fixed
