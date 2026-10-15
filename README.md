@@ -119,27 +119,27 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 249 /249 values` where the corpus is absent, `re-derived 284 /284
+prints say so: `re-derived 508 /508 values` where the corpus is absent, `re-derived 543 /543
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 284: every CI run is a 249 run, on both of its arms. Green CI is
+alone can never reach the 543: every CI run is a 508 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 249 run proves a lot inside that lane. Every published number that is a function of a
+A 508 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all six published certificates, each from the committed
 records it was actually made from, G4's slice run from the three committed MASSIVE record files
 it names inside itself, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
 for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
-for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows from their committed pin. What a 249 run
+for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows from their committed pin. What a 508 run
 cannot prove is what its own disclosure says in so many words --
 `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 249 /249.
+had drifted from the corpus would agree with itself and report 508 /508.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -166,7 +166,15 @@ second place to keep them.
   which tests the machinery and is labelled as nothing else. `verify` compares the artefact's own arithmetic —
   certificates plus refusals per task, the rate against its denominator, the rows against the splits — and the
   rubric it recorded against the freeze's, in both lanes. The row is still not close to met: the second column
-  exists, the first is zero.
+  exists, the first is zero. What replaces the missing certificate is the ceiling, published rather than
+  asserted: `tools/g1_feasibility.py` computes, for each pool size this checkout can actually build, how wide
+  the exact one-sided bound is and what error rate would therefore be certifiable at `α = 0.05`, and
+  `verify` recomputes every figure in both lanes from `src/autorate/tails.py` and the published certificates.
+  So `not_certifiable` is now a measured claim about n and bound width, not an absence of an answer -- which
+  is the outcome spec §14 names as a result ("bound width is a first-class output; 'the bound is useless
+  here' *is* a certification result"). §14's kill criterion for this row has also fired: no real task
+  certifies at the published alpha, so the headline this project ships is the audit multiple G2 measures and
+  the worst-slice refusal G4 names. Read the G1 row as unmet; that is what it says.
 - **G2, the reference README's gate demonstrably violating its implied error rate: `measured_not_bounded`.**
   `autorate audit` measures the gate upstream instructs and `docs/AUDIT.md` publishes the multiplier, but the
   sample cannot bound the claim: on the 2 cases one backend automates, one is wrong, and the exact one-sided
@@ -246,8 +254,10 @@ bound is 0.975. The other automates all 32 with one wrong, and the exact case bo
 would have bounded at 0.089, so the corpus cannot support a 5% claim at any error count.
 
 That is the result, not a shortfall: the corpus holds 64 independent cases, and the
-project's own feasibility table said a 5% claim was out of reach before any certificate was
-written. A tool that certified anyway would have been selling the exact thing this one
+project's own feasibility table -- computed as a scratch probe before any certificate was written, and now a
+published artefact, `tools/g1_feasibility.py` writing `data/g1_feasibility.json` and `docs/FEASIBILITY.md`
+with every figure recomputed by `verify` in both lanes -- said a 5% claim was out of reach here.
+A tool that certified anyway would have been selling the exact thing this one
 refuses to sell. Both evaluation halves cover the same 32 cases, so the pair is compared
 case by case on identical inputs.
 

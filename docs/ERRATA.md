@@ -1896,3 +1896,51 @@ classes are three" is a guard, not a comment.
 One thing this round did not touch, and says so rather than fixing it quietly: the 2026-10-14 entry above
 quotes `groups.py:163`, and that line is now `:184`. The old entry is kept as written, per this file's own
 rule that corrections are appended rather than retconned.
+
+## 2026-10-15 -- the eighth freeze: G1's ceiling becomes published evidence, and both denominators move with it
+
+Four things moved together, because a claim note, an arm and a denominator that disagree is the defect this
+file exists to record.
+
+**G1's `not_certifiable` is now a measured statement.** `tools/g1_feasibility.py` writes
+`data/g1_feasibility.json` and `docs/FEASIBILITY.md`; `verify` recomputes every figure in both lanes from
+`src/autorate/tails.py` and the published certificates -- **253 field comparisons plus 5 rubric rows** for
+this arm alone, which is why the denominators moved from 249/284 to **508 /508** corpus-absent and
+**543 /543** corpus-present (the 35-check gap is unchanged: the same nine `SOURCE.json` digests and 26
+snapshot keys). What the table states is the width of the exact one-sided bound at each pool size this
+checkout can build, and the error rate that would therefore be certifiable at `alpha = 0.05` -- so the row no
+longer rests on "we could not", it rests on a recomputable number. Spec §14 called that shape a result
+("bound width is a first-class output; 'the bound is useless here' *is* a certification result"), and §14's
+kill criterion for G1 has fired: no real task certifies at the published alpha. README, the G1 claim note and
+`docs/FEASIBILITY.md` all say the row is unmet; none of them reads it as a certificate.
+
+**The third ungated digit in three arms, now gated.** G3's note said 20 comparisons against 19, G4's said 70
+field comparisons against 76, and G1's says `verify` "compares 32 quantities ... plus its rubric" -- measured
+by driving `report.rederive_resplit` with counting callbacks, exactly 32 and 5. The existing rows searched
+`(\d+) comparisons` and `(\d+) field comparisons plus`, and neither pattern matches a digit followed by
+"quantities", so a fourth row now re-derives G1's digit and the set row's regex covers the third spelling --
+otherwise a note can state a size in a shape nobody polices. Both new legs were proved load-bearing by
+planting: the digit changed to 31 reddened the row naming 31 against 32; removing the count from the note
+reddened the set row, which reported `['G3', 'G4']` against the `['G1', 'G3', 'G4']` its own list claims, and
+the row guarding its own premise failed with "the G1 note no longer counts the resplit arm". `protocol.json`
+was restored byte-identically with the restore checked.
+
+**The rubric's field names have one owner inside the module that owns them.** `report.py` carried the literal
+`("alpha", "beta", "delta", "method", "seed")` three times -- `RESPLIT_RUBRIC_FIELDS`, `SLICE_RUBRIC_FIELDS`
+and `G1_FEASIBILITY_RUBRIC_FIELDS` -- while the guard that refuses re-declaration scanned only modules inside
+the fence, never the fence's owner. They now alias `report.PUBLISHED_RUBRIC_FIELDS`, and
+`tests/test_cli.py::test_the_rubric_field_names_have_one_owner_inside_the_module_that_owns_them` parses the
+owner module's AST and refuses a second rubric-shaped literal. Parsing, not grepping: a substring scan is
+answered by a comment or a rewrapped line. Proven able to fail by re-typing one alias, which reported the two
+literal names; restored byte-identically.
+
+**Two clauses of the seventh freeze's own note, fixed here rather than in another round.** The G5 note said
+"every tip is witnessed by its own run" -- an unearned universal, since a run exists for a pushed tip and says
+nothing about its result -- so it now points at the runner's log instead of asserting a witness, and at
+`tests/test_ci_workflow.py` as the row that refuses a workflow edited back to the unfrozen form. The same note
+named `tests/test_g5_transcript.py` twice with two framings; it is stated once now. These ride inside this
+emission because re-digesting for two sentences would otherwise cost a whole round.
+
+The eighth digest is `4e9e70366d26666267766549bebfd8fa649352d1c52a9f2b4ca61fe50e597c8f`; the six stamped
+artefacts were re-stamped by enumerating the publication tables, the emission is a fixed point of this tree,
+and both lanes re-derive at rc=0 with no drift line.

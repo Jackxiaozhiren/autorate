@@ -27,6 +27,16 @@ from .severity import SeverityCertificate, certify_severity
 from .tails import bound_width, clopper_pearson_upper, n_feasible
 
 RECORDS = "data/records_feishu.jsonl"
+# The rubric keys an ARM publishes and re-derives, in the spelling the artefacts record. One owner for the
+# NAME LIST (R-168, and #62's close-out): `certificate.PUBLISHED_RUBRIC` owns the published VALUES, and its
+# mapping order is alpha, beta, delta, seed, method -- so this is a list of names held here deliberately
+# rather than `tuple(PUBLISHED_RUBRIC)`, which would silently compare a different set of rows. The three
+# arms alias it below; an arm that needs a different field set must say so in its own name, because the
+# alternative -- a second literal -- is what let `("alpha", "beta", "delta", "method", "seed")` be typed
+# three times in this one file while the guard that looks for duplicates only scanned modules inside the
+# fence, never the owner (`tests/test_cli.py`'s report-internal row now covers this file).
+PUBLISHED_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+
 CERTS = {"laya": "data/cert_laya.json", "jev": "data/cert_jev.json"}
 INVENTORY_JSON = "data/inventory.md.json"
 # The budgets the archived corpus is certified at. beta is deliberately loose: the
@@ -442,7 +452,7 @@ RESPLIT_MD = Path("docs/RESPLIT.md")
 # The rubric keys the experiment records and the gate compares, one list so the arm and the denominator that
 # counts it read one owner (R-168). `seed` is in the artefact's own `rubric` block, as `cli.RUBRIC_FIELDS`
 # spells it for the certificates.
-RESPLIT_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+RESPLIT_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS
 
 
 def read_resplit(path: Path) -> dict:
@@ -576,7 +586,7 @@ SLICE_BACKEND = "laya"
 SLICE_RECORDS = ("data/records_massive_de.jsonl",
                  "data/records_massive_en.jsonl",
                  "data/records_massive_sw.jsonl")
-SLICE_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+SLICE_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS
 # Four field lists, one owner each: the arm and the denominator that counts it read these (`R-168`), and an
 # operator tampering with one published value has to be named by exactly one label.
 # `worst_claim` and `n_min_violations` are in here because they ARE G4: the first names the slice whose
@@ -921,7 +931,7 @@ def render_slices(doc: dict) -> str:
 G1_FEASIBILITY_JSON = "data/g1_feasibility.json"
 G1_FEASIBILITY_MD = Path("docs/FEASIBILITY.md")
 G1_FEASIBILITY_PRODUCER = "tools/g1_feasibility.py"
-G1_FEASIBILITY_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+G1_FEASIBILITY_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS
 # The probe's size ladder, kept because a reader needs a scale beside the per-task rows: 100, 300 and 1,000
 # automated decisions. The probe's fourth row (2,974) is NOT declared here -- it is `n_eval + n_cal` of the
 # three MASSIVE certificates, so the arm re-derives that size from the artefacts rather than remembering it.

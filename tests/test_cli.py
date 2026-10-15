@@ -2572,3 +2572,54 @@ def test_certify_scores_signature_default_pin_fires_when_a_default_diverges(monk
 def test_certify_thresholds_signature_default_pin_fires_when_a_default_diverges(monkeypatch):
     """Negative control for `certify_threshold`'s signature pin, driving that pin's own comparison."""
     _drive_signature_default_control(monkeypatch, "autorate.certify_threshold", "certify_threshold")
+
+
+RUBRIC_FIELD_NAMES = {"alpha", "beta", "delta", "method", "seed", "unit", "n_claims", "min_cal", "min_eval"}
+
+
+def _module_level_tuple_literals(path):
+    """Top-level `NAME = ("a", "b", ...)` assignments in `path`, by name and value, found on the AST.
+
+    Parsing rather than grepping, because a substring scan is answered by a comment, a docstring or a line
+    that rewraps the tuple across lines -- the same reason spec section 10's field lists are read off the
+    dataclasses instead of off the text.
+    """
+    import ast
+    tree = ast.parse(path.read_text())
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Tuple):
+            continue
+        values = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
+        if len(values) == len(node.value.elts) and values and set(values) <= RUBRIC_FIELD_NAMES:
+            out[target.id] = tuple(values)
+    return out
+
+
+def test_the_rubric_field_names_have_one_owner_inside_the_module_that_owns_them():
+    """`report.py` may state the published rubric's field names once; the arms alias that one statement.
+
+    Why this row exists and not just a rule in a comment. `tests/test_cli.py`'s fence row refuses a module
+    *inside the fence* redeclaring a rubric name it could import, and `report.py` is the fence's owner -- so
+    the same five names were typed as three separate literals inside `report.py` itself (`RESPLIT_RUBRIC_FIELDS`,
+    `SLICE_RUBRIC_FIELDS`, and `G1_FEASIBILITY_RUBRIC_FIELDS` as the third), in the one file the guard could
+    not look at. Three owners of a list is how a rubric rename updates two arms and leaves the third
+    re-deriving the old shape while `verify` keeps agreeing with itself.
+
+    GREEN on arrival, because this commit collapsed the three aliases onto `PUBLISHED_RUBRIC_FIELDS`.
+    Proven able to fail by planting: re-typing one alias as a literal tuple reddened the row naming that
+    alias, and the file came back byte-identically with the restore checked.
+    """
+    from autorate import report
+
+    literals = _module_level_tuple_literals(Path(report.__file__))
+    assert list(literals) == ["PUBLISHED_RUBRIC_FIELDS"], (
+        "report.py states the published rubric's field names as %d literals (%s); the arms alias "
+        "PUBLISHED_RUBRIC_FIELDS, so a second one is a second owner of a list that renames in one place"
+        % (len(literals), sorted(literals)))
+    for arm in ("RESPLIT_RUBRIC_FIELDS", "SLICE_RUBRIC_FIELDS", "G1_FEASIBILITY_RUBRIC_FIELDS"):
+        assert getattr(report, arm) == report.PUBLISHED_RUBRIC_FIELDS, (
+            "%s no longer aliases the owner, so the arm compares a field set nobody declared" % arm)
