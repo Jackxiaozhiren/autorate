@@ -1814,8 +1814,8 @@ from.
 **README's limits section was two publications behind the tree.** It listed the group-conditional (Mondrian)
 surface among the libraries with "no committed artefact that `verify` re-derives", after
 `data/slices_language.json` and `docs/SLICES.md` landed and became that arm; and it said the G3 contrast
-control "has not been run", in the same file that documents `tests/test_g3_contrast.py` a hundred lines
-earlier. Both now read what the tree does: the Mondrian surface left the unpublished list, and G3's status is
+control "has not been run", in the same file whose G3 bullet documents `tests/test_g3_contrast.py` eighty
+lines above it. Both now read what the tree does: the Mondrian surface left the unpublished list, and G3's status is
 explained by the criterion's wording having lost rather than by a missing control.
 
 Three rows in `tests/test_verify_protocol.py` carry the corrections: the slices arm's own count against the
@@ -1838,5 +1838,14 @@ Deliberately not in this freeze. Tasks #68 (the Khmer slice corpus) and #97 (G1'
 the publication tables and so move both denominators. Folding an unreviewed corpus publication into a
 corrective re-freeze would have made one commit carry a documentation fix and new evidence at once, and the
 fixed-point proof would have been measured against two moving targets; each gets its own round. The seventh
-digest is `b8491e9a2d2bdeb0c9996f8662d0303ceb6246ba861d5e0a17461526a792a7b1`, carried by the six stamped
+digest is `efea041b6dee8693ea302efa8d564a534ea786d7267ec1593f655c460973434a`, carried by the six stamped
 artefacts and printed by `docs/REPORT.md` and `docs/SEVERITY.md`.
+
+The first emission of this freeze went red, and the guard that caught it was right. Naming CI's two jobs in
+the G5 note put the token `cross-libc-verify` into `docs/REPORT.md`, and `tests/test_techreport.py`'s
+stray-citation scan treats any token with two hyphens in that document as a cited id the verification ledger
+must have opened; it had not. The fix reworded the note to say "the cross-libc matrix over ubuntu and macOS"
+-- the same fact, without a token the scan cannot resolve -- rather than adding an exemption to the scan,
+because a guard that learns to skip one more class of string is a guard with a new blind spot, and this
+repository has already paid twice for exemptions written to clear a green. Re-emitting cost a second digest:
+`b8491e9a2d2b...` was this round's first emission, superseded inside the round and never pushed.

@@ -229,9 +229,9 @@ NON_G1_CLAIMS = (
                 "\"this document\" would name one file inside the protocol and another inside the report, and "
                 "would be wrong from the next commit onward even in the protocol. The platform half is "
                 "stated the same way. "
-                "`.github/workflows/ci.yml` triggers on push and runs the criterion's literal command -- "
-                "`autorate verify --protocol protocol.json` -- in both its jobs, `offline` and "
-                "`cross-libc-verify`, so every tip is witnessed by its own run rather than by a sentence in "
+                "`.github/workflows/ci.yml` triggers on push and runs the criterion's literal command in "
+                "both of its jobs -- `offline`, and the cross-libc matrix over ubuntu and macOS -- so every "
+                "tip is witnessed by its own run rather than by a sentence in "
                 "a frozen note about a run that has not happened yet."
     },
 )
