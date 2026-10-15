@@ -48,8 +48,8 @@ class UndeclaredGroupKey(ValueError):
     The class is a `ValueError` subclass, and the two neighbouring candidates were rejected on
     purpose. Not a bare `ValueError`, because a dedicated name stays greppable and separately
     testable -- the operator who typos `--groups langauge` has to be able to find what refused him,
-    and the two `ValueError`s this module also raises (a case that cannot be placed, a slice value
-    that cannot be a key) are about the PRODUCER's data while this one is about the CALLER's
+    and the three placement refusals this module also raises (`UnhashableSliceValue`, `CaseLeakage`,
+    `UnplacedCase`) are about the PRODUCER's data while this one is about the CALLER's
     arguments. Not a `KeyError`, even though a `KeyError` is what the dict lookup would have raised:
     `cli.main()` maps `ValueError` to exit 2 and has no `KeyError` arm, so a `KeyError` here was an
     rc-1 traceback on the one path a user reaches by typing -- measured through the real `main()`

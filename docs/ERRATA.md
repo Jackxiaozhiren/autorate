@@ -1849,3 +1849,50 @@ must have opened; it had not. The fix reworded the note to say "the cross-libc m
 because a guard that learns to skip one more class of string is a guard with a new blind spot, and this
 repository has already paid twice for exemptions written to clear a green. Re-emitting cost a second digest:
 `b8491e9a2d2b...` was this round's first emission, superseded inside the round and never pushed.
+
+## 2026-10-15 -- the three placement refusals in `groups.py` have classes; what that costs a reader
+
+Dispatch #98, closing the gap ledger R-272 filed instead of fixing (`bdc1aad`, recorded in this file as
+"giving it a class is a fix for every caller of `by_group` and is filed, not quietly done here").
+`groups._grouped_by_case` refused three shapes with a bare `ValueError`: a slice value that cannot be a dict
+key, one case carrying two values for the same declared key, and a case that states nothing for a key the
+other rows state. Those are now `UnhashableSliceValue`, `CaseLeakage` and `UnplacedCase`, raised at the same
+three sites with the same three messages -- the wording is unchanged, because rows in
+`tests/test_groups.py` assert the sentences.
+
+**What a reader pays, per class.** A caller that caught `ValueError` keeps working: all three keep
+`ValueError` as their base, because `cli.main` maps `ValueError` to exit 2 and these are refusals of an
+input record set that cannot be partitioned -- the usage class, which is the reasoning the existing comment
+at the leakage site gave for rejecting `ArithmeticError`, extended to the other two. Re-parenting one of
+them to `RuntimeError`, the shape `report.PublishedArtefactUnavailable` uses for "the checkout cannot
+reproduce what it publishes", would move an exit code, so the base is pinned by a row of its own rather than
+left to a reader's good intentions. A caller that used to catch `Exception` and print a traceback now has a
+name to key on, and the name reaches the operator: the slice producer's refusal for the third shape reads
+`DECLARED INPUT UNREADABLE (SliceInputRefusal): the certifier refused these rows: UnplacedCase: case
+massive/de/0 states no value ...` where it used to print the word `ValueError` in that position.
+
+**What the producer stopped doing.** `build_document` converted that shape at its own call site precisely
+because there was no class to key on. It now keys on the class -- one clause names `UndeclaredGroupKey` and
+the three placement classes, and a second, deliberately blanket `except ValueError` follows it for refusals
+this file has no name for. The two clauses print different sentences, and that difference is what makes both
+of them visible: the wrong-shape row in `tests/test_slice_producer_cli.py` asserts the class-keyed sentence,
+and a new row asserts the blanket sentence while asserting the other one absent. Either clause can therefore
+still be seen going: narrowing the class tuple reddens the wrong-shape row
+(`assert 'the certifier refused these rows' in '... the certifier refused the batch with a refus...'`), and
+narrowing the blanket clause lets an unclassified `ValueError` leave `build_document`, match nothing in
+`main`'s tuple, and reach the operator as rc 1 -- the code this file's own docstring forbids, and the escape
+`bdc1aad` measured and closed. That the blanket clause went unasserted until now is the same gap this file
+records about task #86: a handler nobody drives can be deleted in silence.
+
+**Falsification, the way this file's other entries do it.** Seven mutations of a scratch copy, one property
+each, every file restored byte-identically with `cmp` and an empty `git status` confirmed after each run,
+against the control that all six target rows pass unmutated (`6 passed`, exit `0`). Each of the three raise
+sites put back to a bare `ValueError` reddened its row with the original exception propagating (exit `1`);
+the site-184 mutation reddened the producer's wrong-shape row as well, which is the class keying showing. A
+base class changed to `RuntimeError` reddened the pin with `assert False` on `issubclass(..., ValueError)`,
+and collapsing `UnplacedCase` under `CaseLeakage` reddened the same pin on its pairwise half -- so "the three
+classes are three" is a guard, not a comment.
+
+One thing this round did not touch, and says so rather than fixing it quietly: the 2026-10-14 entry above
+quotes `groups.py:163`, and that line is now `:184`. The old entry is kept as written, per this file's own
+rule that corrections are appended rather than retconned.
