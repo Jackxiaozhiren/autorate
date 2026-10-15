@@ -213,9 +213,12 @@ def render(flat: dict) -> str:
         "because a refusal is not a reproduction -- and each has its own denominator. They are not two speeds",
         "of one gate: the corpus-present lane recomputes the upstream `SOURCE.json` digests and the inventory",
         "snapshot that the corpus-absent lane can only transcribe, and no runner can close that gap, because",
-        "the corpus is not a committed file. CI's own witness of this command at the commit named above is",
-        "run `38400305544`: three jobs on two libc families, each printing the corpus-absent line below",
-        "(`tests/test_ci_workflow.py` is the row that refuses a workflow edited back to the unfrozen form).",
+        "the corpus is not a committed file. CI runs this same command at every push, in both of its jobs:",
+        "`offline` and `cross-libc-verify` -- the second a matrix over ubuntu and macOS, so three job",
+        "instances on two libc families each print the corpus-absent line below. No run id is quoted here:",
+        "a run belongs to the commit that pushed it, and this document names a different commit above. The",
+        "workflow's own shape is policed by `tests/test_ci_workflow.py`, which is also where the run-level",
+        "log evidence is described rather than restated.",
         "",
     ]
     lane_steps = [_step(flat, prefix, LANE_RC) for prefix in STEPS]

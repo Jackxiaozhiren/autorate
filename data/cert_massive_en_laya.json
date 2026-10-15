@@ -3309,7 +3309,7 @@
     "multi_label": 778,
     "n_cal_cases": 1487,
     "n_eval_cases": 1487,
-    "protocol_digest": "a59f6639c4d74eee1d06adc6b450f2483bda1871cdb779cda84956128fd5b972",
+    "protocol_digest": "b8491e9a2d2bdeb0c9996f8662d0303ceb6246ba861d5e0a17461526a792a7b1",
     "seed": 7,
     "skipped_no_gold": 0,
     "skipped_wrong_qtype": 0,

@@ -14,6 +14,7 @@ Nothing here imports a model, a corpus or a network: these are the same committe
 """
 import copy
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -441,3 +442,167 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
     assert not stray, (
         "README.md calls something `a %s run`, which is neither lane this gate prints (%s absent, %s "
         "present)" % (", ".join(str(s) for s in stray), n_absent, n_present))
+
+
+# ---------------------------------------------------------------------------
+# Freeze round 7 (task #96): the digits a claim note states about an ARM or about ANOTHER DOCUMENT have to
+# come from that arm or that document. Both rows below were written against the tree at `135549b`, where the
+# G4 note's comparison count and the G5 note's parent-commit phrase were already false, and the set row was
+# already satisfiable -- which is why it names what it prevents rather than claiming to have caught anything.
+# ---------------------------------------------------------------------------
+
+ARM_COUNT_NOTE_IDS = ("G3", "G4")
+
+
+def _recorded_lanes(g5_text):
+    """The transcript's two lanes as (absent, present) denominator pairs, read off its own command lines.
+
+    The record prints the command's own `N /N values` spelling; a note that transcribes it writes `N/N`. The
+    guard parses the record rather than trusting either spacing, so a re-export that changes the numbers
+    changes what the prose has to say -- and nothing else.
+
+    Only an `rc=0` count is a lane. The planted falsifications run the same command with the same
+    `AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir` and print `rc=4  re-derived 248 /249 values`, so a parser
+    that keyed on the command alone would read a plant as the clean absent lane -- measured while writing this
+    row, where the first version picked up the tampered denominator and the transcription legs went red for
+    the wrong reason.
+    """
+    lanes = {}
+    for block in re.findall(r"```\n(.*?)```", g5_text, re.DOTALL):
+        lines = [line for line in block.splitlines() if line.strip()]
+        if not lines or not lines[0].startswith("$ "):
+            continue
+        counts = [m.groups() for m in re.finditer(r"^rc=0\s+re-derived (\d+) /(\d+) values", block,
+                                                  re.MULTILINE)]
+        if len(counts) != 1:
+            continue
+        if "nonexistent-corpus-dir" in lines[0]:
+            lanes["absent"] = counts[0]
+        elif "<corpus" in lines[0]:
+            lanes["present"] = counts[0]
+    return lanes
+
+
+def test_the_g4_claim_note_counts_the_slice_arm_as_the_arm_actually_counts():
+    r"""G4's note states the size of the slices arm, so the slices arm has to be the source of that digit.
+
+    R-260's rule, applied to the second arm that states its own size. The note says the worst-slice run is
+    re-derived by "N field comparisons plus M rubric rows"; driving `report.rederive_slices` with counting
+    callbacks at the freeze's rubric gives the numbers the run really makes, and the note must agree with
+    them. The G4 arm drifted because the existing row searched for `(\d+) comparisons`, which matches the G3
+    spelling and cannot match "70 field comparisons plus" -- one spelling policed, two in use, which is the
+    partial-re-derivation failure this repository keeps recording.
+
+    RED today on this tree: the arm makes 76 field comparisons and the frozen note says 70, because
+    `report.SLICE_N_MIN_KEY` joined the compared fields and the sentence was not re-derived with it. The note
+    edit costs a freeze and a six-artefact re-export, so it lands with the seventh freeze.
+    """
+    doc = json.loads((REPO / "protocol.json").read_text())
+    note = next(c["note"] for c in doc["claims"] if c["id"] == "G4")
+    claimed = re.search(r"(\d+) field comparisons plus (\d+) rubric rows", note)
+    assert claimed, "the G4 note no longer counts the arm, so this row guards nothing: %r" % note[:120]
+
+    seen_field, seen_rubric = [], []
+    report.rederive_slices(lambda label, actual, wanted: seen_field.append(label),
+                           lambda label, actual, wanted: seen_rubric.append(label),
+                           rubric=doc["rubric"])
+    assert int(claimed.group(1)) == len(seen_field), (
+        "protocol.json's G4 note claims %s field comparisons and the slices arm makes %d -- a digit in a "
+        "frozen sentence and the arm it describes must have one owner"
+        % (claimed.group(1), len(seen_field)))
+    assert int(claimed.group(2)) == len(seen_rubric), (
+        "the note claims %s rubric rows and the arm produces %d" % (claimed.group(2), len(seen_rubric)))
+
+
+def test_every_claim_note_that_counts_an_arm_is_counted_by_a_row():
+    r"""Which claim notes state an arm's size, and that each one is policed by a named row.
+
+    The set is read from `protocol.json`, not typed: a note that starts stating a size without a row reddens
+    here, which is the gap that let the G4 digit drift while the G3 digit was guarded. If a note stops
+    stating a size, the row that policed it has to go in the same commit rather than pass vacuously, so the
+    guard demands the names line up in both directions.
+
+    GREEN on arrival, and that is the row's purpose: it names what it prevents. It went red during the making
+    of this round in the one direction that matters -- with the G4 spelling removed from its regex the set
+    collapsed to `['G3']` while two notes stated sizes.
+    """
+    doc = json.loads((REPO / "protocol.json").read_text())
+    counting = sorted(c["id"] for c in doc["claims"]
+                      if re.search(r"\d+ (?:comparisons in|field comparisons plus)", c["note"]))
+    assert counting == sorted(ARM_COUNT_NOTE_IDS), (
+        "the notes that state an arm's size are %s but the rows that re-derive them cover %s -- add or "
+        "delete a row in this commit" % (counting, sorted(ARM_COUNT_NOTE_IDS)))
+
+
+def test_the_g5_transcript_is_the_only_owner_of_its_digits_and_every_quoter_transcribes_it():
+    """The frozen G5 note and README both quote `docs/G5.md`; both quotes have to match the record, byte for byte.
+
+    Why this row exists. The note and README each restate the transcript's two lane denominators and its
+    gap, and the transcript names the commit it was unpacked from. Neither restatement is derived by
+    anything: when the sixth freeze moved the live denominators, the quoted 248/283 stayed, and the only
+    reason that was still honest is that the numbers belong to the recorded commit -- a fact the note
+    conveyed with the words "which is this document's parent". That phrase is the second defect. `protocol.json`
+    is quoted verbatim into `docs/REPORT.md`, so a reader of the report resolves "this document" to the
+    report, whose parent is not the transcript's commit at all; and the relation stales one commit later
+    even inside the protocol, which is why the durable form names both commits.
+
+    Red today on the deictic leg alone; the transcription legs pass today and are what stop a later
+    re-export from leaving the prose behind.
+    """
+    doc = json.loads((REPO / "protocol.json").read_text())
+    note = next(c["note"] for c in doc["claims"] if c["id"] == "G5")
+    g5 = (REPO / "docs" / "G5.md").read_text()
+    readme = (REPO / "README.md").read_text()
+
+    lanes = _recorded_lanes(g5)
+    assert set(lanes) == {"absent", "present"}, (
+        "docs/G5.md no longer prints one count under one command per lane, so its quoters cannot be "
+        "checked against it: %r" % (lanes,))
+    recorded_commit = re.search(r"Produced from commit `([0-9a-f]{7,40})`", g5)
+    assert recorded_commit, "docs/G5.md does not name the commit it was produced from"
+
+    note_pairs = re.findall(r"\b(\d+)/(\d+)\b", note)
+    assert len(note_pairs) == 2, (
+        "the G5 note should transcribe exactly the record's two lane denominators and it carries %d "
+        "slash-shaped numbers: %s" % (len(note_pairs), note_pairs))
+    assert tuple(note_pairs[0]) == lanes["absent"], (
+        "the note says the absent lane ran %s while docs/G5.md records %s" % (note_pairs[0], lanes["absent"]))
+    assert tuple(note_pairs[1]) == lanes["present"], (
+        "the note says the corpus-present lane ran %s while docs/G5.md records %s"
+        % (note_pairs[1], lanes["present"]))
+    gap = re.search(r"the (\d+)-check difference", note)
+    assert gap, "the G5 note no longer states the lane gap, so the record's gap is unquoted: %r" % note[:120]
+    assert int(gap.group(1)) == int(lanes["present"][1]) - int(lanes["absent"][1]), (
+        "the note calls the gap %s checks and the recorded lanes differ by %d"
+        % (gap.group(1), int(lanes["present"][1]) - int(lanes["absent"][1])))
+
+    note_commit = re.search(r"git archive` of commit ([0-9a-f]{7,40})", note)
+    assert note_commit, "the G5 note no longer names the commit the export unpacks"
+    assert note_commit.group(1) == recorded_commit.group(1), (
+        "the note names commit %s and docs/G5.md names itself the product of %s -- one record, two owners"
+        % (note_commit.group(1), recorded_commit.group(1)))
+
+    readme_commit = re.search(r"git archive` of commit `([0-9a-f]{7,40})`", readme)
+    assert readme_commit, "README.md no longer names the commit the transcript was unpacked from"
+    assert readme_commit.group(1) == recorded_commit.group(1), (
+        "README.md cites commit %s as the transcript's subject and docs/G5.md says %s"
+        % (readme_commit.group(1), recorded_commit.group(1)))
+    readme_pairs = re.findall(r"`(\d+)/(\d+)`", readme)
+    assert readme_pairs, "README.md no longer quotes the recorded denominators, so nothing checks its quote"
+    assert tuple(readme_pairs[0]) == lanes["absent"] and tuple(readme_pairs[1]) == lanes["present"], (
+        "README.md quotes %s where docs/G5.md records absent %s and present %s"
+        % (readme_pairs, lanes["absent"], lanes["present"]))
+
+    for label, text in (("protocol.json's G5 note", note), ("README.md", readme)):
+        assert "this document's parent" not in text and "document's parent" not in text, (
+            "%s resolves the transcript's commit with a deictic phrase. `docs/REPORT.md` quotes claim notes "
+            "verbatim, so the referent depends on which file the reader is holding, and it is wrong from the "
+            "next commit onward -- name the commits instead." % label)
+
+    run_ids = re.findall(r"\brun `\d{6,}`", g5)
+    assert not run_ids, (
+        "docs/G5.md quotes a CI run id (%s). A run belongs to the push that produced it, while this "
+        "document's first line names the commit it was unpacked from: the emitter carried that id as prose, "
+        "and the first re-export turned it into a claim about a commit CI never ran. `tools/g5_transcript.py` "
+        "now names the workflow and its jobs, and `tests/test_ci_workflow.py` owns the run-level evidence."
+        % ", ".join(run_ids))

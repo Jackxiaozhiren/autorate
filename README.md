@@ -216,17 +216,18 @@ second place to keep them.
   version of the same evidence, published as marginal certificates and now also as a slice run.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**
-  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `56b3f76` into a scratch
+  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `9e6363a` into a scratch
   directory with its own HOME and runs `autorate verify --protocol protocol.json` there --
-  `248/248` values with the corpus absent at rc=0, `283/283` with
+  `249/249` values with the corpus absent at rc=0 and `284/284` with
   it present at rc=0, and four planted defects that each come back inside the documented
   exit-code contract (rc=2, 4, 4, 4) and are restored byte-identically with the restore
   checked. `tests/test_g5_transcript.py` refuses the file if a recorded code escapes the contract, if a
   lane's two halves disagree, if the digest printed is not the digest of the commit the transcript names,
   if the sentence counting the plants disagrees with the number of plant blocks, or if a single line still
-  names a machine path. Both CI jobs now run the `--protocol` form, which the frozen comparison had never
-  been platform-witnessed in; the witness of this tip is the run that follows the push, and `docs/G5.md`
-  says so rather than assuming it. Three limits stay stated: the archive lane is a local obligation, the
+  names a machine path. Both CI jobs run the `--protocol` form on every push, so each tip gets its own
+  platform witness of the frozen comparison; `docs/G5.md` states that workflow fact without quoting a run
+  id, because a run belongs to the push that produced it and the transcript names a commit instead.
+  Three limits stay stated: the archive lane is a local obligation, the
   no-network claim covers the gate steps and not the dependency install, and the drift and contamination
   figures are unpublished, so they are absent from both denominators instead of re-derived.
 
@@ -255,17 +256,22 @@ Clopper-Pearson one-sided bounds, and the gate that turns a certificate into
 `auto` / `escalate` / `abstain`.
 
 Written and tested, but not yet published as evidence: the threshold certifier (`certify_threshold.py`),
-the group-conditional (Mondrian) surface and its simultaneous per-slice correction
-(`certify_choice.certify_groups`, `correction.py`), drift-adaptive conformal (`drift.py`), and the
-contamination stratification (`contamination.py`). Each of them is a library with unit tests and no
-committed artefact that `verify` re-derives, which is the difference between "implemented" and "certified"
-in this project -- see the criteria above.
+drift-adaptive conformal (`drift.py`), and the contamination stratification (`contamination.py`). Each of
+them is a library with unit tests and no committed artefact that `verify` re-derives, which is the
+difference between "implemented" and "certified" in this project -- see the criteria above. The
+group-conditional (Mondrian) surface and its simultaneous per-slice correction
+(`certify_choice.certify_groups`, `correction.py`) left that list when `tools/language_slices.py` published
+`data/slices_language.json` and `docs/SLICES.md`: those are the artefacts the G4 row above is about, and
+`verify` recomputes the run from the committed records field by field.
 
 Published, re-derived, and still not the evidence its criterion asks for: the ordinal one-sided severity
 certificate (`severity.py`), reachable as `autorate severity`, committed as `data/cert_severity_ordinal.json`
 over `data/records_ordinal_synthetic.jsonl`, rendered into `docs/SEVERITY.md` and re-derived by `verify` in
-both lanes. `claim G3` prints `not_measured` beside an artefact that exists, because G3 asks for a guarantee
-multiclass CP *cannot express* and the control that would establish the contrast has not been run. Its
+both lanes. `claim G3` prints `not_measured` beside an artefact that exists, because the criterion is the
+wider sentence -- "multiclass conformal prediction *cannot express* a one-sided ordinal guarantee" -- and the
+control that would establish the contrast has now been run and did not go that way: at the corner of the
+generator where the set gate certifies at all, its interval already yields the bound. What survives is
+narrower and measured, and the narrowing lives in the frozen G3 note rather than in a re-worded criterion. Its
 population is synthetic ordinal data with known answers: no committed records file in this checkout carries a
 `qtype="score"` record, and the artefact's own envelope says so, so nothing here is a measurement of a shipped
 model's ordinal risk.

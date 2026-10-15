@@ -1778,3 +1778,65 @@ renaming it would move a frozen value and re-stamp every artefact built on that 
 round's decision with an errata entry of its own, not a comment fix. And the same false claim appears in the
 Plan A plan document at `docs/superpowers/plans/2026-09-29-autorate-plan-a-foundation-and-choice-certification.md:1001`
 and `:1080`; plan text is dated, so it is left as written and named here instead of being quietly rewritten.
+
+## 2026-10-15 -- the seventh freeze: two digits in the frozen notes, a deictic phrase, and a run id the re-export made false
+
+Three sentences that had stopped being true, each corrected against a measurement taken on this tree rather
+than against a remembered number.
+
+**G4's note claimed its own arm smaller than it is.** The note said the worst-slice run is re-derived by
+"70 field comparisons plus 5 rubric rows". Driving `report.rederive_slices` with counting callbacks, at the
+rubric this freeze owns, answers **76 and 5**: `report.SLICE_N_MIN_KEY` joined the compared fields at
+`2ac5e7b` and the sentence was not re-derived with it. `docs/REPORT.md` quotes claim notes verbatim, so the
+false digit was published in the technical report as well. This is the same defect the sixth freeze corrected
+for G3's "20 comparisons", arriving the same way -- a comparison added to an arm after the note was written.
+The existing row did not see it because it searched for `(\d+) comparisons`, which matches the G3 spelling
+and cannot match "76 field comparisons plus": one spelling policed, two in use.
+
+**G5's note carried a phrase whose referent depends on which file the reader is holding.** It closed with
+"the transcript describes commit 56b3f76, the commit it was unpacked from, which is this document's parent".
+Inside `protocol.json` that meant the parent of the commit publishing the freeze; `docs/REPORT.md` quotes the
+note verbatim, so a reader there resolves "this document" to the report, whose parent is a different commit.
+It was also decaying: 56b3f76 was the parent of `b0dfe8b`, the commit that published `docs/G5.md`, and by this
+round it sat fourteen commits below the tip. The note now names commits instead of relating them, and names
+the workflow and its two jobs instead of predicting a CI run.
+
+**The reproduction record was re-exported, and doing so found a fourth defect.** `docs/G5.md` described commit
+56b3f76; the criterion is about reproducing this project from a commit, so the record was regenerated from
+commit `9e6363a` by `tools/g5_export.sh` -- both lanes rc=0 at **249/249** absent and **284/284** present, four
+plants back inside 0/2/3/4 and restored byte-identically. The emitter had CI run `38400305544` written into
+its prose, so the fresh transcript printed "CI's own witness of this command at the commit named above is run
+38400305544" about a commit that run never saw: a true sentence at the revision it was written for, made false
+by the first re-export. `tools/g5_transcript.py` no longer names a run at all -- it names `.github/workflows/
+ci.yml` and its jobs, and leaves run-level evidence to `tests/test_ci_workflow.py`, which is where it was read
+from.
+
+**README's limits section was two publications behind the tree.** It listed the group-conditional (Mondrian)
+surface among the libraries with "no committed artefact that `verify` re-derives", after
+`data/slices_language.json` and `docs/SLICES.md` landed and became that arm; and it said the G3 contrast
+control "has not been run", in the same file that documents `tests/test_g3_contrast.py` a hundred lines
+earlier. Both now read what the tree does: the Mondrian surface left the unpublished list, and G3's status is
+explained by the criterion's wording having lost rather than by a missing control.
+
+Three rows in `tests/test_verify_protocol.py` carry the corrections: the slices arm's own count against the
+note's digit; the set of notes that state an arm's size against the rows that police them; and a
+transcription-fidelity row that reads the recorded denominators out of `docs/G5.md`'s own rc=0 blocks and
+requires both the note and README to match them, refuses the deictic construction, and refuses a run id in the
+record. The first and third were red on the real defect before the fix (`70 != 76`; the note's `248/248`
+against a record printing `249 /249`). All three were then proved able to fail again by planting, in one run:
+the digit removed from the note reddened the first two rows for the reasons each names, a fabricated run id
+reddened the third, and both files came back byte-identically with `cmp` checked. The parser leg earns its own
+note: a first version keyed on the command line alone read a planted `rc=4  re-derived 248 /249` block as the
+clean absent lane, which is why only an `rc=0` count is a lane.
+
+One honest disclosure about the prose guard. The rewritten note first kept the bad phrase as an *example* of
+what it was avoiding. Both the freeze script's precondition grep and the new row rejected it, and that is the
+right outcome: a text guard cannot tell a mention from a use, so the note states the rule without quoting the
+construction, and the guard stays strict rather than learning to parse disclaimers.
+
+Deliberately not in this freeze. Tasks #68 (the Khmer slice corpus) and #97 (G1's feasibility arm) both change
+the publication tables and so move both denominators. Folding an unreviewed corpus publication into a
+corrective re-freeze would have made one commit carry a documentation fix and new evidence at once, and the
+fixed-point proof would have been measured against two moving targets; each gets its own round. The seventh
+digest is `b8491e9a2d2bdeb0c9996f8662d0303ceb6246ba861d5e0a17461526a792a7b1`, carried by the six stamped
+artefacts and printed by `docs/REPORT.md` and `docs/SEVERITY.md`.
