@@ -780,6 +780,15 @@ def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inven
         "G4": g4_owned,
         "G5": {"249", "284", "35", "0"},
     }
+    # G1's note quotes spec section 14's kill threshold, so the spec is its only honest source: read the
+    # number there and require the note to carry that spelling. A threshold that moves in the spec reddens
+    # the note, which is the whole point of transcribing rather than restating.
+    spec = (REPO / "docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md").read_text()
+    kill = re.search(r"worst-group certified autorate < (\S+) on all tasks", spec)
+    assert kill, "spec section 14's kill criterion changed wording, so the note's threshold lost its source"
+    owned["G1"] = owned["G1"] | {kill.group(1)}
+    assert kill.group(1) in notes["G1"], (
+        "spec section 14 says %s and G1's note quotes a different threshold" % kill.group(1))
     contract = {str(v) for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
     for cid, note in sorted(notes.items()):
         stated = _note_tokens(note)
