@@ -451,7 +451,7 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
 # already satisfiable -- which is why it names what it prevents rather than claiming to have caught anything.
 # ---------------------------------------------------------------------------
 
-ARM_COUNT_NOTE_IDS = ("G3", "G4")
+ARM_COUNT_NOTE_IDS = ("G1", "G3", "G4")
 
 
 def _recorded_lanes(g5_text):
@@ -528,7 +528,7 @@ def test_every_claim_note_that_counts_an_arm_is_counted_by_a_row():
     """
     doc = json.loads((REPO / "protocol.json").read_text())
     counting = sorted(c["id"] for c in doc["claims"]
-                      if re.search(r"\d+ (?:comparisons in|field comparisons plus)", c["note"]))
+                      if re.search(r"\d+ (?:comparisons in|field comparisons plus|quantities )", c["note"]))
     assert counting == sorted(ARM_COUNT_NOTE_IDS), (
         "the notes that state an arm's size are %s but the rows that re-derive them cover %s -- add or "
         "delete a row in this commit" % (counting, sorted(ARM_COUNT_NOTE_IDS)))
@@ -606,3 +606,39 @@ def test_the_g5_transcript_is_the_only_owner_of_its_digits_and_every_quoter_tran
         "and the first re-export turned it into a claim about a commit CI never ran. `tools/g5_transcript.py` "
         "now names the workflow and its jobs, and `tests/test_ci_workflow.py` owns the run-level evidence."
         % ", ".join(run_ids))
+
+
+def test_the_g1_claim_note_counts_the_resplit_arm_as_the_arm_actually_counts():
+    r"""G1's note states how many quantities the resplit arm compares, so that arm is the only honest source.
+
+    The third occurrence of one defect class in three arms. `claims.G3.note` said "20 comparisons" against the
+    severity arm's 19 and `claims.G4.note` said "70 field comparisons" against the slice arm's 76; both are
+    policed now. G1's note says `verify` "compares 32 quantities the artefact asserts about itself plus its
+    rubric", and the existing rows could not see it: their patterns are `(\d+) comparisons` and
+    `(\d+) field comparisons plus`, and neither matches a digit followed by "quantities". One spelling
+    policed, three in use -- which is why the set row's regex was widened to the third spelling in this
+    commit rather than leaving a note that states a size nobody re-derives.
+
+    GREEN on arrival, and stated as such: 32 field comparisons and 5 rubric rows is what driving
+    `report.rederive_resplit` with counting callbacks answers on this tree, so nothing was broken to be
+    fixed here. What it makes able to fail is the next arm change: a comparison added to or removed from the
+    resplit arm reddens this row instead of quietly falsifying a sentence inside the freeze. Falsified by
+    planting -- the digit in the note changed to 31, the row went red naming both numbers, and
+    `protocol.json` came back byte-identically with the restore checked.
+    """
+    doc = json.loads((REPO / "protocol.json").read_text())
+    note = next(c["note"] for c in doc["claims"] if c["id"] == "G1")
+    claimed = re.search(r"compares (\d+) quantities", note)
+    assert claimed, "the G1 note no longer counts the resplit arm, so this row guards nothing: %r" % note[:120]
+
+    seen, seen_rubric = [], []
+    report.rederive_resplit(lambda label, actual, wanted: seen.append(label),
+                            lambda label, actual, wanted: seen_rubric.append(label),
+                            doc["rubric"])
+    assert int(claimed.group(1)) == len(seen), (
+        "protocol.json's G1 note claims %s quantities and the resplit arm makes %d -- the digit and the arm "
+        "must not be kept by hand in two places" % (claimed.group(1), len(seen)))
+    assert [label[len("resplit rubric."):] for label in seen_rubric] == list(report.RESPLIT_RUBRIC_FIELDS), (
+        "the note says the arm compares the artefact's quantities 'plus its rubric', and the rubric rows it "
+        "actually makes are %s against the %s the table declares" % (seen_rubric,
+                                                                     report.RESPLIT_RUBRIC_FIELDS))

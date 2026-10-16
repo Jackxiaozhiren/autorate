@@ -221,18 +221,19 @@ NON_G1_CLAIMS = (
                 "artefact, so those figures are absent from both denominators rather than re-derived. The "
                 "record is a record OF a revision, so the revision is named twice rather than related: "
                 "`docs/G5.md` opens by saying it was produced from commit 9e6363a, which is the commit this "
-                "note says the export unpacked, and `tests/test_g5_transcript.py` is what makes the pairing "
-                "checked instead of remembered -- it takes the digest from that named commit's own object, "
-                "not from the reader's tree, so a re-freeze cannot make the record lie and a transcript "
-                "cannot be smuggled in from a branch that never landed. Nothing here turns on which document "
+                "note says the export unpacked, and the row named above is what makes that pairing checked "
+                "rather than remembered: it takes the digest from the named commit's own object, so a "
+                "re-freeze cannot make the record lie and a transcript cannot be smuggled in from a branch "
+                "that never landed. Nothing here turns on which document "
                 "a reader is holding: `docs/REPORT.md` quotes this note verbatim, so a phrase that points at "
                 "\"this document\" would name one file inside the protocol and another inside the report, and "
                 "would be wrong from the next commit onward even in the protocol. The platform half is "
                 "stated the same way. "
                 "`.github/workflows/ci.yml` triggers on push and runs the criterion's literal command in "
-                "both of its jobs -- `offline`, and the cross-libc matrix over ubuntu and macOS -- so every "
-                "tip is witnessed by its own run rather than by a sentence in "
-                "a frozen note about a run that has not happened yet."
+                "both of its jobs -- `offline`, and the cross-libc matrix over ubuntu and macOS. The witness "
+                "of any tip is that tip's own run, so it is read from the runner's log rather than asserted "
+                "here: this note claims no result of a run it cannot see, and `tests/test_ci_workflow.py` is "
+                "the row that refuses a workflow edited back to the unfrozen form."
     },
 )
 
@@ -405,7 +406,19 @@ def _g1_claim(certs: tuple) -> dict:
                 "freeze -- and what it shows is a refusal pattern: all five decision tasks certify in 0 "
                 "of 200 splits, so their violation rate is published as undefined over a zero denominator "
                 "rather than imputed as 0.000, and the only rate in the table belongs to a synthetic "
-                "control that tests the machinery and is labelled as such.",
+                "control that tests the machinery and is labelled as such. Published beside it is the "
+                "ceiling itself: `tools/g1_feasibility.py` writes `data/g1_feasibility.json` and "
+                "`docs/FEASIBILITY.md`, `verify` recomputes every figure in both lanes from "
+                "`src/autorate/tails.py` and the published certificates, and what the table states is how "
+                "wide the bound is at each pool size this checkout can actually build and what error rate "
+                "would therefore be certifiable there -- which is why this row prints `not_certifiable` as a "
+                "measured claim about the evidence rather than as an absence of an answer. Spec §14 "
+                "anticipated exactly this shape of result (\"bound width is a first-class output; 'the "
+                "bound is useless here' *is* a certification result\"), and the same section's kill criterion "
+                "for this criterion has fired: no real task certifies at the published alpha, so the "
+                "headline this project publishes is the audit multiple G2 measures and the worst-slice "
+                "refusal G4 names, not a certified automation rate. Nothing in this row licenses reading G1 "
+                "as met.",
     }
 
 

@@ -18,14 +18,17 @@ from .inventory import corpus_label, inventory, write_inventory
 from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (CERTS, INVENTORY_JSON, PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
+from .report import (CERTS, G1_FEASIBILITY_JSON, G1_FEASIBILITY_MD, INVENTORY_JSON,
+                     PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
                      RESPLIT_MD, SEVERITY_CERTS,
                      SEVERITY_LABEL, SEVERITY_RECORDS, SLICE_JSON, SLICE_MD,
                      build_report, certify_all, load_published,
-                     load_records, published_severity, read_certificate, read_inventory_snapshot,
-                     read_resplit, read_slices, rederive_massive, rederive_resplit, rederive_severity,
-                     rederive_slices, render_resplit, render_severity, render_slices,
-                     write_report)
+                     load_records, published_severity, read_certificate, read_g1_feasibility,
+                     read_inventory_snapshot,
+                     read_resplit, read_slices, rederive_g1_feasibility, rederive_massive,
+                     rederive_resplit, rederive_severity,
+                     rederive_slices, render_g1_feasibility, render_resplit, render_severity,
+                     render_slices, write_report)
 from .severity import DIRECTIONS, certify_severity
 from .techreport import REPORT_MD, load_inputs, render_report
 
@@ -759,6 +762,9 @@ PUBLISHED_DOCS = (
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
     (RESPLIT_MD, lambda inv, records: _render_resplit_doc()),
     (SLICE_MD, lambda inv, records: _render_slice_doc()),
+    # G1's ceiling document, same shape as the two above: rendered from the committed artefact's bytes,
+    # and the artefact itself is re-derived field by field by `rederive_g1_feasibility` in both lanes.
+    (G1_FEASIBILITY_MD, lambda inv, records: _render_feasibility_doc()),
     # Plan D Task 4's single technical report. LAST in the table on purpose: the rc-4 rows in
     # `tests/test_cli.py` plant one absent or unreadable published artefact at a time and assert the
     # refusal names it, and a document that is read first would mask the ones behind it. Order is not a
@@ -787,6 +793,19 @@ def _render_slice_doc() -> str:
     """
     doc = load_published(SLICE_JSON, "report.SLICE_JSON", read_slices)
     return render_slices(doc)
+
+
+def _render_feasibility_doc() -> str:
+    """G1's feasibility ceiling, rendered out of the committed artefact and nothing else.
+
+    One owner for the read, shared by the producer that writes `docs/FEASIBILITY.md` and by this byte
+    comparison, so the document a command emits and the document the gate expects cannot be produced by
+    two different readings of the same bytes. The artefact is read through `load_published`: an absent or
+    wrong-shaped ceiling document is the named refusal at exit 4 -- no argument selected that path, the
+    table did.
+    """
+    doc = load_published(G1_FEASIBILITY_JSON, "report.G1_FEASIBILITY_JSON", read_g1_feasibility)
+    return render_g1_feasibility(doc)
 
 
 def _render_techreport_doc(inv, records) -> str:
@@ -925,6 +944,11 @@ def cmd_verify(args) -> int:
     # certification from the three committed record files and compares the published fields, which makes a
     # stale slice artefact a drift with a field name on it instead of a sentence in a document.
     rederive_slices(expect, expect_rubric, rubric)
+    # G1's feasibility ceiling: the size ladder and one row per published corpus, recomputed from
+    # `tails.py` and the certificates' own bytes by the producer's own builder. Nothing here reads the
+    # corpus, so the ceiling -- including the nulls that name their missing inputs -- re-derives in the
+    # corpus-absent lane exactly as it does here; a stale ceiling is drift with a field name on it.
+    rederive_g1_feasibility(expect, expect_rubric, rubric)
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:

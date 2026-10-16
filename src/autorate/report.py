@@ -13,19 +13,30 @@ import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Optional
 
 # ALPHA, BETA and SEED are IMPORTED, not declared here (#62): they are the published rubric, and
 # this module renders documents about it rather than owning it. `tests/test_correction.py` and
 # `tests/test_mondrian.py` keep reading them off this module, and the AST guard
 # `test_no_module_inside_the_fence_redeclares_a_rubric_name_it_could_import` is what keeps that
 # reuse honest: an import keeps working, a re-typed literal goes red.
-from .certificate import ALPHA, BETA, Certificate, SEED
+from .certificate import ALPHA, BETA, Certificate, canonicalise_bound, SEED
 from .certify_choice import certify_choice
 from .records import Record
 from .severity import SeverityCertificate, certify_severity
-from .tails import clopper_pearson_upper
+from .tails import bound_width, clopper_pearson_upper, n_feasible
 
 RECORDS = "data/records_feishu.jsonl"
+# The rubric keys an ARM publishes and re-derives, in the spelling the artefacts record. One owner for the
+# NAME LIST (R-168, and #62's close-out): `certificate.PUBLISHED_RUBRIC` owns the published VALUES, and its
+# mapping order is alpha, beta, delta, seed, method -- so this is a list of names held here deliberately
+# rather than `tuple(PUBLISHED_RUBRIC)`, which would silently compare a different set of rows. The three
+# arms alias it below; an arm that needs a different field set must say so in its own name, because the
+# alternative -- a second literal -- is what let `("alpha", "beta", "delta", "method", "seed")` be typed
+# three times in this one file while the guard that looks for duplicates only scanned modules inside the
+# fence, never the owner (`tests/test_cli.py`'s report-internal row now covers this file).
+PUBLISHED_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+
 CERTS = {"laya": "data/cert_laya.json", "jev": "data/cert_jev.json"}
 INVENTORY_JSON = "data/inventory.md.json"
 # The budgets the archived corpus is certified at. beta is deliberately loose: the
@@ -444,7 +455,7 @@ RESPLIT_MD = Path("docs/RESPLIT.md")
 # The rubric keys the experiment records and the gate compares, one list so the arm and the denominator that
 # counts it read one owner (R-168). `seed` is in the artefact's own `rubric` block, as `cli.RUBRIC_FIELDS`
 # spells it for the certificates.
-RESPLIT_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+RESPLIT_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS
 
 
 def read_resplit(path: Path) -> dict:
@@ -582,7 +593,7 @@ SLICE_RECORDS = ("data/records_massive_de.jsonl",
                  "data/records_massive_en.jsonl",
                  "data/records_massive_km.jsonl",
                  "data/records_massive_sw.jsonl")
-SLICE_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
+SLICE_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS
 # Four field lists, one owner each: the arm and the denominator that counts it read these (`R-168`), and an
 # operator tampering with one published value has to be named by exactly one label.
 # `worst_claim` and `n_min_violations` are in here because they ARE G4: the first names the slice whose
@@ -910,6 +921,596 @@ def render_slices(doc: dict) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+# --- G1's feasibility ceiling: which automated size could certify at all, at this rubric -------------
+#
+# Spec §2's G1 asks for ">=3 decision tasks certified at `autorate(alpha = 0.05)`". This tree publishes five
+# scored decision tasks, certifies none of them, and `data/resplit_200.json` shows 0 of 200 seeded splits
+# certifying for all five. The stronger statement -- that **no automated size certifies on this evidence base
+# at this budget** -- existed only in an untracked scratch probe, and this project has already ruled that a
+# simulation performed and deleted is not evidence (`docs/G5.md` is that ruling's artifact). Everything below
+# is the ceiling turned into committed bytes with a producer, a document rendered from them, and a `verify`
+# arm that recomputes every figure from `tails.py` and the published certificates.
+#
+# Two owners are respected here and neither is this file's opinion. `tails.py` owns the arithmetic
+# (`clopper_pearson_upper`, `bound_width`, `n_feasible`) and `certificate.canonicalise_bound` owns the
+# precision a published bound is stored at; `inventory.corpus_options` owns the two feasibility bars this arm
+# quotes, so the ceiling is stated in the same currency as `data/inventory.md`.
+
+G1_FEASIBILITY_JSON = "data/g1_feasibility.json"
+G1_FEASIBILITY_MD = Path("docs/FEASIBILITY.md")
+G1_FEASIBILITY_PRODUCER = "tools/g1_feasibility.py"
+G1_FEASIBILITY_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS
+# The probe's size ladder, kept because a reader needs a scale beside the per-task rows: 100, 300 and 1,000
+# automated decisions. The probe's fourth row (2,974) is NOT declared here -- it is `n_eval + n_cal` of the
+# three MASSIVE certificates, so the arm re-derives that size from the artefacts rather than remembering it.
+G1_FEASIBILITY_SIZES = (100, 300, 1000)
+G1_FEASIBILITY_SIZES_BASIS = "declared by report.G1_FEASIBILITY_SIZES (the probe's scale)"
+# Rates and widths are published at the precision the existing published documents render them at: six
+# decimals for a bound or a rate (`docs/RESULTS.md`), four for a DKW width (`inventory.py`'s own
+# `round(bound_width(n), 4)`). Neither is a tolerance: the comparison the gate makes is between two numbers
+# produced the same way from the same inputs.
+G1_FEASIBILITY_RATE_DECIMALS = 6
+G1_FEASIBILITY_WIDTH_DECIMALS = 4
+# The reference ladder: what a gate that automates `n` decisions may get wrong and still clear alpha.
+G1_FEASIBILITY_REFERENCE_FIELDS = ("n", "size_from", "k_max", "cp_k_max", "cp_k_max_plus_1",
+                                   "largest_certifiable_error_rate", "required_observed_accuracy",
+                                   "cp_zero_errors", "bound_width", "feasible_at_0.10", "feasible_at_0.25")
+# One row per scored corpus. Every column names the unit it is computed over: `_records` is the record
+# denominator at the refusal's diagnostic `closest_attempt` grid point, `_cases` is the case denominator at
+# the requested alpha -- the certificate's own unit (R-44). The two systems sit beside each other in
+# `meta.at_requested_alpha`, which publishes record counts (`automated`, `errors`) and a CASE bound under
+# one name (ledger #37); this table refuses to inherit that mixing, which is why each unit's bound is
+# recomputed from that unit's own counts.
+G1_FEASIBILITY_ROW_FIELDS = ("task", "artefact", "table", "feasible", "reason",
+                             "closest_attempt_published", "row_refusal",
+                             "n_eval_records", "n_cal_records", "automated_records", "errors_records",
+                             "grid_alpha", "k_max_records", "cp_k_max_records", "cp_k_max_plus_1_records",
+                             "published_closest_bound", "recomputed_closest_bound",
+                             "n_eval_cases", "n_cal_cases", "automated_cases", "errors_cases",
+                             "k_max_cases", "cp_k_max_cases", "cp_k_max_plus_1_cases",
+                             "published_case_bound", "recomputed_case_bound",
+                             "bound_width_records", "bound_width_cases",
+                             "feasible_at_0.10_records", "feasible_at_0.10_cases",
+                             "feasible_at_0.25_records", "feasible_at_0.25_cases",
+                             "pool_is_automated_set", "oracle_ceiling_records", "oracle_ceiling_cases",
+                             "missing_pool_input")
+# The sentence a row carries when the pool's error count is not one of the artefact's fields. Named here
+# because `read_g1_feasibility`'s contract is that a `null` ceiling always arrives with a reason, and a
+# reason a reader cannot grep for is a null that will later be imputed.
+G1_FEASIBILITY_NO_POOL_ERRORS = ("meta.errors_among_automated counts the errors INSIDE the automated set, "
+                                 "not the errors of the evaluated pool; no published field of this "
+                                 "certificate gives the pool count, so the oracle ceiling is not computable "
+                                 "from these bytes")
+G1_FEASIBILITY_NO_GOLD = "no gold labels in this offline cache"
+
+
+def g1_bound(k: int, n: Optional[int], alpha: float, delta: float) -> Optional[float]:
+    """One published-precision upper bound, or `None` where there is no denominator to bound a rate with.
+
+    The ceil is `certificate.canonicalise_bound`, the same mechanism `certify_choice`, `audit` and `severity`
+    apply before a Clopper-Pearson double crosses into a committed artefact. It is reached through this
+    module's name so the ceiling's central predicate is visibly the published-precision comparison and not a
+    bare `==` on a raw float: `data/cert_massive_en_laya.json` stores `0.064239163974` where this machine's
+    libm answers `0.064239163973131` (tails.py documents the last-ULP drift, ledger R-121). A raw equality
+    would call that published artefact drift; a looser tolerance would pass a tampered one.
+    """
+    if n is None or n <= 0:
+        return None
+    return canonicalise_bound(clopper_pearson_upper(k, n, delta))
+
+
+def g1_k_max(n: Optional[int], alpha: float, delta: float) -> Optional[int]:
+    """The largest error count whose upper bound still clears `alpha` at an automated size of `n`.
+
+    The gate's own pass condition, as the committed refusals use it: `certify_choice` refuses when
+    `canonicalise_bound(clopper_pearson_upper(err, auto, delta)) > beta`. Bisection, not a scan: the bound is
+    non-decreasing in `k`, so `2 * ceil(log2(n))` evaluations answer the question instead of `n` -- which is
+    what keeps this arm affordable inside a gate CI runs on two lanes.
+
+    `None` is a result and not a crash: at `n = 0` there is no automated denominator, and at a small `n` even
+    a zero-error run fails (`g1_bound(0, 32, .)` is 0.089, so `jev`'s 32 cases have no certifiable error
+    count at all). Both answer `None`, and the row publishes it rather than a `0` that would read as
+    "zero errors are allowed".
+    """
+    if n is None or n <= 0:
+        return None
+    if g1_bound(0, n, alpha, delta) >= alpha:
+        return None
+    lo, hi = 0, n
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if g1_bound(mid, n, alpha, delta) < alpha:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+def g1_rate(value: Optional[float]) -> Optional[float]:
+    """A rate or bound at the precision this repository publishes rates at, and never a looser compare."""
+    return None if value is None else round(value, G1_FEASIBILITY_RATE_DECIMALS)
+
+
+def g1_width(n: Optional[int], alpha: float) -> Optional[float]:
+    """`tails.bound_width`, at the four decimals `inventory.py` renders its width column with."""
+    if n is None or n <= 1:
+        return None
+    return round(bound_width(n, alpha), G1_FEASIBILITY_WIDTH_DECIMALS)
+
+
+def g1_bars(n: Optional[int], alpha: float) -> tuple:
+    """Inventory's own two feasibility bars, from `tails.n_feasible` and nothing else."""
+    if n is None or n <= 1:
+        return None, None
+    return (bool(n_feasible(n, alpha=alpha, max_bound_width=0.10)),
+            bool(n_feasible(n, alpha=alpha, max_bound_width=0.25)))
+
+
+def g1_oracle_ceiling(pool: Optional[int], errors: Optional[int],
+                      alpha: float, delta: float) -> Optional[int]:
+    """The largest automated size a PERFECT gate could certify: the ceiling, not an achievement.
+
+    For a pool of `pool` decisions carrying `errors` errors, an oracle that automates `n_a` of them cannot
+    move more than `pool - n_a` errors out of the automated set, so it retains at least
+    `max(0, errors - (pool - n_a))`; that many must fit inside `g1_k_max(n_a)`. The answer is the largest
+    `n_a` that satisfies it, and 0 states that no positive automated size certifies -- which is a different
+    claim from `None`, reserved for a row whose pool error count is not published at all.
+
+    The scan is bounded, not linear in the pool: retained errors can only be positive while
+    `n_a > pool - errors`, and at or below that size the question collapses to whether a zero-error run
+    clears alpha -- a predicate monotone in `n_a`, so one more evaluation answers it.
+    """
+    if pool is None or errors is None or pool <= 0:
+        return None
+    for n_a in range(pool, max(pool - errors, 1) - 1, -1):
+        retained = max(0, errors - (pool - n_a))
+        k = g1_k_max(n_a, alpha, delta)
+        if k is not None and retained <= k:
+            return n_a
+    zero_size = pool - errors
+    if zero_size > 0 and g1_k_max(zero_size, alpha, delta) is not None:
+        return zero_size
+    return 0
+
+
+def g1_reference_row(n: int, size_from: str, alpha: float, delta: float) -> dict:
+    """One ladder row: what an automated set of `n` may get wrong and still clear alpha at this rubric."""
+    k = g1_k_max(n, alpha, delta)
+    rate = None if k is None or not n else round(k / n, G1_FEASIBILITY_RATE_DECIMALS)
+    bar_010, bar_025 = g1_bars(n, alpha)
+    return {"n": n, "size_from": size_from, "k_max": k,
+            "cp_k_max": None if k is None else g1_bound(k, n, alpha, delta),
+            "cp_k_max_plus_1": None if k is None else g1_bound(k + 1, n, alpha, delta),
+            "largest_certifiable_error_rate": rate,
+            "required_observed_accuracy": None if rate is None else g1_rate(1.0 - rate),
+            "cp_zero_errors": g1_rate(g1_bound(0, n, alpha, delta)),
+            "bound_width": g1_width(n, alpha),
+            "feasible_at_0.10": bar_010, "feasible_at_0.25": bar_025}
+
+
+def g1_reference_rows(certificates: dict, alpha: float, delta: float) -> list:
+    """The declared ladder, plus every published task's own full pool size.
+
+    `n_eval + n_cal` is the labelled population the certificate split into halves, and it is the only size in
+    this table that is not an input: reading it from the artefacts means a fourth language joining
+    `report.MASSIVE_CERTIFICATES` adds a ladder row by itself, and a pool whose halves were edited reddens the
+    row that quotes them. Sizes are deduplicated -- the three MASSIVE tasks share 2,974 -- and every
+    contributing artefact is named in `size_from`.
+    """
+    pools: dict = {}
+    for task, (_path, _table, cert) in sorted(certificates.items()):
+        size = cert.n_eval + cert.n_cal
+        pools.setdefault(size, []).append(task)
+    rows = [g1_reference_row(n, G1_FEASIBILITY_SIZES_BASIS, alpha, delta)
+            for n in sorted(G1_FEASIBILITY_SIZES)]
+    rows += [g1_reference_row(size, "n_eval + n_cal of %s" % ", ".join(sorted(
+        str(CERTS.get(task) or MASSIVE_CERTIFICATES[task][1]) for task in names)), alpha, delta)
+        for size, names in sorted(pools.items())]
+    rows.sort(key=lambda row: row["n"])
+    return rows
+
+
+def g1_task_row(task: str, artefact: str, table: str, cert, alpha: float, delta: float) -> dict:
+    """One published certificate, read as a ceiling: both denominators, neither compared against the other.
+
+    Nothing in here re-runs the certifier or reads a corpus -- the inputs are the bytes of the committed
+    artefact and the rubric the freeze promised, which is what lets BOTH `verify` lanes reproduce it.
+    """
+    meta = cert.meta
+    closest = meta.get("closest_attempt")
+    at_requested = meta.get("at_requested_alpha")
+    row = {name: None for name in G1_FEASIBILITY_ROW_FIELDS}
+    row.update({"task": task, "artefact": artefact, "table": table,
+                "feasible": cert.feasible, "reason": cert.reason,
+                "n_eval_records": cert.n_eval, "n_cal_records": cert.n_cal,
+                "n_eval_cases": meta.get("n_eval_cases"), "n_cal_cases": meta.get("n_cal_cases"),
+                "automated_cases": meta.get("automated_cases"),
+                "errors_cases": meta.get("erroneous_cases"),
+                "published_case_bound": (at_requested or {}).get("conditional_error_bound")})
+    row["bound_width_cases"] = g1_width(row["n_eval_cases"], alpha)
+    row["feasible_at_0.10_cases"], row["feasible_at_0.25_cases"] = g1_bars(row["n_eval_cases"], alpha)
+    k_cases = g1_k_max(row["automated_cases"], alpha, delta)
+    row["k_max_cases"] = k_cases
+    if k_cases is not None:
+        row["cp_k_max_cases"] = g1_bound(k_cases, row["automated_cases"], alpha, delta)
+        row["cp_k_max_plus_1_cases"] = g1_bound(k_cases + 1, row["automated_cases"], alpha, delta)
+    row["recomputed_case_bound"] = g1_bound(row["errors_cases"], row["automated_cases"], alpha, delta)
+
+    if not isinstance(closest, dict):
+        # A refusal with no diagnostic attempt (`certify_score.py`'s ordinal certificates publish
+        # `closest_attempt: None`) says so as a refusal. The case-unit columns above are still this
+        # artefact's bytes; the record-unit ones, and anything built from them, stay null.
+        row["closest_attempt_published"] = False
+        row["row_refusal"] = ("meta.closest_attempt is %s, so this artefact publishes no automated size at a "
+                              "diagnostic grid point; the record-unit ceiling is not computable from these "
+                              "bytes" % ("absent" if closest is None and "closest_attempt" not in meta
+                                         else "null"))
+        return row
+    automated = closest.get("automated")
+    errors = closest.get("errors")
+    row["closest_attempt_published"] = True
+    row["automated_records"] = automated
+    row["errors_records"] = errors
+    row["grid_alpha"] = closest.get("grid_alpha")
+    row["published_closest_bound"] = closest.get("conditional_error_bound")
+    row["recomputed_closest_bound"] = g1_bound(errors, automated, alpha, delta)
+    row["bound_width_records"] = g1_width(row["n_eval_records"], alpha)
+    row["feasible_at_0.10_records"], row["feasible_at_0.25_records"] = g1_bars(row["n_eval_records"], alpha)
+    k_records = g1_k_max(automated, alpha, delta)
+    row["k_max_records"] = k_records
+    if k_records is not None:
+        row["cp_k_max_records"] = g1_bound(k_records, automated, alpha, delta)
+        row["cp_k_max_plus_1_records"] = g1_bound(k_records + 1, automated, alpha, delta)
+
+    # The oracle column needs the errors of the POOL. A certificate publishes the errors inside the automated
+    # set, so the pool count is available exactly when the automated set IS the pool -- a condition read off
+    # this artefact's own two denominators, in both units, rather than assumed from a grid point that
+    # happens to sit at full automation.
+    pool_is_set = (automated == row["n_eval_records"]
+                   and row["automated_cases"] == row["n_eval_cases"]
+                   and row["automated_cases"] is not None)
+    row["pool_is_automated_set"] = pool_is_set
+    if pool_is_set:
+        row["oracle_ceiling_records"] = g1_oracle_ceiling(row["n_eval_records"], errors, alpha, delta)
+        row["oracle_ceiling_cases"] = g1_oracle_ceiling(row["n_eval_cases"], row["errors_cases"],
+                                                        alpha, delta)
+    else:
+        row["missing_pool_input"] = G1_FEASIBILITY_NO_POOL_ERRORS
+    return row
+
+
+def g1_typed_decisions_row(alpha: float, delta: float) -> dict:
+    """The one corpus where the wall is the error rate rather than the bound width -- and it is not scored.
+
+    `typed_decisions` is the inventory's own row, and the inventory publishes no independent-case count for
+    it (`n_independent: null`, basis "dataset card size category only; no file opened"), because this
+    machine's cache holds the checkpoint but no gold labels. So every computed column is null with the
+    missing input named. The scratch probe's figures for this corpus (2,000 held-out decisions, a published
+    accuracy of 0.766, an oracle ceiling of 1,597) are QUOTED from upstream `BENCHMARKS.md` and are therefore
+    kept out of these bytes entirely: this row publishes only what committed bytes say, which is nothing.
+    """
+    from .inventory import corpus_options, massive_pin
+
+    declared = {option["id"]: option
+                for option in corpus_options(None, pin=massive_pin())}.get("typed_decisions")
+    row = {name: None for name in G1_FEASIBILITY_ROW_FIELDS}
+    n_independent = None if declared is None else declared.get("n_independent")
+    row.update({"task": "typed_decisions", "artefact": INVENTORY_JSON,
+                "table": "inventory.corpus_options", "row_refusal": G1_FEASIBILITY_NO_GOLD,
+                "missing_pool_input": G1_FEASIBILITY_NO_GOLD,
+                "closest_attempt_published": None,
+                "bound_width_cases": g1_width(n_independent, alpha)})
+    row["feasible_at_0.10_cases"], row["feasible_at_0.25_cases"] = g1_bars(n_independent, alpha)
+    return row
+
+
+def g1_published_certificates() -> dict:
+    """`{task: (artefact_path, table_name, certificate)}` for every published decision task, from the tables.
+
+    `massive_certificates()` is reused rather than re-read here: it is the one path that opens the MASSIVE
+    artefacts through `load_published`, so this arm cannot end up walking a different set of files from the
+    one the report prints and `verify` re-derives.
+    """
+    out = {backend: (path, "report.CERTS",
+                     load_published(path, "report.CERTS", read_certificate))
+           for backend, path in sorted(CERTS.items())}
+    for label, (_rows, cert) in sorted(massive_certificates().items()):
+        out[label] = (MASSIVE_CERTIFICATES[label][1], "report.MASSIVE_CERTIFICATES", cert)
+    return out
+
+
+def build_g1_feasibility(rubric: dict) -> dict:
+    """The whole ceiling document: the rubric it is measured at, the ladder, and one row per corpus.
+
+    One owner for the arithmetic, called by the producer that writes these bytes AND by
+    `rederive_g1_feasibility`, which is what makes the committed file a re-derivation rather than a
+    transcription. A document that only audited its own sums would let a stale ceiling pass; this one is
+    recomputed from `tails.py` and the certificates every time the gate runs.
+    """
+    alpha, delta = rubric["alpha"], rubric["delta"]
+    certificates = g1_published_certificates()
+    rows = [g1_task_row(task, path, table, cert, alpha, delta)
+            for task, (path, table, cert) in sorted(certificates.items())]
+    rows.append(g1_typed_decisions_row(alpha, delta))
+    return {"producer": G1_FEASIBILITY_PRODUCER,
+            "rubric": {key: rubric[key] for key in G1_FEASIBILITY_RUBRIC_FIELDS},
+            "reference": g1_reference_rows(certificates, alpha, delta),
+            "rows": rows}
+
+
+def read_g1_feasibility(path: Path) -> dict:
+    """The ceiling document, read as the mapping its producer wrote and nothing looser.
+
+    Shape only, and `ValueError` on purpose -- `load_published` turns that into the named refusal at exit 4
+    for a path this table declares rather than an operator named (`read_slices`' ruling, inherited). The
+    checks that a *value* is wrong belong to `rederive_g1_feasibility`, which is the one holding the
+    recomputation; what this function can honestly police is that the mapping and its rows are shaped so
+    the arm and the renderer can index them without a `TypeError` escaping at rc 1.
+    """
+    doc = json.loads(Path(path).read_text())
+    if not isinstance(doc, dict):
+        raise ValueError("the G1 feasibility document is a JSON %s, not an object" % type(doc).__name__)
+    missing = sorted({"producer", "rubric", "reference", "rows"} - set(doc))
+    if missing:
+        raise ValueError("the G1 feasibility document is missing %s" % missing)
+    extra = sorted(set(doc["rubric"]) - set(G1_FEASIBILITY_RUBRIC_FIELDS))
+    if extra:
+        raise ValueError("the G1 feasibility document records budget keys %s, which this build does not read"
+                         % extra)
+    gap = sorted(set(G1_FEASIBILITY_RUBRIC_FIELDS) - set(doc["rubric"]))
+    if gap:
+        raise ValueError("the G1 feasibility document records no value for %s" % gap)
+    if not isinstance(doc["reference"], list) or not isinstance(doc["rows"], list):
+        raise ValueError("the G1 feasibility document's `reference` and `rows` must both be lists of rows")
+    for name, value, keys in (("reference", doc["reference"], G1_FEASIBILITY_REFERENCE_FIELDS),
+                              ("rows", doc["rows"], G1_FEASIBILITY_ROW_FIELDS)):
+        for i, row in enumerate(value):
+            if not isinstance(row, dict):
+                raise ValueError("the G1 feasibility document's `%s`[%d] is a %s, not a row object"
+                                 % (name, i, type(row).__name__))
+            absent = sorted(set(keys) - set(row))
+            if absent:
+                raise ValueError("the G1 feasibility document's `%s`[%d] is missing %s"
+                                 % (name, i, absent))
+    return doc
+
+
+def rederive_g1_feasibility(expect, expect_rubric, rubric=None) -> None:
+    """G1's ceiling, recomputed from `tails.py` and the published certificates, field by field.
+
+    The arm calls the producer's own builder -- `build_g1_feasibility` -- because one owner for the
+    arithmetic is what makes the committed file a re-derivation rather than a transcription: a stale
+    ladder row, a moved `k_max`, or an oracle ceiling that contradicts the certificates' bytes is drift
+    with a field name on it, printed by the gate in BOTH lanes (nothing here reads the corpus). The
+    budgets come from the freeze when one is in hand, `rederive_slices`' rule: editing the artefact's own
+    `rubric` block cannot redefine what the recomputation is measured at, it prints as `RUBRIC MISMATCH`.
+
+    Every nested read is `.get`, never `[...]` -- a stale artefact that lost a ladder row or a task row
+    has to answer with a named drift, not with a `KeyError` leaving `main` unmapped at exit 1 (R-115's
+    class of escape).
+    """
+    doc = load_published(G1_FEASIBILITY_JSON, "report.G1_FEASIBILITY_JSON", read_g1_feasibility)
+    chosen = dict(doc["rubric"])
+    if rubric:
+        chosen.update({k: rubric[k] for k in G1_FEASIBILITY_RUBRIC_FIELDS if k in rubric})
+    fresh = build_g1_feasibility(chosen)
+
+    expect("g1 producer", fresh.get("producer"), doc.get("producer"))
+
+    fresh_reference = {row.get("n"): row for row in fresh.get("reference", [])}
+    published_reference = {row.get("n"): row for row in doc.get("reference", [])}
+    for n in sorted(set(fresh_reference) | set(published_reference), key=str):
+        for field in G1_FEASIBILITY_REFERENCE_FIELDS:
+            if field in ("n", "size_from"):
+                continue  # `n` is the key the rows are matched on; `size_from` quotes the
+                # publication tables' own paths, which a scratch checkout re-points at copies -- the
+                # same caller-owned-pointer class as `artefact` below, and the same reason it cannot
+                # be a reproduction claim there.
+            expect("g1 reference %s.%s" % (n, field),
+                   fresh_reference.get(n, {}).get(field), published_reference.get(n, {}).get(field))
+
+    fresh_rows = {row.get("task"): row for row in fresh.get("rows", [])}
+    published_rows = {row.get("task"): row for row in doc.get("rows", [])}
+    for task in sorted(set(fresh_rows) | set(published_rows)):
+        for field in G1_FEASIBILITY_ROW_FIELDS:
+            if field in ("task", "artefact", "table"):
+                continue  # `task` is the key the rows are matched on; `artefact` and `table` are the
+                # reader's own pointers -- every scratch checkout re-points `report.CERTS` and
+                # `report.MASSIVE_CERTIFICATES` at copies (test_verify_protocol's `_certs` and
+                # `_massive`), and a comparison of the caller's path against the published relative
+                # name would report the harness as drift. No gate is lost by it: the document renders
+                # these two columns into its per-task headers, so a tampered path in the artefact
+                # reddens the `docs/FEASIBILITY.md byte-identical` row, which compares bytes the
+                # artefact owns rather than a path the reader was handed.
+            expect("g1 %s.%s" % (task, field),
+                   fresh_rows.get(task, {}).get(field), published_rows.get(task, {}).get(field))
+
+    for key in G1_FEASIBILITY_RUBRIC_FIELDS:
+        expect_rubric("g1 rubric.%s" % key, doc["rubric"].get(key), rubric[key] if rubric else None)
+
+
+def _g1_cell(value) -> str:
+    """One artefact value as the ceiling document prints it: `null` is stated as `null`, never imputed."""
+    if value is None:
+        return "null"
+    return "%s" % value
+
+
+def render_g1_feasibility(doc: dict) -> str:
+    """G1's ceiling as derived prose: every figure is read out of the artefact, and none is typed.
+
+    No timestamp and no machine path, so both lanes byte-compare it. Three sentences this renderer is
+    itself the owner of, because the artefact cannot render them wrong: a bound taken from
+    `meta.closest_attempt` is always printed labelled a diagnostic (no certificate here issued a bound,
+    and the document must never read as claiming one), every `null` arrives with the field that would
+    have supplied it, and the probe's upstream-quoted figures are named as excluded rather than repeated.
+    """
+    rubric = doc["rubric"]
+    rows = doc.get("rows", [])
+    scored = [row for row in rows if row.get("table") != "inventory.corpus_options"]
+    unscored = [row for row in rows if row.get("table") == "inventory.corpus_options"]
+    certifying = sorted(str(row.get("task")) for row in rows if row.get("feasible") is True)
+    lines = [
+        "# The G1 feasibility ceiling",
+        "",
+        "Written by `python3 %s --out %s --doc %s --force` and re-checked by" % (
+            G1_FEASIBILITY_PRODUCER, G1_FEASIBILITY_JSON, G1_FEASIBILITY_MD),
+        "`python -m autorate.cli verify`, which recomputes every figure below from `src/autorate/tails.py`",
+        "and the published certificates -- in both lanes, because nothing here reads the corpus -- and",
+        "refuses the artefact at exit 4 if it is absent or unreadable. The document carries no timestamp",
+        "and no machine path, so the two lanes byte-compare the same bytes.",
+        "",
+        "G1 asks for at least three decision tasks certified at `autorate(alpha)` for the freeze's",
+        "published alpha. This tree scores five and certifies none; `data/resplit_200.json` shows 0 of 200",
+        "seeded splits certifying for all five. The stronger statement -- that **no automated size",
+        "certifies on this evidence base at this budget** -- lived in an untracked scratch probe until",
+        "this arm, and by this repository's own ruling (`docs/G5.md` is that ruling's artefact) a",
+        "simulation performed and deleted is not evidence. Everything below is re-derived from committed",
+        "bytes on every `verify` run.",
+        "",
+        "- rubric the ceiling is measured at: alpha=%s beta=%s delta=%s method `%s`, seed %s"
+        % (_g1_cell(rubric.get("alpha")), _g1_cell(rubric.get("beta")), _g1_cell(rubric.get("delta")),
+           _g1_cell(rubric.get("method")), _g1_cell(rubric.get("seed"))),
+        "- producer: `%s`" % _g1_cell(doc.get("producer")),
+        "- scored decision tasks read from their certificates: %d; corpora carried as refusals: %d"
+        % (len(scored), len(unscored)),
+        "- tasks that certify at their published size: %s" % (", ".join(certifying) if certifying else "none"),
+        "",
+        "The gate's own pass condition, as the committed refusals were produced by it: a task certifies",
+        "only if `clopper_pearson_upper(errors, automated, delta) < alpha` once the bound is canonicalised",
+        "onto `certificate.PUBLISHED_DECIMALS` -- the stored precision the artefacts answer at (the last",
+        "ULP of the raw double is a platform fact, ledger R-121, so this arm never compares raw doubles).",
+        "`k_max(n)` below is the largest error count that still clears alpha at an automated size of `n`;",
+        "`k_max = null` means the size has no certifiable error count at all -- even a zero-error run",
+        "fails there -- which is a result, never a zero.",
+        "",
+        "## The size ladder: what an automated set of n may get wrong and still clear alpha",
+        "",
+        "| n | k_max | cp(k_max) | cp(k_max + 1) | largest certifiable error rate | required observed accuracy | cp(0 errors) | bound width | feasible @0.10 | feasible @0.25 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for row in doc.get("reference", []):
+        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % tuple(
+            _g1_cell(row.get(f)) for f in
+            ("n", "k_max", "cp_k_max", "cp_k_max_plus_1", "largest_certifiable_error_rate",
+             "required_observed_accuracy", "cp_zero_errors", "bound_width",
+             "feasible_at_0.10", "feasible_at_0.25")))
+    lines += [
+        "",
+        "Sizes and where each one comes from (`size_from`, read, not remembered):",
+        "",
+    ]
+    for row in doc.get("reference", []):
+        lines.append("- `n = %s` -- %s" % (_g1_cell(row.get("n")), _g1_cell(row.get("size_from"))))
+    lines += [
+        "",
+        "The widths and the two bars are `inventory.py`'s own currency: `bound_width(n)` from",
+        "`tails.bound_width` at four decimals, and `feasible_at_0.10` / `feasible_at_0.25` from",
+        "`tails.n_feasible` against the inventory's declared bars -- so this ladder and",
+        "`data/inventory.md` state size in the same units and cannot quietly disagree.",
+        "",
+        "## Per task",
+        "",
+        "Each row reads the certificate's own bytes. The record unit is the refusal's diagnostic",
+        "`meta.closest_attempt` grid point (its counts, its stored bound); the case unit is the",
+        "certificate's own unit, R-44, taken from `meta.automated_cases` and `meta.erroneous_cases`",
+        "at `meta.at_requested_alpha`. A `k_max` from one unit is never compared against an error",
+        "count from the other, and the two denominators are different quantities on purpose: `en`",
+        "automates 628 of 1,487 records but 709 of 1,487 cases.",
+        "",
+    ]
+    for row in rows:
+        lines += _g1_task_lines(row)
+    lines += [
+        "## What this ceiling is, and what it is not",
+        "",
+        "- It is size arithmetic at the freeze's rubric over published counts: the same",
+        "  `build_g1_feasibility` the producer wrote these bytes with, re-run by `verify` and compared",
+        "  field by field, so a stale ceiling is drift the gate names rather than a sentence in a file.",
+        "- It is not the empirical column. G1's second column is the 200-resplit violation rate,",
+        "  owned by `data/resplit_200.json` and `docs/RESPLIT.md`; this arm publishes the closed-form",
+        "  ceiling beside it, not a re-run of the sweep.",
+        "- The bounds printed for the scored tasks are the refusals' DIAGNOSTIC values. Every one of",
+        "  these certificates published `conditional_error_bound: null` and `autorate: null` -- nothing",
+        "  certified, and no row above may be read as a certificate bound.",
+        "- A `null` column names the field that would have supplied it (`missing_pool_input`,",
+        "  `row_refusal`); this project does not impute zeros, and `data/resplit_200.json`'s",
+        "  rate-over-a-zero-denominator shape is the precedent.",
+        "- The scratch probe quoted upstream figures for `typed_decisions` (a held-out accuracy read",
+        "  from `BENCHMARKS.md`). No committed byte of this repository states them, so the artefact",
+        "  carries none of them and this document only names their exclusion. What the oracle ceiling",
+        "  needs and the certificates do not publish is the error count of the evaluated POOL; the",
+        "  published counts are the errors INSIDE the automated set, so the ceiling is a number",
+        "  exactly where the artefact states the automated set is the pool (`jev`) -- and null with",
+        "  the missing field named everywhere else.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _g1_task_lines(row: dict) -> list:
+    """One task's published lines, built from its row's own fields -- including the refusal sentences."""
+    header = "### `%s` (%s, %s)" % (_g1_cell(row.get("task")), _g1_cell(row.get("artefact")),
+                                    _g1_cell(row.get("table")))
+    lines = [header, ""]
+    if row.get("table") == "inventory.corpus_options" or not row.get("closest_attempt_published"):
+        # A corpus walked as a refusal, or a certificate whose diagnostic attempt was never published:
+        # the refusal sentence is the row, because every computed column would be an imputation.
+        lines.append("- published verdict: `%s`" % _g1_cell(row.get("row_refusal")))
+        if row.get("missing_pool_input") is not None:
+            lines.append("- missing input: %s" % row.get("missing_pool_input"))
+        if row.get("table") == "inventory.corpus_options":
+            lines.append("- this corpus is the one where the wall is the error rate rather than the bound")
+            lines.append("  width -- and it is not scored here: no gold labels, so every computed column")
+            lines.append("  is null with its missing input named above, and nothing else is claimed.")
+        lines.append("")
+        return lines
+    lines.append("- published verdict: feasible=%s, reason=`%s` -- the certificate issued no bound"
+                 % (_g1_cell(row.get("feasible")), _g1_cell(row.get("reason"))))
+    def errors(n):
+        # m-7's count-noun rule, applied here: the artefact says `1 errors` no more than the
+        # inventory says `3 malformed line`; the count is read, the noun agrees with it.
+        return "null" if n is None else "%s error%s" % (n, "" if n == 1 else "s")
+    lines.append("- records unit (diagnostic `meta.closest_attempt`, grid alpha %s): %s of %s evaluated"
+                 " (%s calibration), %s; k_max at that size = %s"
+                 % (_g1_cell(row.get("grid_alpha")), _g1_cell(row.get("automated_records")),
+                    _g1_cell(row.get("n_eval_records")), _g1_cell(row.get("n_cal_records")),
+                    errors(row.get("errors_records")), _g1_cell(row.get("k_max_records"))))
+    lines.append("- cases unit (the certificate's own unit, R-44): %s of %s evaluated"
+                 " (%s calibration), %s; k_max at that size = %s"
+                 % (_g1_cell(row.get("automated_cases")), _g1_cell(row.get("n_eval_cases")),
+                    _g1_cell(row.get("n_cal_cases")), errors(row.get("errors_cases")),
+                    _g1_cell(row.get("k_max_cases"))))
+    lines.append("- the diagnostic bounds reproduce from the artefact's own digits at the certificate's"
+                 " stored precision: records %s (recomputed %s), cases %s (recomputed %s) -- diagnostic"
+                 " values beside a refusal, NOT certificate bounds; the certificate published null"
+                 % (_g1_cell(row.get("published_closest_bound")),
+                    _g1_cell(row.get("recomputed_closest_bound")),
+                    _g1_cell(row.get("published_case_bound")),
+                    _g1_cell(row.get("recomputed_case_bound"))))
+    lines.append("- inventory bars at this task's own sizes: records bound_width=%s feasible@0.10=%s"
+                 " @0.25=%s; cases bound_width=%s feasible@0.10=%s @0.25=%s"
+                 % (_g1_cell(row.get("bound_width_records")),
+                    _g1_cell(row.get("feasible_at_0.10_records")),
+                    _g1_cell(row.get("feasible_at_0.25_records")),
+                    _g1_cell(row.get("bound_width_cases")),
+                    _g1_cell(row.get("feasible_at_0.10_cases")),
+                    _g1_cell(row.get("feasible_at_0.25_cases"))))
+    if row.get("pool_is_automated_set"):
+        lines.append("- oracle ceiling (the largest automated size a perfect gate could certify):"
+                     " %s records, %s cases -- a number because this artefact states the automated"
+                     " set IS the evaluated pool"
+                     % (_g1_cell(row.get("oracle_ceiling_records")),
+                        _g1_cell(row.get("oracle_ceiling_cases"))))
+    else:
+        lines.append("- oracle ceiling: %s records, %s cases -- null, because %s"
+                     % (_g1_cell(row.get("oracle_ceiling_records")),
+                        _g1_cell(row.get("oracle_ceiling_cases")),
+                        row.get("missing_pool_input")))
+    lines.append("")
+    return lines
 
 
 def first_clause(text: str, sep: str = ";", width: int = 78) -> str:
