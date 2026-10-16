@@ -135,9 +135,26 @@ def test_the_probe_reference_table_is_reproduced_by_the_repo_functions(rubric):
         assert row["bound_width"] == round(bound_width(n, alpha), 4) == width, row
         assert row["feasible_at_0.10"] is n_feasible(n, alpha=alpha, max_bound_width=0.10) is bar_010, row
         assert row["feasible_at_0.25"] is n_feasible(n, alpha=alpha, max_bound_width=0.25) is bar_025, row
-    assert _reference_by_n(doc, 2974)["size_from"] == (
-        "n_eval + n_cal of data/cert_massive_de_laya.json, data/cert_massive_en_laya.json, "
-        "data/cert_massive_sw_laya.json"), _reference_by_n(doc, 2974)
+    # `size_from` names where the biggest reference row's n came from. Asserted structurally, not as a typed
+    # string: the row that held the literal went red the day a fourth MASSIVE corpus was published, which is
+    # the wrong reason for the wrong test. What can genuinely be wrong here is that the provenance names a
+    # file that is not in the publication set, omits one that is, or quotes an n the named artefacts do not
+    # add up to -- so each of those three is checked, against the table and against the bytes.
+    size_from = _reference_by_n(doc, 2974)["size_from"]
+    prefix = "n_eval + n_cal of "
+    assert size_from.startswith(prefix), size_from
+    named = sorted(p.strip() for p in size_from[len(prefix):].split(","))
+    massive_certs = sorted(path for _key, path in report.MASSIVE_CERTIFICATES.values())
+    assert named == massive_certs, (
+        "`size_from` names %s while report.MASSIVE_CERTIFICATES publishes %s -- the reference row's n would "
+        "be attributed to corpora that are not the ones it was computed from" % (named, massive_certs))
+    for path in named:
+        assert (REPO / path).exists(), path
+    for path in named:
+        stored = report.read_certificate(REPO / path)
+        assert stored.n_eval + stored.n_cal == _reference_by_n(doc, 2974)["n"], (
+            "`size_from` attributes the reference row's n to %s, whose own halves add up to %d, not %d"
+            % (path, stored.n_eval + stored.n_cal, _reference_by_n(doc, 2974)["n"]))
     # The probe's pure-zero context, one column of the same rows: cp(0, n) at each size.
     for n, zero in ((100, 0.029513), (300, 0.009936), (1000, 0.002991), (2974, 0.001007)):
         assert _reference_by_n(doc, n)["cp_zero_errors"] == round(zero, 6), _reference_by_n(doc, n)

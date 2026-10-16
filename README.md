@@ -119,27 +119,27 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 508 /508 values` where the corpus is absent, `re-derived 543 /543
+prints say so: `re-derived 578 /578 values` where the corpus is absent, `re-derived 613 /613
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 543: every CI run is a 508 run, on both of its arms. Green CI is
+alone can never reach the 613: every CI run is a 578 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 508 run proves a lot inside that lane. Every published number that is a function of a
-committed input re-derives there -- all six published certificates, each from the committed
-records it was actually made from, G4's slice run from the three committed MASSIVE record files
+A 578 run proves a lot inside that lane. Every published number that is a function of a
+committed input re-derives there -- all seven published certificates, each from the committed
+records it was actually made from, G4's slice run from the four committed MASSIVE record files
 it names inside itself, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
 for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
-for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows from their committed pin. What a 508 run
+for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows from their committed pin. What a 578 run
 cannot prove is what its own disclosure says in so many words --
 `this run cannot see whether that snapshot went stale`. The gap is exactly 35
 checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 508 /508.
+had drifted from the corpus would agree with itself and report 578 /578.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -154,13 +154,13 @@ command prints at this revision; the document is their owner, so this section is
 second place to keep them.
 
 - **G1, at least three decision tasks certified at `autorate(α = 0.05)` with a 200-resplit empirical
-  violation rate: `not_certifiable`.** Five decision tasks have been scored and their records committed;
-  zero of the five yield a certificate, and the refusals are published as artefacts rather than rounded
+  violation rate: `not_certifiable`.** Six decision tasks have been scored and their records committed;
+  zero of the six yield a certificate, and the refusals are published as artefacts rather than rounded
   away. The binding quantity is the evaluation half's case count: the exact one-sided bound on a small
   number of automated cases sits above a 5% budget no matter how few are wrong. The criterion's second
   column is now measured and published rather than promised: `tools/resplit_experiment.py` re-splits every
   scored task 200 times at the rubric this freeze owns, and `data/resplit_200.json` with `docs/RESPLIT.md`
-  carries what came out. All five published tasks certify in **0 of 200** splits, so their empirical violation
+  carries what came out. All six published tasks certify in **0 of 200** splits, so their empirical violation
   rate is recorded as undefined with a zero denominator instead of being imputed as `0.000`; the one row that
   does produce a rate is the synthetic control (200 of 200 splits certify, rate 0.000 over 200 certificates),
   which tests the machinery and is labelled as nothing else. `verify` compares the artefact's own arithmetic —
@@ -205,22 +205,28 @@ second place to keep them.
   is a decision with a new freeze, and this section reads its statuses off that document instead of keeping a
   second copy of them.
 - **G4, worst-slice certification refusing rather than averaging: `not_met`.** The behaviour is published now
-  rather than printed and discarded: `tools/language_slices.py` certifies the three committed MASSIVE record
-  files (8,922 cases) as slices of `slices.language` -- the key the producer declares, not a key invented for
-  the run -- and `verify` recomputes that run from the same bytes, 76 field comparisons plus 5 rubric
+  rather than printed and discarded: `tools/language_slices.py` certifies the four committed MASSIVE record
+  files (11,896 cases) as slices of `slices.language` -- the key the producer declares, not a key invented for
+  the run -- and `verify` recomputes that run from the same bytes, 92 field comparisons plus 5 rubric
   rows, in
-  both lanes. What it publishes is a refusal: 3 slices, 0 certified, worst slice `de`, each slice refused at
-  the corrected budget (alpha and delta 0.05 / 3 = 0.016667, joint level 0.85), and `n_min_violations` empty --
+  both lanes. What it publishes is a refusal: 4 slices, 0 certified, each slice refused at
+  the corrected budget (alpha and delta 0.05 / 4 = 0.0125, joint level 0.85), and `n_min_violations` empty --
   so this is a bound failure, not the size floor. The pooled marginal certificate over the same records is
   published beside the slices and refuses too, which is the "rather than averaging" half: nothing in the
   artefact lets the pooled number stand in for the worst slice. Two things keep the row short of met: it is
-  per-language only, because `option_count` is 20 for every committed MASSIVE row so the
-  (language x option-count) cross the criterion names would be the same three slices; and the slice the
-  criterion names by example, Khmer, is absent -- its numbers are quoted from the upstream README rather than
-  measured here, and no per-case Khmer rows are committed. What the run does say is the criterion's own word:
+  per-language only, because `option_count` is 20 for every committed MASSIVE row -- Khmer included, measured
+  across all 11,896 rows -- so the (language x option-count) cross the criterion names would be the same four
+  slices; and with every slice refused, the ranking the criterion's word `worst` asks for has no value to
+  rank, because each row's `autorate` is null, so the artefact demonstrates that all slices refuse rather
+  than naming one as the worst. The slice the criterion names by example, Khmer, is no longer a gap:
+  `data/records_massive_km.jsonl` commits 2,974 per-case rows and this tree measures it, refusing like the
+  other three at the same rubric. Upstream's `accuracy 0.000 at mean confidence 0.952` remains upstream's own
+  100-case read, which these 1,487 evaluated Khmer cases neither replicate nor contradict. What the run does
+  say is the criterion's own word:
   every refused slice's summary carries `NOT_CERTIFIABLE: reason=empty_feasible_set`, and the command over
-  these records exits 3, `EXIT_NOT_CERTIFIABLE`. The two collapsed slices quoted
-  from the marginal certificates (`de` automates 0 of 1,487 cases; `sw` 39 with 13 wrong) are the at-a-glance
+  these records exits 3, `EXIT_NOT_CERTIFIABLE`. The collapsed slices quoted
+  from the marginal certificates (`de` automates 0 of 1,487 cases; `km` 11 with 5 wrong; `sw` 39 with 13
+  wrong) are the at-a-glance
   version of the same evidence, published as marginal certificates and now also as a slice run.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**

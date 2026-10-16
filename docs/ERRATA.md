@@ -2024,3 +2024,46 @@ census total against the corpus line count; one asserts the criterion's own exam
 published artefact and refuses there -- written RED against the three-slice artefact, and the only guard
 against Khmer being unpublished again. `tests/test_slice_surface.py` likewise lost its `== 3` and
 `== ["de","en","sw"]` literals to the same derivation.
+
+## 2026-10-16 -- the ninth freeze: Khmer joins the evidence, and a frozen sentence named a worst slice the artefact never computed
+
+**What moved.** `data/records_massive_km.jsonl` (2,974 per-case rows) and
+`data/cert_massive_km_laya.json` are published, so `report.SLICE_RECORDS` and
+`report.MASSIVE_CERTIFICATES` each carry four languages and the published certificates are seven, not six.
+`verify` now re-derives **578 /578** values with the corpus absent and **613 /613** with it present; the gap is
+still the 35 checks only a corpus can recompute. The ninth digest is
+`358d17bd02b159e4520b9bd5651cd2d9952bbece86b98c9d1541049d5c84f5aa`, frozen 2026-10-16, and the seven stamped
+artefacts were re-stamped to it by the derived list in `task2/t96/restamp.py`, not by a typed one.
+
+**Two digits in the frozen notes were false against this tree, and both are arm-measured now.**
+`claims.G4.note` said "76 field comparisons plus 5 rubric rows"; driving `report.rederive_slices` with counting
+callbacks makes **92** field comparisons and 5 rubric rows. `claims.G1.note` said `verify` "compares 32
+quantities"; driving `report.rederive_resplit` makes **37** (the row asserts the 37 against the note and the
+rubric labels against `report.RESPLIT_RUBRIC_FIELDS`, so "plus its rubric" is the row's own accounting, not a
+number in the sentence). `data/g1_feasibility.json` was re-emitted and prints `0 of 6 scored tasks certify`;
+the note's "all five decision tasks" and the README's "Five decision tasks" are six, because Khmer is now a
+scored task in the 200-resplit table, which has seven rows -- six real and the labelled synthetic control.
+
+**The claim note said something the artefact does not contain, and this round is where it was caught.**
+`claims.G4.note` read: "3 slices, 0 certified, `any_slice_refused` true, **the worst slice named `de`**". No
+field of `data/slices_language.json` names a worst slice: `run.worst_claim` carries `n_groups`, the corrected
+budgets, `any_slice_refused` and a `groups` list ordered de, en, sw -- `groups[0]` is `de` because that is the
+sorted order, and every group's `autorate`, `qhat` and `conditional_error_bound` are null, because a refused
+slice publishes no rate. So `de` was never the worst; it was the first. The sentence was measured by asking
+the artefact for a field that could support it and finding none, which is the same defect class as the
+transcribed denominators in R-275 and R-288: prose that reads as an observation but is an inference from
+ordering. The note now states what the run demonstrates -- every slice refuses, and with nothing certified the
+ranking `worst` asks for has no value to rank -- and the README says the same.
+
+**One cause was a branch, not a producer.** `plan/b3-task68-khmer` was cut from `fe8a085`, before the eighth
+freeze existed, so its author re-emitted the slice and resplit artefacts and had no way to know
+`tools/g1_feasibility.py` also reads the certificate set; the merged tree therefore drifted on 24
+`g1 massive/km.*` fields (`re-derived 554 /578`), all of them "published None" until the arm was re-run. The
+Khmer certificate itself drifted first because it had been emitted through bare `certify` and carried no
+`meta.protocol_digest` at all; it was re-produced through `certify --protocol` against the freeze the other six
+already carried rather than patched with a key, because the stamp is the thing `verify` compares.
+
+**Provenance re-checked, not inherited.** The Khmer rows' `cmp` against the off-tree build was re-run here
+(rc=0), all 2,974 rows carry `slices.language == "km"` and a `massive/km/...` case_id, and the digest the slice
+artefact records for the file (`dd302722ed49cef8…`) equals the file's own sha256. `slices.option_count` is 20 on
+every Khmer row, so the degeneracy the G4 note claims is measured rather than assumed.

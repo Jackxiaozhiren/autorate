@@ -276,19 +276,44 @@ def test_compare_refuses_across_protocols_and_still_names_the_rubric(tmp_path, m
 
 
 def test_every_published_certificate_carries_the_committed_freeze(tmp_path, in_repo):
-    """The durable half of the re-export: all five artefacts, one digest, the document in this checkout.
+    """The durable half of the re-export: every declared artefact, one digest, the document in this checkout.
 
     Read through `CERT_COMPARE_FIELDS` rather than a typed list, because that tuple has one owner and a
     second copy of it in a test is how a field that exists only on the dataclass (a property, not JSON)
     gets asserted as a key of the stored document. This test's first version did exactly that and was red
     on a green tree.
+
+    The count is not asserted as a literal. It used to be `== 5`, which froze the size of the published
+    set inside a test: adding Khmer as a fourth MASSIVE corpus reddened a row whose subject was the digest,
+    and the next reader's instinct would be to bump the number rather than to ask whether the artefact is
+    declared. What this row can actually fail on is the two directions a publication can drift: a
+    certificate the tables declare and the disk does not stamp, and a stamped file no table declares.
+    Those are checked against the filesystem and against the tables, which are different sources.
     """
     digest = protocol_digest(load_protocol(REPO / "protocol.json"))
-    paths = sorted(cli.CERTS.values()) + sorted(path for _, path in report.MASSIVE_CERTIFICATES.values())
-    assert len(paths) == 5, paths
-    for path in paths:
+    declared = sorted(cli.CERTS.values()) + sorted(path for _, path in report.MASSIVE_CERTIFICATES.values())
+    declared += sorted(cert for _label, (_records, cert, _direction) in report.SEVERITY_CERTS.items())
+    assert declared, "the publication tables name no certificate at all, so this row would certify nothing"
+    stamped_on_disk = []
+    for path in sorted((REPO / "data").glob("cert_*.json")):
+        document = json.loads(path.read_text())
+        if "protocol_digest" in document.get("meta", {}):
+            stamped_on_disk.append(str(path.relative_to(REPO)))
+    missing = sorted(set(declared) - set(stamped_on_disk))
+    extra = sorted(set(stamped_on_disk) - set(declared))
+    assert not missing, "declared by the publication tables but carrying no digest on disk: %s" % missing
+    assert not extra, ("carrying a digest that no publication table declares: %s -- `verify` would never "
+                       "compare it, so a frozen artefact can hide there" % extra)
+    for path in sorted(set(declared)):
         doc = json.loads((REPO / path).read_text())
         assert doc["meta"].get("protocol_digest") == digest, path
+    # The rubric block below is the CHOICE family's: `alpha`, `beta`, `delta`, `method`, `seed` are fields of
+    # a set certificate, and the severity artefact carries a different shape -- measured on the committed
+    # bytes, it has `alpha` and `delta` but neither `beta` nor `method`, and its own rubric is policed by the
+    # 32 alpha/delta/rubric rows in `tests/test_severity_surface.py`. Looping the choice fields over every
+    # stamped artefact would raise a KeyError, which is not a finding about the artefact.
+    for path in sorted(cli.CERTS.values()) + sorted(p for _, p in report.MASSIVE_CERTIFICATES.values()):
+        doc = json.loads((REPO / path).read_text())
         for name in ("alpha", "beta", "delta", "method"):
             assert doc[name] == load_protocol(REPO / "protocol.json").rubric[name], (path, name)
         assert doc["meta"]["seed"] == load_protocol(REPO / "protocol.json").rubric["seed"], path
