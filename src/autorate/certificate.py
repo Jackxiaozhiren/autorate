@@ -124,6 +124,23 @@ PUBLISHED_DECIMALS = 12
 CANONICALISED_BOUND_FIELDS = ("conditional_error_bound", "marginal_error_bound")
 _GRID = 10.0 ** -PUBLISHED_DECIMALS
 
+# --- the two words that say which denominator a published bound was computed over -----------------
+#
+# One name, two denominators, no key that says which: that is ledger #37/#71. A certificate's headline
+# `conditional_error_bound` is a CLOPPER-PEARSON upper bound over the automated CASES, while the field
+# of the same name inside every `meta.diagnostic_curve` row (and its `closest_attempt` copy) is over
+# the automated RECORDS. `meta.unit_note` used to claim the case denominator for all of them, so the
+# artefact's own prose was the thing that misled a reader who trusted it.
+#
+# The fix is additive -- no published key is renamed or removed, because `certificate.py:392` diffs the
+# top-level serialized field set and `SHAPE_VERSION = 2` is the shape readers hold, and a key added
+# inside `meta` is invisible to both. Producers write `bound_unit` from these two names and nowhere
+# else, so a fourth spelling ("cases", "records") cannot appear on a published artefact; the standard
+# they name is the one `certify_threshold.py:259-268` already publishes, where each row carries the
+# operands of both bounds beside each other.
+BOUND_UNIT_RECORD = "record"
+BOUND_UNIT_CASE = "case"
+
 
 def canonicalise_bound(value: Optional[float]) -> Optional[float]:
     """One transcendental-derived published number, ceiled onto `PUBLISHED_DECIMALS`.

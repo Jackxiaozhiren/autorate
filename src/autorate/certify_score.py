@@ -61,7 +61,7 @@ import random
 from typing import Optional, Sequence
 
 from .case_count import Verdict, case_key, count_outcome
-from .certificate import N_CLAIMS, Certificate, Reason
+from .certificate import BOUND_UNIT_CASE, BOUND_UNIT_RECORD, N_CLAIMS, Certificate, Reason
 from .conformal import classify_set, split_quantile
 from .ordinal import interval_set, score_ordinal
 from .tails import bound_width, clopper_pearson_upper
@@ -256,9 +256,15 @@ def certify_score(records: Sequence, alpha: float = 0.05, beta: float = 0.05, de
                 automated=autom, errors_among_automated=err, n_eval_cases=n_case,
                 automated_cases=auto_case, erroneous_cases=err_case,
                 n_cal_cases=len({case_key(r) for r in cal}),
-                unit_note="%d evaluation records over %d distinct cases: the bounds use the "
-                          "case denominator, because repeats of one case are one "
-                          "observation" % (n_ev, n_case))
+                # The choice gate's note, and the same split it now has to state: three headline
+                # bounds over cases, every curve row and its `closest_attempt` over records
+                # (ledger #37/#71).
+                unit_note="%d evaluation records over %d distinct cases: the certificate's own bounds "
+                          "-- conditional, marginal and the automation-rate interval -- use the %s "
+                          "denominator, because repeats of one case are one observation, while every "
+                          "diagnostic curve row and its closest_attempt copy bounds the %s denominator "
+                          "and names its own operands beside it"
+                          % (n_ev, n_case, BOUND_UNIT_CASE, BOUND_UNIT_RECORD))
     if vacuous:
         return Certificate.refused(
             Reason.VACUOUS_QUANTILE, alpha=alpha, beta=beta, n_cal=len(cal), n_eval=n_ev,
@@ -319,7 +325,12 @@ def certify_score(records: Sequence, alpha: float = 0.05, beta: float = 0.05, de
                    "level; the exact case-level upper bound %.3f exceeds the budget %.3f" % (
                        1.0 - alpha, auto_case, err_case, cond_hi, beta),
             meta=_with_diagnostic({**meta, "at_requested_alpha": {
-                "automated": autom, "errors": err, "conditional_error_bound": cond_hi}},
+                # Case operands beside a case bound, named as the choice gate names them
+                # (ledger #37/#71).
+                "automated": autom, "errors": err,
+                "automated_cases": auto_case, "errors_cases": err_case,
+                "bound_unit": BOUND_UNIT_CASE,
+                "conditional_error_bound": cond_hi}},
                 cal_scores, ev, grid, beta, delta))
     return cert
 
@@ -350,6 +361,12 @@ def _with_diagnostic(meta: dict, cal_scores, ev, grid, beta: float, delta: float
                       "multi_label": obs["multi_label"],
                       "observed_automation_rate": obs["automated"] / len(ev),
                       "observed_conditional_error": obs["errors"] / obs["automated"],
+                      # The choice gate's naming, on the same arithmetic: this `bound` is over the
+                      # RECORD counts, the certificate's headline field of the same name is over
+                      # cases, and `evaluated_records` is the divisor of the rate above
+                      # (ledger #37/#71).
+                      "bound_unit": BOUND_UNIT_RECORD,
+                      "evaluated_records": len(ev),
                       "conditional_error_bound": bound})
     if not curve:
         return {**meta, "closest_attempt": None, "diagnostic_curve": []}
