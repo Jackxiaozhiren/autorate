@@ -33,14 +33,17 @@ INVENTORY_JSON = "data/inventory.md.json"
 # claim this corpus cannot make at all.
 BACKENDS = ("laya", "jev")
 
-# G1's published certificates: one artefact per held-out MASSIVE language, never pooled, because one
-# gate over three corpora would assert exchangeability between a 0.4617-accuracy and a 0.0982-accuracy
-# population. `verify` re-derives them and `report` publishes them, so the paths live once here rather
-# than in a list inside each caller -- two lists that can disagree about what was certified is the
-# defect this table exists to prevent, not a formatting choice.
+# G1's published certificates: one artefact per held-out MASSIVE language, never pooled, because one gate
+# over the corpora would assert exchangeability between a 0.4617-accuracy, a 0.0982-accuracy and a
+# 0.0615-accuracy population. `verify` re-derives them and `report` publishes them, so the paths live once
+# here rather than in a list inside each caller -- two lists that can disagree about what was certified is
+# the defect this table exists to prevent, not a formatting choice. `massive/km` joined on task #68's round:
+# spec §2's G4 column names Khmer as the collapsed slice the worst-slice certification must refuse, and a
+# criterion whose example is not in the evidence is a criterion nobody checked.
 MASSIVE_CERTIFICATES = {
     "massive/de": ("data/records_massive_de.jsonl", "data/cert_massive_de_laya.json"),
     "massive/en": ("data/records_massive_en.jsonl", "data/cert_massive_en_laya.json"),
+    "massive/km": ("data/records_massive_km.jsonl", "data/cert_massive_km_laya.json"),
     "massive/sw": ("data/records_massive_sw.jsonl", "data/cert_massive_sw_laya.json"),
 }
 
@@ -51,8 +54,8 @@ MASSIVE_CERTIFICATES = {
 # into agreement with itself, which is the fixed-point hole the set arm closes by supplying the rubric.
 #
 # The records file is SYNTHETIC ORDINAL DATA WITH KNOWN ANSWERS, and that is a measured constraint, not a
-# stylistic one: none of the four committed records files in this checkout carries a single
-# `qtype="score"` record (`data/records_feishu.jsonl` is `choice`+`noul`, the three MASSIVE files are all
+# stylistic one: none of the five committed records files in this checkout carries a single
+# `qtype="score"` record (`data/records_feishu.jsonl` is `choice`+`noul`, the four MASSIVE files are all
 # `choice`), and `severity.certify_severity` refuses a population with no ordinal record by name. So no
 # corpus this repository can see produces a severity certificate, and the ordinal guarantee is published
 # over the population `tests/_records.build_ordinal` owns -- the same population `tests/test_severity.py`
@@ -569,11 +572,15 @@ SLICE_JSON = "data/slices_language.json"
 SLICE_MD = Path("docs/SLICES.md")
 SLICE_GROUP_KEY = "language"
 SLICE_BACKEND = "laya"
-# The three committed MASSIVE record files this run is a function of, named in the order the producer
+# The committed MASSIVE record files this run is a function of, named in the order the producer
 # concatenates them (sorted, so the artefact does not depend on a shell glob's mood). These are the inputs
 # `verify` re-reads, which is why the list lives beside the artefact that quotes it rather than in the tool.
+# Nothing here may be counted by a reader of this comment: the group count that every corrected budget
+# divides by is `len(SLICE_RECORDS)` as the certifier computes it from the DATA, and `tests/` reads the
+# same length -- the trio this tuple carried until task #68 is the set a fixture must not get to freeze.
 SLICE_RECORDS = ("data/records_massive_de.jsonl",
                  "data/records_massive_en.jsonl",
+                 "data/records_massive_km.jsonl",
                  "data/records_massive_sw.jsonl")
 SLICE_RUBRIC_FIELDS = ("alpha", "beta", "delta", "method", "seed")
 # Four field lists, one owner each: the arm and the denominator that counts it read these (`R-168`), and an
@@ -731,7 +738,7 @@ def slice_inputs() -> tuple:
 
 
 def rederive_slices(expect, expect_rubric, rubric=None) -> None:
-    """G4's run, recomputed from the three committed record files and compared field by field.
+    """G4's run, recomputed from every committed MASSIVE record file and compared field by field.
 
     This arm re-runs the certifier rather than auditing the artefact's arithmetic, because the run costs
     seconds; a published slice certificate the certifier disagrees with is drift with a field name on it. The
@@ -891,12 +898,15 @@ def render_slices(doc: dict) -> str:
         "",
         "## What this does not show",
         "",
-        "The criterion names a slice by example -- the one the upstream README documents as collapsed with",
-        "its own accuracy and confidence figures. That slice has no per-case rows in this tree, so its",
-        "literal row is unmeasured and the status the freeze prints for G4 says so. What is measured here is",
-        "the behaviour the criterion describes, on the slices this repository scored and committed: the",
-        "corrected worst-of-G permission refuses, the refusal is named slice by slice, and nothing in this",
-        "document averages it away.",
+        "The criterion names its example slice by name, and that slice is in this run: it is certified at",
+        "the divided budget like every other slice, and it refuses here rather than being quoted from",
+        "upstream's README. What the run still does not show is the second axis the criterion names. This",
+        "is a run over the one key the producer declares, so a cross of (language x option-count) is not",
+        "published here, and a table that pretended to condition on the count would be an overclaim about",
+        "a quantity that does not vary across these records. And the accuracy and mean-confidence figures",
+        "the criterion quotes beside its example are upstream's measurement on its own sample: this",
+        "artefact publishes a refusal, a denominator and a bound-or-no-bound per slice, and it is not the",
+        "owner of anyone's accuracy. The reconciliation of those two readings is `docs/ERRATA.md`'s.",
         "",
     ]
     return "\n".join(lines)

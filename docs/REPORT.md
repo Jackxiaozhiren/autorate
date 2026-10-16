@@ -11,7 +11,7 @@ path appears, so a machine that never saw the corpus produces exactly these byte
 - record contract: shape 2, primitives `choice`, `score`, `noul`
 - rubric: `alpha`=0.05, `beta`=0.05, `delta`=0.05, `seed`=7, `method`=aps, `unit`=case, `n_claims`=3, `min_cal`=60, `min_eval`=60
 - diagnostic grid: 29 points, 0.01 to 0.29 -- evidence only, nothing on it was certified
-- artefacts this document reads: 5 set certificates, 1 ordinal one, 6 resplit tasks, 3 slice rows declared as inputs, 6 inventory gaps, 46 ledger rows of which 34 are quoted here
+- artefacts this document reads: 6 set certificates, 1 ordinal one, 7 resplit tasks, 4 slice rows declared as inputs, 6 inventory gaps, 46 ledger rows of which 34 are quoted here
 
 ## What a certificate is
 
@@ -28,7 +28,7 @@ refuses to produce.
 - a refusal names one of a closed set of 5 reasons (`certificate.Reason`): `empty_feasible_set`, `n_below_min`, `no_automation_at_coverage`, `no_gold_labels`, `vacuous_quantile`
 - of those, the reasons this tree has actually published: `empty_feasible_set`
 - a certificate cannot be constructed without an envelope, so the disclaimer survives
-  serialization instead of living in a README someone has to remember to read. The 5 set artefacts carry between 2 and 2 envelope lines each, and the ordinal one carries 9.
+  serialization instead of living in a README someone has to remember to read. The 6 set artefacts carry between 2 and 2 envelope lines each, and the ordinal one carries 9.
 - the ordinal certificate is a sibling shape, not a `Certificate`: it reports `ahat`=3 over 600 calibration and 600 evaluation records of the `ordinal` population, at direction `under`, and the refusal reasons it can name are its own closed set
 
 ## The mechanism
@@ -46,13 +46,14 @@ with two owners and a gate that cannot see which one moved.
 
 > 1 - n_claims * max(alpha, beta), after every slice's budgets are divided by n_groups; n_groups therefore cancels and the family-wise level is CONSTANT in n_groups, which is the Bonferroni property spec 8.1 buys rather than an oversight of it
 
-G4's published run has 3 slices at `n_claims`=3, so `alpha` and `delta` become 0.016666666666666666 each, and the joint level the artefact states beside them is 0.85.
+G4's published run has 4 slices at `n_claims`=3, so `alpha` and `delta` become 0.0125 each, and the joint level the artefact states beside them is 0.85.
 
 - **The unit.** `case`: the certification unit is the case, never the archive row. Each artefact states the denominator it used in its own words, and the report quotes that field rather than writing a second justification for it:
 - `data/cert_jev.json`: 96 evaluation records over 32 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
 - `data/cert_laya.json`: 96 evaluation records over 32 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
 - `data/cert_massive_de_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
 - `data/cert_massive_en_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
+- `data/cert_massive_km_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
 - `data/cert_massive_sw_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
 
 ### What this rubric does not govern
@@ -135,6 +136,7 @@ the committed records beside it.
 | `data/cert_laya.json` | `report.CERTS` | `laya` | **refused** | `empty_feasible_set` | 0.95 | 0.05 | 96 | 96 |
 | `data/cert_massive_de_laya.json` | `report.MASSIVE_CERTIFICATES` | `laya` | **refused** | `empty_feasible_set` | 0.95 | 0.05 | 1487 | 1487 |
 | `data/cert_massive_en_laya.json` | `report.MASSIVE_CERTIFICATES` | `laya` | **refused** | `empty_feasible_set` | 0.95 | 0.05 | 1487 | 1487 |
+| `data/cert_massive_km_laya.json` | `report.MASSIVE_CERTIFICATES` | `laya` | **refused** | `empty_feasible_set` | 0.95 | 0.05 | 1487 | 1487 |
 | `data/cert_massive_sw_laya.json` | `report.MASSIVE_CERTIFICATES` | `laya` | **refused** | `empty_feasible_set` | 0.95 | 0.05 | 1487 | 1487 |
 
 Verbatim, because the summary is the certifier's own sentence and not this document's:
@@ -143,9 +145,10 @@ Verbatim, because the summary is the certifier's own sentence and not this docum
 - `data/cert_laya.json`: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=96 n_eval=96; at coverage 0.950 the 2 automated cases include 1 carrying a wrong automated request; the exact case-level upper bound 0.975 exceeds the budget 0.050
 - `data/cert_massive_de_laya.json`: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=1487 n_eval=1487; at coverage 0.950 no evaluation case produced a singleton set (0 empty, 1487 multi-label of 1487)
 - `data/cert_massive_en_laya.json`: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=1487 n_eval=1487; at coverage 0.950 the 709 automated cases include 43 carrying a wrong automated request; the exact case-level upper bound 0.078 exceeds the budget 0.050
+- `data/cert_massive_km_laya.json`: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=1487 n_eval=1487; at coverage 0.950 the 11 automated cases include 5 carrying a wrong automated request; the exact case-level upper bound 0.729 exceeds the budget 0.050
 - `data/cert_massive_sw_laya.json`: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=1487 n_eval=1487; at coverage 0.950 the 39 automated cases include 13 carrying a wrong automated request; the exact case-level upper bound 0.477 exceeds the budget 0.050
 
-0 of the 5 published set certificates certify. The reasons named above are the whole of what the rest refused, and each refusal travels inside its artefact with the budget pair that made it, its case counts and its envelope.
+0 of the 6 published set certificates certify. The reasons named above are the whole of what the rest refused, and each refusal travels inside its artefact with the budget pair that made it, its case counts and its envelope.
 
 ### The ordinal certificate (G3)
 
@@ -164,6 +167,7 @@ Verbatim, because the summary is the certifier's own sentence and not this docum
 | `laya` | 0 of 200 | `empty_feasible_set`:200 | 0 / 0 | undefined (no certificates) |
 | `massive/de` | 0 of 200 | `empty_feasible_set`:200 | 0 / 0 | undefined (no certificates) |
 | `massive/en` | 0 of 200 | `empty_feasible_set`:200 | 0 / 0 | undefined (no certificates) |
+| `massive/km` | 0 of 200 | `empty_feasible_set`:200 | 0 / 0 | undefined (no certificates) |
 | `massive/sw` | 0 of 200 | `empty_feasible_set`:200 | 0 / 0 | undefined (no certificates) |
 | `synthetic/sharp-k4-e0.02` | 200 of 200 | - | 0 / 200 | 0.0 |
 
@@ -175,12 +179,13 @@ Slices are named by the key the producer declares (`language`), refused by name,
 |---|---|---|---|---|
 | `de` | False | empty_feasible_set | 1487 | 1487 |
 | `en` | False | empty_feasible_set | 1487 | 1487 |
+| `km` | False | empty_feasible_set | 1487 | 1487 |
 | `sw` | False | empty_feasible_set | 1487 | 1487 |
 
 - worst slice of the joint claim: `de` on metric `autorate`; any slice refused: True
 - slices refused by the size floor rather than by a bound: 0
-- pooled over the same records: feasible=False, reason=empty_feasible_set, n_eval=4461
-- inputs this run is a function of, with the digests that pin it: `data/records_massive_de.jsonl` (2974 rows, `2fb97c44e8209acbeadbda9db88e7887441891636c0f1a3ee325f8fa8b42c68f`), `data/records_massive_en.jsonl` (2974 rows, `432d7d10f53e5d148be8811dfe4d2f2e3ce4b7b97a2727445b2fd2f6d651f8db`), `data/records_massive_sw.jsonl` (2974 rows, `f423fc0161fdcd0c6d85180728c59ae1ea39a2b8a31d4b75f7cde91fbf8c821c`)
+- pooled over the same records: feasible=False, reason=empty_feasible_set, n_eval=5948
+- inputs this run is a function of, with the digests that pin it: `data/records_massive_de.jsonl` (2974 rows, `2fb97c44e8209acbeadbda9db88e7887441891636c0f1a3ee325f8fa8b42c68f`), `data/records_massive_en.jsonl` (2974 rows, `432d7d10f53e5d148be8811dfe4d2f2e3ce4b7b97a2727445b2fd2f6d651f8db`), `data/records_massive_km.jsonl` (2974 rows, `dd302722ed49cef88e33deb9d8673faf18d54752f224ac867686917aae057239`), `data/records_massive_sw.jsonl` (2974 rows, `f423fc0161fdcd0c6d85180728c59ae1ea39a2b8a31d4b75f7cde91fbf8c821c`)
 
 ### The gate the reference README instructs (G2)
 

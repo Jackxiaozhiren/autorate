@@ -8,8 +8,8 @@ artefact". The slice key was never the blocker: every committed MASSIVE row decl
 `slices.language`, and the earlier "no language field" reading of the data looked for a top-level key.
 
 This file is the wiring, in `test_resplit_surface.py`'s shape, with one deliberate difference: the run costs
-seconds, so the gate RE-DERIVES it from the three committed records files instead of only auditing an
-artefact's internal arithmetic. A published slice certificate that the certifier disagrees with is drift the
+seconds, so the gate RE-DERIVES it from every committed MASSIVE records file `report.SLICE_RECORDS`
+declares instead of only auditing an artefact's internal arithmetic. A published slice certificate that the certifier disagrees with is drift the
 gate names, and the refusal itself -- which slice, at which corrected level, with which pooled neighbour --
 is a published claim rather than terminal scrollback.
 """
@@ -32,6 +32,29 @@ def in_repo(monkeypatch):
 
 def _run():
     return report.read_slices(REPO / report.SLICE_JSON)["run"]
+
+
+def _corpus_segments() -> list:
+    """The slice value each declared input's rows state, read from the corpus rather than remembered here.
+
+    Task #68's contribution to this file. Every set this row used to compare against was the literal
+    `["de", "en", "sw"]`, so it could not fail for a publication that dropped a language and could only be
+    satisfied by editing a number when one was added -- a guard that has to be rewritten to stay green is a
+    comment with an `assert` in front of it. The values come from the rows themselves: one row per declared
+    file, and its `case_id` segment must equal the `slices.language` it states (which is the claim
+    `tools/language_slices.check_rows` polices on every row, re-checked here on one so the set this file
+    compares against is the corpus's, not a reader's recollection). `tests/test_slice_producer_cli.py`
+    carries the same derivation because a test module cannot import another one's helpers.
+    """
+    out = []
+    for rel in report.SLICE_RECORDS:
+        row = json.loads((REPO / rel).read_text().splitlines()[0])
+        segment = str(row["case_id"]).split("/")[1]
+        stated = row["slices"][report.SLICE_GROUP_KEY]
+        assert segment == stated, (rel, segment, stated)
+        out.append(segment)
+    assert len(set(out)) == len(out) == len(report.SLICE_RECORDS), out
+    return sorted(out)
 
 
 def _recorded(doc=None, rubric=None):
@@ -78,10 +101,10 @@ def test_the_slice_run_refuses_the_worst_slice_rather_than_averaging_it(in_repo)
     # `groups` names the declared slice KEYS; the slice VALUES are the `per_group` keys. A row that conflated
     # them would pass on a run over one key with any number of slices, which is not the claim G4 makes.
     assert run["groups"] == [report.SLICE_GROUP_KEY], run["groups"]
-    assert sorted(run["per_group"]) == ["de", "en", "sw"], sorted(run["per_group"])
-    assert run["n_groups"] == len(run["per_group"]) == 3, run["n_groups"]
+    assert sorted(run["per_group"]) == _corpus_segments(), sorted(run["per_group"])
+    assert run["n_groups"] == len(run["per_group"]) == len(report.SLICE_RECORDS), run["n_groups"]
     refused = [g for g, cert in run["per_group"].items() if not cert["feasible"]]
-    assert sorted(refused) == ["de", "en", "sw"], refused
+    assert sorted(refused) == _corpus_segments(), refused
     assert run["thinnest"] in refused, (run["thinnest"], refused)
     # the pooled marginal certificate is published BESIDE the slices, not in place of them, and it refuses too
     assert "pooled" in run and run["pooled"]["feasible"] is False, run.get("pooled")
@@ -97,14 +120,17 @@ def test_the_slice_run_refuses_the_worst_slice_rather_than_averaging_it(in_repo)
 def test_the_simultaneous_correction_the_run_publishes_is_the_rule_it_states(in_repo):
     """Each slice's budget divided by the SLICE count, the joint level rebuilt from the divided delta, beta unspent.
 
-    Measured, and the arithmetic is the claim: 0.05 / 3 = 0.016667 per slice, and 3 slices x 3 claims x that
-    delta = 0.15 family risk, so the joint level is 0.85. Dividing by slices x claims instead (0.00556) would
-    publish a stricter run than the one that was made, and a level rebuilt from the wrong divisor would read
-    as consistent while describing nothing.
+    Measured, and the arithmetic is the claim: with the four corpora `report.SLICE_RECORDS` declares,
+    0.05 / 4 = 0.0125 per slice, and 4 slices x 3 claims x that delta = 0.15 family risk, so the joint level
+    is 0.85. The trio this row pinned read 0.05 / 3 = 0.016667 and the same 0.15 family risk -- the level is
+    CONSTANT in the slice count, which is the Bonferroni property `correction.JOINT_LEVEL_RULE` states, and
+    it is why the count has to be read from the table rather than inferred from the level. Dividing by slices
+    x claims instead (0.00556 at four) would publish a stricter run than the one that was made, and a level
+    rebuilt from the wrong divisor would read as consistent while describing nothing.
     """
     run = _run()
     n_groups, n_claims = run["n_groups"], run["n_claims"]
-    assert n_groups == 3 and n_claims == 3, (n_groups, n_claims)
+    assert n_groups == len(report.SLICE_RECORDS) and n_claims == 3, (n_groups, n_claims)
     assert run["corrected_alpha"] == pytest.approx(run["alpha"] / n_groups)
     assert run["corrected_delta"] == pytest.approx(run["delta"] / n_groups)
     assert run["level"] == pytest.approx(1 - n_groups * n_claims * run["corrected_delta"])
@@ -119,12 +145,18 @@ def test_the_simultaneous_correction_the_run_publishes_is_the_rule_it_states(in_
 def test_the_gate_re_derives_the_published_slice_run_from_the_committed_records(in_repo):
     """The arm recomputes the certification: a stale artefact is drift the gate names, not a stale sentence."""
     seen, mismatches = _recorded()
+    run = _run()
+    # Every multiplier here is read from the artefact or from the table, never remembered as 3: the counts
+    # this row used to type were the slice count, the census count and the declared-input count, and a
+    # publication that grew by one corpus had to edit them to stay green -- which is the same fixture
+    # vacuity as the fixed-length tuple `tests/test_slice_producer_cli.py` no longer carries, arriving at
+    # the gate's own denominator. `tests/test_cli.py` builds the absent-lane total the same derived way.
     expected = (len(report.SLICE_COMPARE_FIELDS)
-                + len(report.SLICE_GROUP_FIELDS) * 3
-                + len(report.SLICE_CENSUS_FIELDS) * 3
+                + len(report.SLICE_GROUP_FIELDS) * len(run["per_group"])
+                + len(report.SLICE_CENSUS_FIELDS) * len(run["slice_census"])
                 + len(report.SLICE_POOLED_FIELDS) + 1          # +1: the six envelope lines, as one value
                 + len(report.SLICE_WORST_FIELDS) + 1           # +1: `n_min_violations`, joined as one value
-                + len(report.SLICE_INPUT_FIELDS) * 3)
+                + len(report.SLICE_INPUT_FIELDS) * len(report.SLICE_RECORDS))
     assert len(seen) == expected, (len(seen), expected)
     assert all(passed for _label, passed in seen), [l for l, p in seen if not p]
     assert len(mismatches) == len(report.SLICE_RUBRIC_FIELDS)
@@ -280,7 +312,7 @@ def test_the_producer_refuses_a_row_whose_case_id_and_declared_language_disagree
 
 
 def test_the_published_slice_artefact_names_its_inputs_and_carries_no_machine_path(in_repo):
-    """The run is a function of three committed files, so the file says which three and how many rows."""
+    """The run is a function of every file the table declares, so it says which ones and how many rows."""
     doc = json.loads((REPO / report.SLICE_JSON).read_text())
     assert not re.search(r"/(Users|home)/[A-Za-z0-9._-]+/", (REPO / report.SLICE_JSON).read_text()), \
         "an absolute path in a published artefact"

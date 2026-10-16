@@ -1896,3 +1896,84 @@ classes are three" is a guard, not a comment.
 One thing this round did not touch, and says so rather than fixing it quietly: the 2026-10-14 entry above
 quotes `groups.py:163`, and that line is now `:184`. The old entry is kept as written, per this file's own
 rule that corrections are appended rather than retconned.
+
+## 2026-10-15 -- the slice the criterion names by example was not in the evidence; Khmer joins as a fourth corpus
+
+**The sentence that required this, verbatim.** spec §2's G4 row, measurement column: "per (language x
+option-count) bounds with a simultaneous multiple-testing correction; must return `NOT_CERTIFIABLE` for the
+slices `laya` documents as collapsed (e.g. **Khmer**: accuracy 0.000 at mean confidence 0.952)". The published
+artefact held `run.per_group == ['de','en','sw']`, so the one example the criterion names was absent from the
+evidence for the criterion, and `docs/SLICES.md` and `README.md` both said so out loud. Upstream's own
+sentences are at `laya-0.3.20/README.md:358` and `:855`. `data/records_massive_km.jsonl` closes the gap:
+2,974 per-case Khmer rows, byte-copied from the repaired build and `cmp`-verified, `slices.language == "km"`
+on every row and every `case_id` inside the `massive/km/...` segment.
+
+**The group count is not a cosmetic change, so nothing was carried over.** `report.SLICE_RECORDS` grew from
+three paths to four, and the correction divides by the group count the DATA produces: `0.05 / 3 = 0.016667`
+becomes `0.05 / 4 = 0.0125` per slice. `de`, `en` and `sw` were re-certified at the tighter budget rather than
+re-printed from the old artefact, and the re-run is what says where the labels land:
+
+    slices over 'language': 4 groups, 3 claims per group, corrected alpha=0.0125 delta=0.0125, joint level 0.85
+    de / en / km / sw, each: NOT CERTIFIED -- empty_feasible_set
+    thinnest: de;  worst slice of the joint claim: de;  any slice refused: True;  the run certifies: False
+    refused by the size floor (`n_min_violations`): 0
+    pooled: n_cal=5948 n_eval=5948, 1010 automated cases, 107 wrong, exact bound 0.123
+
+`km` is NOT the thinnest slice. All four corpora hold 2,974 rows over 2,974 cases at `n_cal=n_eval=1487`, so
+the case counts tie and `thinnest` keeps its alphabetical tie-break on `de`; the joint worst-of-`G` claim is
+`de` for the same reason, because no slice in this run publishes a bound or an `autorate` the ranking could
+read. The prediction in the build notes was that `km` at 0.0615 accuracy would become the worst slice, and the
+measurement refutes it: at `empty_feasible_set` the accuracy never reaches the ranking. The budget tightened
+and the labels did not move -- that is the finding, and the tie is the reason it holds.
+
+**The reconciliation, with the n each side actually used.** Upstream's headline for Khmer is `0.000` accuracy
+at mean confidence `0.952`, and its own result files say what their n was: 100 cases
+(`research/results/cpu_51_language_sweep.json`, unclamped `mean_confidence` 0.9515). This tree measures the
+same checkpoint over the full split: **183 correct of 2,974 rows = 0.0615, mean max probability 0.6865** --
+and 0.6865 is the CLAMPED regime the committed records carry, while 0.952 is upstream's UNCLAMPED reading
+(0.9355 unclamped at n=2,974 in the build log). Two differences, not one: the denominator and the regime. The
+probability that a 100-case draw contains zero of the 183 correct cases is `0.9385^100 = 1.75e-3` with
+replacement and `C(2791,100)/C(2974,100) = 1.56e-3` without it. The upstream `1.6e-4` quoted in the build
+notes is an order of magnitude out -- right mantissa, wrong exponent -- and this file corrects it rather than
+restating it. So `0.000` is not a contradiction of `0.0615` and not an agreement either: it is a 100-case
+measurement that does not extend to the 2,974-case split, where the model gets 183 right. The `en` row needs
+no probability argument for the same point: upstream's suite says 0.8200 at n=100, the committed split says
+0.7260 at n=2,974.
+
+**What the marginal certificate for Khmer says.** `autorate certify data/records_massive_km.jsonl --backend
+laya` writes `data/cert_massive_km_laya.json` as NOT_CERTIFIABLE, `empty_feasible_set`: at coverage 0.950 it
+automates 11 of 1,487 cases, 5 of them carry a wrong automated request, exact case-level upper bound 0.729
+against the 0.050 budget. Beside `de` (0 of 1,487), `en` (709, 43 wrong, 0.078) and `sw` (39, 13 wrong,
+0.477), it is the fourth collapsed slice this repository scores rather than quotes.
+
+**Every consumer that moved, and what the round deliberately left undone.** The publication tables
+(`report.MASSIVE_CERTIFICATES`, `report.SLICE_RECORDS`), the slice artefact and `docs/SLICES.md`,
+`data/resplit_200.json` and `docs/RESPLIT.md` (`published_tasks()` reads the certificate table, so G1's second
+column went from five decision tasks to six and the sweep was re-run rather than described), `docs/REPORT.md`,
+and README's two denominators. `src/autorate/techreport.py` needed no edit: every count it prints is read
+from the tables, which is the point of the tables. What is NOT stamped and NOT frozen here, on purpose:
+`data/cert_massive_km_laya.json` carries no `meta.protocol_digest`, `protocol.json` and `src/autorate/protocol.py`
+are untouched, and so the gate now prints one named drift in each lane -- `re-derived 285 /286 values`
+corpus-absent (was 249 /249) and `320 /321` corpus-present (was 284 /284), both rc 4, both from the same
+`DRIFT: cert massive/km.meta` line. Each lane's total grew by 37, and the two parts of that are different
+reasons: 32 comparisons come from the Khmer corpus itself (16 for the certificate's fields and summary, 16 for
+the fourth slice's group, census and input rows), and 5 come from `resplit_invariants`, which adds five
+self-consistency rows per task and just got a sixth decision task. The inter-lane gap is unchanged at 35
+checks, and the slice arm's own count moved from 76 field comparisons to 92. The re-freeze, the
+stamp, and the two claim notes that this round makes false -- G4's "three committed MASSIVE record files
+(8,922 cases ... 0.05 / 3 = 0.016667)" and G1's "five tasks, zero certify" -- are the controller's act, in the
+round that re-stamps the now-seven stamped artefacts. `tools/restamp.py` refuses a declared artefact that
+carries no digest on disk, so that round has to CREATE this certificate under the new freeze rather than only
+re-stamp it; the refusal is correct and the requirement is worth naming before somebody meets it.
+
+**The vacuity this round actually removed, because it was in a fixture line.**
+`tests/test_slice_producer_cli.py` opened with `DE, EN, SW = report.SLICE_RECORDS`. A fixed-length
+destructure of a publication table takes the trio's arity as a fact about the tree: declaring the fourth
+corpus raised `ValueError: too many values to unpack (expected 3)` at IMPORT and reddened all eight rows in
+the file for a reason that was not a defect in the producer, the artefact or the data. It is now a lookup
+against the same table, and the rows that care about the COUNT read `len(report.SLICE_RECORDS)`. Two rows were
+added: one asserts the run's slice set against the table in both directions, with the group count and the
+census total against the corpus line count; one asserts the criterion's own example is present in the
+published artefact and refuses there -- written RED against the three-slice artefact, and the only guard
+against Khmer being unpublished again. `tests/test_slice_surface.py` likewise lost its `== 3` and
+`== ["de","en","sw"]` literals to the same derivation.

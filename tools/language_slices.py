@@ -7,11 +7,13 @@ The criterion asks for a behaviour -- with a simultaneous correction over the sl
 REFUSE, and the pooled bound must not be allowed to average that refusal away. The CLI has printed that run
 since `--groups` landed, and printed it into terminal scrollback: nothing to re-derive, nothing to compare,
 no document a reader can check. This file turns one run into an artefact, and `autorate verify` recomputes
-it from the same three committed record files the run names inside itself.
+it from the committed record files the run names inside itself, every one of
+`report.SLICE_RECORDS`.
 
 Three rules shape it.
 
-*No new evidence.* The inputs are the three published MASSIVE record files, read through `report.load_records`
+*No new evidence.* The inputs are the published MASSIVE record files `report.SLICE_RECORDS` declares, read
+through `report.load_records`
 -- the same reader the published certificates use, so the doubles certified here are the doubles those
 certificates were built from. No corpus, no model, no cache: the run costs seconds and belongs in the gate.
 
@@ -62,7 +64,7 @@ class SliceInputRefusal(RuntimeError):
 
 
 def declared_inputs(directory=None) -> list:
-    """The three files this run is a function of, in the order the artefact names them.
+    """Every file this run is a function of, in the order the artefact names them.
 
     With no `directory`, the paths are the repo-relative strings the publication declares, so what the
     artefact records as an input is what `verify` re-reads. A `directory` is the tool-mode view: the same
@@ -77,9 +79,10 @@ def declared_inputs(directory=None) -> list:
 def refuse_missing_inputs(directory=None) -> tuple:
     """`(EXIT_DRIFT, message)` naming every declared input that is not there, or `(0, "")`.
 
-    Checked before any certifying, because certifying 2 of 3 languages and publishing it as a language-slice
-    run would state a population the artefact describes differently than it is. The message names only the
-    absent files: a reader who is told three files are required and that one is missing has the whole fix.
+    Checked before any certifying, because certifying all but one of the declared languages and publishing
+    the result as a language-slice run would state a population the artefact describes differently than it
+    is. The message names only the absent files and says how many the table declares, so a reader who is
+    told that one of them is missing has the whole fix.
     """
     missing = [str(path) for path in declared_inputs(directory) if not path.is_file()]
     if not missing:

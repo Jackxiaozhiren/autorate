@@ -14,8 +14,18 @@ None of it was tested at the entry point. `tests/test_slice_surface.py` drives `
 "the rows written to close it were reverted rather than shipped half-right, so `tools/language_slices.py`'s
 refusals are still unasserted through its own command". Those are the gaps this file closes. Six rows drive the
 real `main(argv)`, each docstring naming the production change that reddens it, a seventh pins three measured
-shapes that escape `main` entirely, and an eighth pins the clause that keeps a refusal this file has no class
-for inside the same contract.
+shapes that escape `main` entirely, an eighth pins the clause that keeps a refusal this file has no class for
+inside the same contract, and task #68 adds a ninth and a tenth.
+
+The two new rows are the ones this file existed to be unable to write. Row 9 asserts the run's slice SET
+against `report.SLICE_RECORDS` -- both directions, plus the group count every budget divides by, plus the
+census total against the corpus line count -- because every count in this project that read `== 3` was a
+claim about the trio rather than about the tree, and this file's own module level carried the worst of them
+(`DE, EN, SW = report.SLICE_RECORDS`, which broke by ARITY the moment a fourth corpus was declared, in a
+fixture line, taking all eight rows with it; see `_declared_input_for`). Row 10 asserts the criterion's own
+example -- the collapsed slice spec §2's G4 column names by name -- is in the published artefact and refuses
+there. It was written RED, against a three-slice artefact that could not satisfy it, and it is the row that
+keeps the fourth corpus from being unpublished again.
 
 Three rules this file holds itself to.
 
@@ -60,10 +70,65 @@ from autorate.cli import EXIT_DRIFT, EXIT_USAGE
 
 REPO = Path(cli.__file__).resolve().parents[2]
 PRODUCER_PATH = REPO / "tools" / "language_slices.py"
-# The declared inputs, read from the table rather than restated, so a row cannot aim at a file the producer
-# no longer asks for. `DE` is the one each scratch checkout mutates.
-DE, EN, SW = report.SLICE_RECORDS
 PRE_EXISTING = "PRE-EXISTING CONTENT THAT A REFUSED RUN MUST NOT REPLACE\n"
+
+
+def _declared_input_for(language: str) -> str:
+    """The records path the table declares for one language code, looked up rather than unpacked.
+
+    HOW these names got bound, and why the line this replaces was a defect. The module used to read
+    `DE, EN, SW = report.SLICE_RECORDS`, which took the TRIO's arity as a fact about the tree: it raised
+    `ValueError: too many values to unpack (expected 3)` at IMPORT, in a fixture line, the moment task #68
+    declared a fourth corpus, and all eight rows here went red for a reason that was not a defect in the
+    producer, the artefact or the corpus. A fixed-length unpack re-freezes the set it unpacks -- the
+    list-shaped-guard vacuity this project keeps recording (R-168), arrived at from the other side. So each
+    name is looked up in the table, and the table's LENGTH is asserted only by the rows that ask the
+    artefact about it. A fifth corpus can no longer redden this file by arity; a corpus dropped from the
+    table reddens those rows, which is the failure that is supposed to be loud.
+
+    The suffix is the name the table itself spells and the name the producer prints in its refusals; which
+    language the file CARRIES is asserted from its rows in `_declared_languages`, never from this string.
+    """
+    hits = [rel for rel in report.SLICE_RECORDS if Path(rel).stem.endswith("_" + language)]
+    if len(hits) != 1:
+        raise LookupError("%s is declared by %d entries of report.SLICE_RECORDS (%s), and this fixture "
+                          "needs exactly one: %s"
+                          % (language, len(hits), ", ".join(report.SLICE_RECORDS), hits))
+    return hits[0]
+
+
+DE = _declared_input_for("de")
+EN = _declared_input_for("en")
+SW = _declared_input_for("sw")
+
+
+def _declared_languages() -> dict:
+    """`{declared records path: the slice value its rows state}`, read out of the corpus itself.
+
+    One row per file is enough for the NAME, because `check_rows` refuses a file whose rows disagree with
+    their own `case_id` segment -- that equality is policed on every row by the producer, and re-policing
+    it here would be a second copy of a claim with an owner. What this mapping is for is the other
+    direction, the one nothing else asserted: the artefact's slice SET has to equal the set the table
+    declares, and a list of slice names typed into this file is exactly the fixture-line vacuity task #68
+    was filed for. The two identity checks below are what stop the mapping from being a restatement of the
+    filenames: a file whose `case_id` segment and `slices.language` disagree, or two files claiming one
+    slice, both fail here before any artefact is compared to them.
+    """
+    out = {}
+    for rel in report.SLICE_RECORDS:
+        with (REPO / rel).open() as handle:
+            row = json.loads(handle.readline())
+        segment = str(row["case_id"]).split("/")[1]
+        stated = row["slices"][report.SLICE_GROUP_KEY]
+        if segment != stated:
+            raise AssertionError("%s: its first row's case_id segment is %r but it states %s=%r"
+                                 % (rel, segment, report.SLICE_GROUP_KEY, stated))
+        if stated in out.values():
+            raise AssertionError("%s and another declared file both state %r, so one slice would be "
+                                 "certified twice and the group count would not be the corpus count"
+                                 % (rel, stated))
+        out[rel] = stated
+    return out
 
 
 def _load(path):
@@ -86,12 +151,15 @@ def producer():
 
 
 def _scratch_checkout(root):
-    """Lay the three declared inputs out under `root/data/`, one committed row each, and return those rows.
+    """Lay every declared input out under `root/data/`, one committed row each, and return those rows.
 
     The producer reads its inputs as repo-relative strings, so a scratch tree that wants `main()` to get past
     `refuse_missing_inputs()` has to carry the same `data/<name>` spelling. One row per file is enough: both
-    guards this file aims at run over the rows before anything is certified, and a full 2,974-row copy per row
-    would make the suite read the corpus three times to prove a refusal that fires on the second line.
+    guards this file aims at run over the rows before anything is certified, and a full 2,974-row copy per
+    row would make the suite read the whole corpus once per refusal to prove a refusal that fires on the
+    second line. The loop is `for rel in report.SLICE_RECORDS` and not a list of three names: a fourth
+    corpus joining the table has to appear in every scratch checkout automatically, or the refusals that
+    depend on the OTHER files being present would be proved against a tree the producer never sees.
     """
     rows = {}
     for rel in report.SLICE_RECORDS:
@@ -435,3 +503,81 @@ def test_a_refusal_this_file_has_no_class_for_still_lands_on_four_and_not_on_one
         err, "the class-keyed clause did not speak, so this refusal came from the blanket one")
     assert "Traceback" not in err, err
     assert not out.exists(), "the refused run wrote an artefact built on a batch it called unreadable"
+
+
+def test_the_run_certifies_exactly_the_slices_the_table_declares_and_no_others(
+        producer, tmp_path, monkeypatch, capsys):
+    """RED if a corpus joins `report.SLICE_RECORDS` and the run keeps the OLD slice set -- or if one leaves
+    the table and the artefact keeps its row. Neither direction was assertable before task #68: every count
+    in `tests/test_slice_surface.py` that looked like a guard read `== 3`, so a fourth language could only
+    have been published by editing a number, which is the same vacuity as the destructuring line this file
+    no longer carries, arrived at from the other end.
+
+    Three claims, all read from the table rather than remembered here.
+
+    *set equality both ways*: the artefact's slice names are exactly the slice values the declared files'
+    rows state. `>=` would pass on a run that invented a slice; `<=` would pass on one that dropped a
+    corpus -- and a dropped corpus is the silent form of the defect, because the run still certifies, still
+    prints a corrected budget, and divides by a group count that no longer matches what it published.
+    *the group count is the table's length*: this is the quantity every budget divides by, so the row that
+    pins it is what makes `0.05 / n_groups` a statement about the corpus instead of about an integer.
+    *population containment*: the census' record counts, summed, are the sum of the declared files' lines.
+    A slice dropped from the run would otherwise show up only as a shorter table; here it is also a total
+    that does not add up, which is the check that survives a file being renamed.
+    """
+    monkeypatch.chdir(REPO)
+    out = tmp_path / "slices_language.json"
+    assert producer.main(["--out", str(out)]) == 0
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err, captured.err
+
+    doc = json.loads(out.read_text())
+    run = doc["run"]
+    languages = _declared_languages()
+    assert sorted(languages) == sorted(report.SLICE_RECORDS), languages
+
+    assert sorted(run["per_group"]) == sorted(languages.values()), (
+        sorted(run["per_group"]), sorted(languages.values()))
+    assert run["n_groups"] == len(run["per_group"]) == len(report.SLICE_RECORDS), (
+        run["n_groups"], len(report.SLICE_RECORDS))
+    assert sorted(row["path"] for row in doc["inputs"]) == sorted(report.SLICE_RECORDS), doc["inputs"]
+    assert sum(row["records"] for row in run["slice_census"]) == sum(
+        1 for rel in report.SLICE_RECORDS for _line in (REPO / rel).open()), run["slice_census"]
+    # and the correction the run publishes is the division THIS table implies, not the one the trio implied
+    assert run["corrected_alpha"] == pytest.approx(run["alpha"] / len(report.SLICE_RECORDS))
+    assert run["corrected_delta"] == pytest.approx(run["delta"] / len(report.SLICE_RECORDS))
+
+
+def test_the_collapsed_slice_the_g4_criterion_names_is_in_the_published_artefact():
+    """RED until the fourth corpus is published, and that is the point of writing it first.
+
+    spec §2's G4 measurement column, verbatim: "per (language x option-count) bounds with a simultaneous
+    multiple-testing correction; must return `NOT_CERTIFIABLE` for the slices `laya` documents as collapsed
+    (e.g. **Khmer**: accuracy 0.000 at mean confidence 0.952)". The artefact this tree published until task
+    #68 held `de`, `en`, `sw` -- so the one slice the criterion names by example was absent from the
+    evidence for the criterion, and `docs/SLICES.md` said as much ("That slice has no per-case rows in this
+    tree"). A row that asserts the criterion's own example is present is not a count pinned to a fixture:
+    it is the requirement, and it is the only guard against the publication quietly dropping back to the
+    languages that happen to be convenient.
+
+    It reads the COMMITTED artefact, not a scratch run, because the claim under test is what this repository
+    publishes -- the same bytes `verify` re-derives and `docs/SLICES.md` renders.
+
+    What is asserted beside presence is the refusal, because presence alone would be a weaker claim than the
+    criterion's: `km` must be a slice that does not certify, at the divided budget, and the pooled
+    certificate must not be allowed to answer for it.
+    """
+    doc = report.read_slices(REPO / report.SLICE_JSON)
+    run = doc["run"]
+    assert report.SLICE_GROUP_KEY == "language", report.SLICE_GROUP_KEY
+    assert "km" in run["per_group"], sorted(run["per_group"])
+    cert = run["per_group"]["km"]
+    assert cert["feasible"] is False and cert["reason"], cert
+    assert cert["alpha"] == pytest.approx(run["corrected_alpha"]), (cert["alpha"], run["corrected_alpha"])
+    assert cert["qhat"] is None and cert["conditional_error_bound"] is None, (
+        "the refused slice publishes a bound it did not compute", cert)
+    # the criterion's example must survive the pooling: the run refuses, and says a slice was refused
+    assert run["any_slice_refused"] is True and run["feasible"] is False
+    census = {str(row["group"]): row for row in run["slice_census"]}
+    assert "km" in census, sorted(census)
+    assert census["km"]["records"] == sum(1 for _line in (REPO / _declared_input_for("km")).open()), census

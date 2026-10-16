@@ -7,7 +7,7 @@ timestamp so a re-run is byte-comparable in both lanes.
 
 - splits per task: 200
 - rubric the experiment ran at: alpha 0.050, beta 0.050, delta 0.050, method `aps`, seed 7
-- tasks: 6 (the 5 published decision tasks this repository certifies, plus one synthetic control whose labels are known)
+- tasks: 7 (the 6 published decision tasks this repository certifies, plus one synthetic control whose labels are known)
 
 | task | splits certified | refusals | violations / certificates | empirical violation rate |
 |---|---|---|---|---|
@@ -15,6 +15,7 @@ timestamp so a re-run is byte-comparable in both lanes.
 | `laya` | 0 of 200 | empty_feasible_set:200 | 0 / 0 | undefined (no certificates) |
 | `massive/de` | 0 of 200 | empty_feasible_set:200 | 0 / 0 | undefined (no certificates) |
 | `massive/en` | 0 of 200 | empty_feasible_set:200 | 0 / 0 | undefined (no certificates) |
+| `massive/km` | 0 of 200 | empty_feasible_set:200 | 0 / 0 | undefined (no certificates) |
 | `massive/sw` | 0 of 200 | empty_feasible_set:200 | 0 / 0 | undefined (no certificates) |
 | `synthetic/sharp-k4-e0.02` | 200 of 200 | - | 0 / 200 | 0.000 |
 

@@ -251,17 +251,25 @@ def test_the_written_summary_states_the_count_of_every_file_it_wrote(tmp_path, c
 
 # --------------------------------------------------------------------- the committed artefacts
 def test_the_committed_split_is_the_partition_the_tool_proved(tmp_path):
-    """The three committed files must pass the same checker the tool runs after writing.
+    """The committed per-language files must pass the same checker the tool runs after writing.
 
     No build-product input and no skip: the source they were split from is a build product and stays
     outside the repository, so what can be re-proved here is the half of the claim that lives on
     disk -- the files are mutually disjoint in ids, one record per case, every line canonical,
-    every line a `Record`, and the three languages covering the SAME case index set (they are
-    translations of one utterance set, which is what makes the three certificates comparable
+    every line a `Record`, and every language covering the SAME case index set (they are
+    translations of one utterance set, which is what makes the certificates comparable
     case by case and what forbids pooling them).
+
+    The name list below is a membership witness, not a count: it is what a corpus that joined the
+    publication has to be edited into, so that adding or dropping a language is a decision somebody
+    took in the open rather than a set that quietly re-formed. Task #68 made it four, because
+    `data/records_massive_km.jsonl` is now published evidence and the partition claim covers it like it
+    covers the other three -- and the four-way case-index identity below is the measured answer to
+    "is Khmer the same 2,974 utterances", which is the precondition for putting it in the same run.
     """
     files = sorted((REPO / "data").glob(DEFAULT_NAME_FORMAT.format(lang="*")))
     assert [f.name for f in files] == ["records_massive_de.jsonl", "records_massive_en.jsonl",
+                                       "records_massive_km.jsonl",
                                        "records_massive_sw.jsonl"], files
     by_lang = {}
     for path in files:
@@ -278,7 +286,9 @@ def test_the_committed_split_is_the_partition_the_tool_proved(tmp_path):
         assert len({r["id"] for r in rows}) == len(rows), "duplicate id inside one file"
         assert len({r["case_id"] for r in rows}) == len(rows), "two records for one case"
         by_lang[lang] = {r["case_id"].rsplit("/", 1)[1] for r in rows}
-    assert by_lang["en"] == by_lang["de"] == by_lang["sw"], "the languages cover different cases"
+    assert len({frozenset(ids) for ids in by_lang.values()}) == 1, \
+        "the languages cover different cases: %s" % sorted(by_lang)
+    assert sorted(by_lang) == ["de", "en", "km", "sw"], sorted(by_lang)
     all_ids = [json.loads(line)["id"] for path in files for line in path.read_text().splitlines()]
     assert len(all_ids) == len(set(all_ids)), "one id appears in two language files"
 
@@ -320,7 +330,7 @@ def _drift_labels(report_module, fields, table=None):
 
 
 def test_the_committed_certificates_rederive_from_the_committed_records(monkeypatch):
-    """G1's three artefacts must be a function of the bytes committed beside them, field by field.
+    """G1's four artefacts must be a function of the bytes committed beside them, field by field.
 
     Counting and reporting those comparisons is `cmd_verify`'s job, and `cli.py` is not this lane's file
     (see the report's `OUT-OF-FENCE` note), so the arm is run here directly instead of left unguarded:
@@ -335,7 +345,8 @@ def test_the_committed_certificates_rederive_from_the_committed_records(monkeypa
     monkeypatch.chdir(REPO)
     assert _drift_labels(report_module, CERT_COMPARE_FIELDS) == [], "published drift"
     published = massive_certificates()
-    assert sorted(published) == ["massive/de", "massive/en", "massive/sw"], sorted(published)
+    assert sorted(published) == ["massive/de", "massive/en", "massive/km", "massive/sw"], \
+        sorted(published)
     assert sorted(MASSIVE_CERTIFICATES) == sorted(published), "the table and the artefacts disagree"
     for label, (records, cert) in published.items():
         # A selection that found no rows would re-derive a `no_gold_labels` refusal and so would NOT
