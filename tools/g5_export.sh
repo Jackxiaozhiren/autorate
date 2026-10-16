@@ -90,10 +90,17 @@ put env.tracked_files "AUTORATE_TRACKED_FILES written from \`git ls-tree -r --na
   "because the export has no \`.git\` to ask; the path guard takes its subject from that manifest"
 curl -sS --max-time 8 https://authorate-g5-nonexistent.invalid/ > "$WORK/net.log" 2>&1
 NET=$?
+# The cause named in the transcript has to be the cause the code returns. curl 6 is name resolution; any
+# other non-zero code is a different, weaker failure, and a sentence that called all of them "DNS-failing"
+# would let a handshake error stand as evidence that the host does not resolve (review M3, freeze 10).
 if [ "$NET" -eq 0 ]; then
   put env.network "A FETCH SUCCEEDED (curl rc=0): this transcript may not claim no-network"
+elif [ "$NET" -eq 6 ]; then
+  put env.network "attempted an HTTPS fetch to a name that does not resolve, and it failed as required " \
+"(curl rc=6, could not resolve host)"
 else
-  put env.network "attempted a DNS-failing HTTPS fetch, and it failed as required (curl rc=$NET)"
+  put env.network "attempted an HTTPS fetch that failed (curl rc=$NET), which is NOT a name-resolution " \
+"failure; this transcript does not get to claim the host does not resolve on that code"
 fi
 put commit "$REV"
 

@@ -13,7 +13,7 @@ refuse**, and the pooled bound must not be allowed to average that refusal away.
 - corrected per slice: alpha=0.0125 delta=0.0125 (beta is not divided, and says so below)
 - joint level: 0.85
 - thinnest slice by case count: `de`
-- worst slice of the joint claim: `de`
+- worst slice of the joint claim: `de`, ranked on `autorate`
 - the run certifies: False; any slice refused: True
 - slices refused by the size floor (`n_min_violations`): 0 (none)
 

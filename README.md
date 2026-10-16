@@ -172,9 +172,12 @@ second place to keep them.
   `verify` recomputes every figure in both lanes from `src/autorate/tails.py` and the published certificates.
   So `not_certifiable` is now a measured claim about n and bound width, not an absence of an answer -- which
   is the outcome spec §14 names as a result ("bound width is a first-class output; 'the bound is useless
-  here' *is* a certification result"). §14's kill criterion for this row has also fired: no real task
-  certifies at the published alpha, so the headline this project ships is the audit multiple G2 measures and
-  the worst-slice refusal G4 names. Read the G1 row as unmet; that is what it says.
+  here' *is* a certification result"). §14's kill criterion for this row is not evaluable rather than
+  fired: its condition compares a worst-group certified `autorate` with 0.30, and with nothing certified there
+  is no certified `autorate` to put in that comparison -- the same refusal that keeps the violation rate
+  undefined. Only one half of the pivot is published (the audit multiple G2 measures; Plan B3's contamination
+  layer is tested but not published as evidence), so the headline this project ships is the audit multiple G2
+  measures and the worst-slice refusal G4 names. Read the G1 row as unmet; that is what it says.
 - **G2, the reference README's gate demonstrably violating its implied error rate: `measured_not_bounded`.**
   `autorate audit` measures the gate upstream instructs and `docs/AUDIT.md` publishes the multiplier, but the
   sample cannot bound the claim: on the 2 cases one backend automates, one is wrong, and the exact one-sided
@@ -193,7 +196,9 @@ second place to keep them.
   the generator where the set gate does certify (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells
   searched), its interval's top endpoint sits above the gold level in none of the 600 evaluated records
   (200 cases), so
-  `P(Y > hi(X)) = 0` lies inside that certificate's own published marginal bound of 0.014867: a coverage claim
+  `P(Y > hi(X)) = 0` lies inside that certificate's own marginal bound of 0.014867 -- computed by
+  `tests/test_g3_contrast.py`'s builder in memory and written to no artefact, which is why the digit names its
+  producer instead of calling itself published: a coverage claim
   over ordered intervals *does* yield a one-sided bound, and "multiclass conformal prediction cannot express
   one" is false for that construction. The difference that survives is narrower, and it is measured rather
   than asserted: taking that rule costs reporting above the model's own modal level on a large share of cases
@@ -216,18 +221,19 @@ second place to keep them.
   artefact lets the pooled number stand in for the worst slice. Two things keep the row short of met: it is
   per-language only, because `option_count` is 20 for every committed MASSIVE row -- Khmer included, measured
   across all 11,896 rows -- so the (language x option-count) cross the criterion names would be the same four
-  slices; and with every slice refused, the ranking the criterion's word `worst` asks for has no value to
-  rank, because each row's `autorate` is null, so the artefact demonstrates that all slices refuse rather
-  than naming one as the worst. The slice the criterion names by example, Khmer, is no longer a gap:
+  slices; and the ranking the criterion's word `worst` asks for cannot be published from a run where
+  nothing certifies: `run.worst_claim.worst.group` is `de`, but that is a tie-break, not a measurement -- its
+  `run.worst_claim.metric` is `autorate`, and `autorate` is null in all four rows, so the artefact names a
+  slice without demonstrating that it is the worst one. The slice the criterion names by example, Khmer, is no longer a gap:
   `data/records_massive_km.jsonl` commits 2,974 per-case rows and this tree measures it, refusing like the
   other three at the same rubric. Upstream's `accuracy 0.000 at mean confidence 0.952` remains upstream's own
   100-case read, which these 1,487 evaluated Khmer cases neither replicate nor contradict. What the run does
   say is the criterion's own word:
   every refused slice's summary carries `NOT_CERTIFIABLE: reason=empty_feasible_set`, and the command over
-  these records exits 3, `EXIT_NOT_CERTIFIABLE`. The collapsed slices quoted
-  from the marginal certificates (`de` automates 0 of 1,487 cases; `km` 11 with 5 wrong; `sw` 39 with 13
-  wrong) are the at-a-glance
-  version of the same evidence, published as marginal certificates and now also as a slice run.
+  these records exits 3, `EXIT_NOT_CERTIFIABLE`. The four marginal certificates, read from their own `detail`, are the at-a-glance version of
+  the same evidence: `de` automates 0 of 1,487 cases (no singleton at that coverage, so nothing to bound);
+  `en` automates 709 with 43 wrong, upper bound 0.078; `km` 11 with 5 wrong, 0.729; `sw` 39 with 13 wrong,
+  0.477. Every non-empty slice is above the 0.050 budget, and none of the four certifies.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**
   `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `9e6363a` into a scratch

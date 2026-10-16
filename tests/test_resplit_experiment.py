@@ -25,7 +25,7 @@ def _rows(family, seeds):
 
 
 def test_the_task_list_is_read_from_the_publication_tables():
-    """Five tasks, because the tables say five -- not because a list in this file remembers five.
+    """The task list is the publication tables', not a list this file keeps.
 
     The defect this project keeps hitting (R-168) is a second copy of "what is published" that goes quiet when
     the gate's table changes. The resplit experiment covers exactly the corpora `verify` re-derives, so it

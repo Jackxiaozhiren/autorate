@@ -2067,3 +2067,66 @@ already carried rather than patched with a key, because the stamp is the thing `
 (rc=0), all 2,974 rows carry `slices.language == "km"` and a `massive/km/...` case_id, and the digest the slice
 artefact records for the file (`dd302722ed49cef8…`) equals the file's own sha256. `slices.option_count` is 20 on
 every Khmer row, so the degeneracy the G4 note claims is measured rather than assumed.
+
+
+## 2026-10-16 — the whole-branch review's two blockers, and a correction to the ninth freeze's own entry
+
+A whole-branch review of `6f06fa3` (report at `task2/final-review/review-6f06fa3.md` in the evidence tree)
+found two published-prose defects that every gate on this tree was unable to see, and both were fixed in the
+tenth freeze. They are recorded here because the rule this file exists for is that a published sentence must
+not be corrected in place without saying what it said.
+
+**G4's note denied a field the same note counts.** The ninth freeze's note said the published run had "no
+slice named as the worst" and that "the artefact names no worst at all". `data/slices_language.json`
+`run.worst_claim.worst` is not empty: its `group` is `de`, its `metric` is `autorate`, and
+`report.SLICE_WORST_FIELDS` makes `worst.group` one of the 92 field comparisons the note itself cites. The
+correction the ninth freeze made -- removing a draft that named `de` as the worst slice -- was right, and the
+sentence written in its place went to the opposite falsehood. The tenth freeze's note states the field and
+then states what it is not: a tie-break, not a ranking, because the metric that would have ranked the slices
+is null in all four rows. `tests/test_slice_surface.py::test_the_frozen_g4_note_transcribes_the_worst_field_the_arm_compares`
+reads the note against the field in both directions.
+
+**Two generated documents typed a task count their own tables derive.** `docs/RESPLIT.md` said "The five
+published tasks refuse in every split" under its own line "`- tasks: 7 (the 6 published decision tasks …)`",
+and `docs/FEASIBILITY.md` said "This tree scores five … for all five" above its own "- scored decision tasks
+read from their certificates: 6". The words came from `render_resplit` and `render_g1_feasibility`, so the
+byte-compare arm re-derived the error on every run and could not fail -- a guard that reproduces its own
+document certifies the document, not the truth. Both renderers now interpolate the count they already derive
+(`len(doc["tasks"]) - 1`, `len(scored)`), and the two rows that assert the prose count equal the derived count
+went red on the committed bytes first. The ceiling document's cross-reference to the resplit result dropped its
+typed "0 of 200 … all five" for a numberless sentence, because that figure belongs to an artefact the ceiling
+renderer does not read.
+
+**A correction to a dated entry, appended rather than edited.** The ninth freeze's entry above stated that
+"`run.worst_claim` carries `n_groups`, the corrected budgets, `any_slice_refused` and a `groups` list ordered
+de, en, sw". Measured on the committed bytes: `worst_claim` carries 21 keys -- `alpha`, `any_slice_refused`,
+`beta`, `corrected_alpha`, `corrected_beta`, `corrected_delta`, `delta`, `groups`, `groups_declared`,
+`joint_level`, `joint_level_inputs`, `joint_level_note`, `joint_level_risk`, `joint_level_rule`, `level`,
+`metric`, `n_claims`, `n_groups`, `refusals`, `slices_without_the_metric`, `worst` -- and `groups` has four
+entries in the order `de, en, km, sw`. The entry omitted the one key (`worst`) that decided the question it
+was cited to settle, and described the four-slice artefact with a three-slice list.
+
+**G3's "published marginal bound" was not published.** The note called `0.014867` "that certificate's own
+published marginal bound". No file under `data/` carries it: the contrast certificate is built in memory by
+`tests/test_g3_contrast.py` and written to no path, and the only assertion touching it (`over_hi / n <=
+score.marginal_error_bound`) is true for any value of the bound, so the digit could not go red. The wording now
+names the builder and says the number is computed, not published. The digits in that family -- `4` of `64` knob
+cells, `600` records / `200` cases, `36` empty sets, `0.014867` -- and G2's audit multiples are listed in
+`DECLARED_UNOWNED_NOTE_DIGITS` in `tests/test_verify_protocol.py`, which is the inventory that the new residue
+row refuses to let grow.
+
+**G5's network line named a cause its probe never tested.** `docs/G5.md` records "attempted a DNS-failing HTTPS
+fetch, and it failed as required (curl rc=35)". `tools/g5_export.sh` gave every non-zero curl code that
+sentence; rc=35 is an SSL-connect failure, not name resolution. Re-measured on this machine, the same URL
+returns 6 (`curl: (6) Could not resolve host`), which is the failure the sentence describes -- so the recorded
+35 was real on the machine that ran the export and was simply mislabelled by the script. The script now branches
+on the code: 6 gets the name-resolution sentence, any other non-zero code gets a sentence that says plainly that
+it is not a name-resolution failure. `docs/G5.md` is a transcript of the run that produced it and is not
+re-written here; re-exporting it at its own frozen revision is the follow-up that would replace this paragraph
+with a line that agrees with its own code.
+
+**G1's §14 kill criterion was reported as fired when it is not evaluable.** The criterion's condition compares a
+worst-group certified `autorate` with 0.30, and no slice certifies, so there is no certified `autorate` to put
+in the comparison -- the same zero-denominator refusal the note invokes four sentences earlier for the violation
+rate. The note now says the condition is not evaluable, and that the pivot it names is only half published:
+G2's audit is, Plan B3's contamination layer is not.

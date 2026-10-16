@@ -21,8 +21,7 @@ timestamp so a re-run is byte-comparable in both lanes.
 
 The rate is the empirical check G1's own column names: a violation is a certified split whose
 gold set escapes the bound that split published. It is undefined where no certificate exists -- no
-number is imputed, and a `0.000` appears only for a population that does certify. The five
-published tasks refuse in every split at this rubric, which is why the criterion's first column
+number is imputed, and a `0.000` appears only for a population that does certify. The 6 published tasks refuse in every split at this rubric, which is why the criterion's first column
 (`>=3 certified decision tasks`) is unmet and why this table is evidence about the refusal, not
 against it. The synthetic row is a control on the machinery, labelled synthetic in the artefact's
 own `label`, and is not cited as a decision task G1 counts.

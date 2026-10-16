@@ -518,9 +518,10 @@ def test_the_g4_claim_note_counts_the_slice_arm_as_the_arm_actually_counts():
     spelling and cannot match "70 field comparisons plus" -- one spelling policed, two in use, which is the
     partial-re-derivation failure this repository keeps recording.
 
-    RED today on this tree: the arm makes 76 field comparisons and the frozen note says 70, because
-    `report.SLICE_N_MIN_KEY` joined the compared fields and the sentence was not re-derived with it. The note
-    edit costs a freeze and a six-artefact re-export, so it lands with the seventh freeze.
+    RED when that row landed: the arm was making 76 field comparisons while the frozen note said 70, because
+    `report.SLICE_N_MIN_KEY` had joined the compared fields and the sentence was not re-derived with it. The
+    note edit cost a freeze and an artefact re-export, so it landed with that freeze; the digits quoted here
+    are that history, and the row above is what decides the current pair.
     """
     doc = json.loads((REPO / "protocol.json").read_text())
     note = next(c["note"] for c in doc["claims"] if c["id"] == "G4")
@@ -638,7 +639,7 @@ def test_the_g1_claim_note_counts_the_resplit_arm_as_the_arm_actually_counts():
 
     The third occurrence of one defect class in three arms. `claims.G3.note` said "20 comparisons" against the
     severity arm's 19 and `claims.G4.note` said "70 field comparisons" against the slice arm's 76; both are
-    policed now. G1's note says `verify` "compares 32 quantities the artefact asserts about itself plus its
+    policed now. G1's note then said `verify` "compares 32 quantities the artefact asserts about itself plus its
     rubric", and the existing rows could not see it: their patterns are `(\d+) comparisons` and
     `(\d+) field comparisons plus`, and neither matches a digit followed by "quantities". One spelling
     policed, three in use -- which is why the set row's regex was widened to the third spelling in this
@@ -667,3 +668,142 @@ def test_the_g1_claim_note_counts_the_resplit_arm_as_the_arm_actually_counts():
         "the note says the arm compares the artefact's quantities 'plus its rubric', and the rubric rows it "
         "actually makes are %s against the %s the table declares" % (seen_rubric,
                                                                      report.RESPLIT_RUBRIC_FIELDS))
+
+
+NOTE_WORDS = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+              8: "eight", 9: "nine", 10: "ten"}
+
+NOTE_QUANTITY = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s+(?:[\w.-]+ )*"
+                           r"(?:cases?|comparisons?|quantities|tasks|slices|splits|rows|records|values"
+                           r"|checks|cells|certificates|fields)\b")
+NOTE_DECIMAL = re.compile(r"\b\d+\.\d+\b")
+# `2 of 64 cases` hands its only match to the numerator, so the denominator needs its own pattern -- a guard
+# that cannot see a denominator is a guard that lets a wrong one stay published.
+NOTE_DENOMINATOR = re.compile(r"of\s+(?:the\s+)?(\d[\d,]*)\s+(?:[\w.-]+ )?"
+                              r"(?:cases?|records?|rows|splits|tasks|slices|cells)\b")
+
+
+def _folded_notes():
+    doc = json.loads((REPO / "protocol.json").read_text())
+    return {c["id"]: " ".join(c["note"].split()) for c in doc["claims"]}
+
+
+def _note_tokens(note: str) -> set:
+    return ({m.group(1) for m in NOTE_QUANTITY.finditer(note)}
+            | {m.group(0) for m in NOTE_DECIMAL.finditer(note)}
+            | {m.group(1) for m in NOTE_DENOMINATOR.finditer(note)})
+
+
+def test_the_frozen_notes_count_of_tasks_and_cases_is_derived_from_the_files_they_name(in_repo):
+    """Two counts the notes state had no owner (review M5): the task count and the case count.
+
+    Both are functions of committed files, so both are recomputed here rather than agreed with the prose:
+    G1's task count is the non-synthetic rows of `data/resplit_200.json` and its split count is the artefact's
+    own `resplits`, and G4's case count is the line count of every file `report.SLICE_RECORDS` declares. A
+    publication that adds a corpus, or a resplit budget that changes, reddens the sentence that used to be
+    right. The plant that proves this row can fail is in `docs/VERIFICATION.md`'s freeze checklist.
+    """
+    notes = _folded_notes()
+    resplit = report.read_resplit(REPO / report.RESPLIT_JSON)
+    decision = [t for t in resplit["tasks"] if "synthetic" not in str(t["label"])]
+    assert decision, "no decision-task rows, so the sentence this row polices has no subject"
+    assert "all %s decision tasks certify in %d of %d splits" % (
+        NOTE_WORDS[len(decision)], 0 if all(not t["certificates_issued"] for t in decision) else -1,
+        resplit["resplits"]) in notes["G1"], (
+        "G1's note states a task count or a split count the resplit artefact does not: %d tasks, %d splits"
+        % (len(decision), resplit["resplits"]))
+
+    cases = sum(sum(1 for _ in (REPO / rel).open()) for rel in report.SLICE_RECORDS)
+    assert "{:,} cases".format(cases) in notes["G4"], (
+        "G4's note states a case count that is not the line count of the files it certifies (%d)" % cases)
+    assert "%d slices" % len(report.SLICE_RECORDS) in notes["G4"], (
+        "the published run refuses %d slices; the note's slice count must be that number"
+        % len(report.SLICE_RECORDS))
+
+
+DECLARED_UNOWNED_NOTE_DIGITS = {
+    # Each entry is a digit a frozen note states that NO row recomputes yet, with the place that computes it.
+    # The row below refuses a new addition and refuses a listed token that has left the note, so this table is
+    # an inventory rather than an ignore list (review M4: the old enumeration row could not see a fourth note
+    # or a fourth spelling, and a digit outside three literals stayed silently unowned).
+    "G2": {"2", "64", "0.50", "0.15", "0.9747"},
+    "G3": {"4", "64", "600", "200", "36", "0.014867"},
+    "G4": {"0.000", "0.952"},
+}
+
+
+def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inventory_owns(in_repo):
+    """Invert the arm-count row: enumerate what the notes state, then subtract what is derived.
+
+    `test_every_claim_note_that_counts_an_arm_is_counted_by_a_row` matches three spellings and compares note
+    IDS, so a note that states a size in new words -- or a fourth note that states one at all -- stays green
+    (proved by the review's plant: an added `42 re-derivations` sentence in G2 passed). This row takes every
+    quantity-shaped digit and every decimal in every note and requires it to be either recomputed below or
+    named in `DECLARED_UNOWNED_NOTE_DIGITS` with its computing site. A token that gains a real owner has to be
+    removed from the inventory for this row to stay green, which is how the list is made to shrink.
+    """
+    notes = _folded_notes()
+    doc = json.loads((REPO / "protocol.json").read_text())
+    seen_slices, seen_slice_rubric = [], []
+    report.rederive_slices(lambda label, actual, wanted: seen_slices.append(label),
+                           lambda label, actual, wanted: seen_slice_rubric.append(label), doc["rubric"])
+    seen_resplit, seen_resplit_rubric = [], []
+    report.rederive_resplit(lambda label, actual, wanted: seen_resplit.append(label),
+                            lambda label, actual, wanted: seen_resplit_rubric.append(label), doc["rubric"])
+    seen_sev, seen_sev_rubric = [], []
+    report.rederive_g1_feasibility(lambda label, actual, wanted: seen_sev.append(label),
+                                   lambda label, actual, wanted: seen_sev_rubric.append(label), doc["rubric"])
+
+    rubric = doc["rubric"]
+    alpha = rubric["alpha"]
+    n_slices = len(report.SLICE_RECORDS)
+    corrected = alpha / n_slices
+    family = corrected * n_slices * 3
+    option_counts = set()
+    for rel in report.SLICE_RECORDS:
+        with (REPO / rel).open() as handle:
+            for line in handle:
+                option_counts.add(len(json.loads(line)["options"]))
+    g4_owned = ({"{:,}".format(sum(sum(1 for _ in (REPO / rel).open()) for rel in report.SLICE_RECORDS)),
+                 "%d" % len(seen_slices), "%d" % len(seen_slice_rubric), "%d" % n_slices}
+                | set(str(v) for v in option_counts)
+                | _g1_num(alpha) | _g1_num(corrected) | _g1_num(family) | _g1_num(1 - family))
+    assert option_counts, "the committed MASSIVE rows carry no option_count, so the note has nothing to state"
+    resplit_doc = report.read_resplit(REPO / report.RESPLIT_JSON)
+    control = [t for t in resplit_doc["tasks"] if "synthetic" in str(t["label"])]
+    rates = {"%.3f" % c["violation_rate"] for c in control if c["violation_rate"] is not None}
+    owned = {
+        "G1": {"%d" % resplit_doc["resplits"],
+               "%d" % len(seen_resplit), "%d" % len(seen_resplit_rubric), "0"} | rates,
+        "G2": set(),
+        "G3": {"19", "%d" % len(seen_sev), "%d" % len(seen_sev_rubric)},
+        "G4": g4_owned,
+        "G5": {"249", "284", "35", "0"},
+    }
+    contract = {str(v) for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
+    for cid, note in sorted(notes.items()):
+        stated = _note_tokens(note)
+        # An `rc=N` digit is owned by the published exit-code contract, and only if the contract has that code:
+        # a note citing exit 5 would be a claim about an exit code `cli.main` cannot return.
+        rc_digits = {m.group(1) for m in re.finditer(r"rc=(\d+)", note)}
+        assert rc_digits <= contract, "%s cites %s, outside the published exit codes %s" % (
+            cid, sorted(rc_digits - contract), sorted(contract))
+        stated = stated - rc_digits
+        residue = stated - owned[cid] - DECLARED_UNOWNED_NOTE_DIGITS.get(cid, set())
+        assert not residue, "%s states digit(s) %s that no row re-derives and the inventory does not name" % (
+            cid, sorted(residue))
+        stale = {t for t in DECLARED_UNOWNED_NOTE_DIGITS.get(cid, set()) if t not in stated}
+        assert not stale, "%s no longer states %s: delete it from DECLARED_UNOWNED_NOTE_DIGITS" % (cid, sorted(stale))
+        both = DECLARED_UNOWNED_NOTE_DIGITS.get(cid, set()) & owned[cid]
+        assert not both, "%s declares %s unowned while this row derives it -- the inventory is lying" % (
+            cid, sorted(both))
+
+
+def _g1_num(value) -> str:
+    """The digit spellings a note may use for one value, so an owner match does not depend on formatting."""
+    out = {"%s" % value}
+    if isinstance(value, float):
+        for places in (2, 3, 4, 6):
+            out.add("%.*f" % (places, value))
+        out.add("%s" % float("%s" % value))
+    return {str(v) for v in out}

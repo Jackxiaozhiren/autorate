@@ -482,7 +482,7 @@ def resplit_invariants(doc: dict) -> list:
     These are comparisons of the artefact's own quantities against quantities the same artefact carries -- the
     gate's job here is to make an internally inconsistent experiment file a drift it can name, because a
     violation rate whose denominator does not match the certificate count would otherwise be a number with no
-    producer. The expensive part (200 seeded re-splits of five decision tasks plus a synthetic control, ~6
+    producer. The expensive part (the seeded re-splits of every published decision task, plus a synthetic control, ~6
     minutes) stays the producer's: `tools/resplit_experiment.py` is the only writer, and re-running it
     reproduced these bytes exactly, so the digest that pins the experiment is its own, recorded in
     `docs/ERRATA.md` rather than asserted as a re-derivation.
@@ -567,8 +567,9 @@ def render_resplit(doc: dict, rubric: dict) -> str:
         "",
         "The rate is the empirical check G1's own column names: a violation is a certified split whose",
         "gold set escapes the bound that split published. It is undefined where no certificate exists -- no",
-        "number is imputed, and a `0.000` appears only for a population that does certify. The five",
-        "published tasks refuse in every split at this rubric, which is why the criterion's first column",
+        "number is imputed, and a `0.000` appears only for a population that does certify. The %d"
+        " published tasks refuse in every split at this rubric, which is why the criterion's first column"
+        % (len(doc["tasks"]) - 1),
         "(`>=3 certified decision tasks`) is unmet and why this table is evidence about the refusal, not",
         "against it. The synthetic row is a control on the machinery, labelled synthetic in the artefact's",
         "own `label`, and is not cited as a decision task G1 counts.",
@@ -865,7 +866,7 @@ def render_slices(doc: dict) -> str:
         % (run["corrected_alpha"], run["corrected_delta"]),
         "- joint level: %s" % run["level"],
         "- thinnest slice by case count: `%s`" % run["thinnest"],
-        "- worst slice of the joint claim: `%s`" % _worst_group(run),
+        "- worst slice of the joint claim: `%s`, ranked on `%s`" % (_worst_group(run), run["worst_claim"]["metric"]),
         "- the run certifies: %s; any slice refused: %s" % (run["feasible"], run["any_slice_refused"]),
         "- slices refused by the size floor (`%s`): %d (%s)"
         % (SLICE_N_MIN_KEY, len(run.get(SLICE_N_MIN_KEY, [])),
@@ -925,9 +926,9 @@ def render_slices(doc: dict) -> str:
 
 # --- G1's feasibility ceiling: which automated size could certify at all, at this rubric -------------
 #
-# Spec §2's G1 asks for ">=3 decision tasks certified at `autorate(alpha = 0.05)`". This tree publishes five
-# scored decision tasks, certifies none of them, and `data/resplit_200.json` shows 0 of 200 seeded splits
-# certifying for all five. The stronger statement -- that **no automated size certifies on this evidence base
+# Spec §2's G1 asks for ">=3 decision tasks certified at `autorate(alpha = 0.05)`". This tree publishes the
+# scored decision tasks its own certificates name, certifies none of them, and `data/resplit_200.json` shows
+# no seeded split certifying for any of them. The stronger statement -- that **no automated size certifies on this evidence base
 # at this budget** -- existed only in an untracked scratch probe, and this project has already ruled that a
 # simulation performed and deleted is not evidence (`docs/G5.md` is that ruling's artifact). Everything below
 # is the ceiling turned into committed bytes with a producer, a document rendered from them, and a `verify`
@@ -1363,8 +1364,9 @@ def render_g1_feasibility(doc: dict) -> str:
         "and no machine path, so the two lanes byte-compare the same bytes.",
         "",
         "G1 asks for at least three decision tasks certified at `autorate(alpha)` for the freeze's",
-        "published alpha. This tree scores five and certifies none; `data/resplit_200.json` shows 0 of 200",
-        "seeded splits certifying for all five. The stronger statement -- that **no automated size",
+        "published alpha. This tree scores %d and certifies none; `data/resplit_200.json` shows no seeded"
+        " split certifying for any of them. The stronger statement -- that **no automated size"
+        % len(scored),
         "certifies on this evidence base at this budget** -- lived in an untracked scratch probe until",
         "this arm, and by this repository's own ruling (`docs/G5.md` is that ruling's artefact) a",
         "simulation performed and deleted is not evidence. Everything below is re-derived from committed",

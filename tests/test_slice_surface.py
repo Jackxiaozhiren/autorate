@@ -322,3 +322,25 @@ def test_the_published_slice_artefact_names_its_inputs_and_carries_no_machine_pa
         assert row["rows"] == sum(1 for _ in (REPO / row["path"]).open()), row
     assert doc["group_key"] == report.SLICE_GROUP_KEY == "language"
     assert doc["producer"] == "tools/language_slices.py"
+
+
+def test_the_frozen_g4_note_transcribes_the_worst_field_the_arm_compares(in_repo):
+    """A note about the criterion's central word must say what the compared field says, not less.
+
+    Freeze 9 corrected an earlier draft that named `de` as the worst slice; the correction went past the
+    truth and asserted the artefact names no worst at all, while `run.worst_claim.worst` is a published
+    field the same note counts among its 92 comparisons. This row reddens for either direction: a denial
+    of a non-null `worst`, and a note that stops carrying the group the tie-break actually returns.
+    """
+    doc = json.loads((REPO / report.SLICE_JSON).read_text())
+    worst = doc["run"]["worst_claim"]["worst"]
+    claims = {c["id"]: c for c in json.loads((REPO / "protocol.json").read_text())["claims"]}
+    note = claims["G4"]["note"]
+    for denial in ("names no worst", "no slice is named as the worst"):
+        assert denial not in note, "the note denies a field the arm compares: %r" % denial
+    if worst is not None:
+        group = str(worst["group"])
+        assert "`run.worst_claim.worst.group` is `%s`" % group in note, \
+            "the artefact names %r and the note does not transcribe it" % group
+        assert doc["run"]["worst_claim"]["metric"] in note, \
+            "a named worst without the metric it was ranked by is a ranking the data never made"

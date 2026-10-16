@@ -1,8 +1,8 @@
 """Task #97: G1's feasibility ceiling, published as an arm `verify` re-derives.
 
-Spec §2's G1 asks for ">=3 decision tasks certified at `autorate(alpha = 0.05)`". This tree publishes five
-scored decision tasks and certifies none of them, and `data/resplit_200.json` shows 0 of 200 splits
-certifying for all five. The stronger statement -- that **no automated size certifies on this evidence base
+Spec §2's G1 asks for ">=3 decision tasks certified at `autorate(alpha = 0.05)`". This tree publishes the
+scored decision tasks its own certificates name and certifies none of them, and `data/resplit_200.json`
+shows no seeded split certifying for any of them. The stronger statement -- that **no automated size certifies on this evidence base
 at this budget** -- existed only in an untracked scratch probe, which by this project's own ruling
 (`docs/G5.md` exists because of exactly that ruling) is not evidence. This file is what turns the ceiling
 into a committed artefact with a producer, a document rendered from its bytes, and a `verify` arm that
@@ -572,3 +572,21 @@ def test_a_table_declared_certificate_that_is_not_in_the_checkout_is_the_produce
     assert "Traceback" not in err, err
     assert not out.exists(), "a refused publication must not leave half its artefact behind"
 
+
+
+def test_the_ceiling_document_s_task_count_is_derived_in_the_prose_too():
+    """Same defect class as the resplit document: the ceiling's prose typed a count its own table derives.
+
+    The `- scored decision tasks read from their certificates:` line counts rows whose `table` is not the
+    inventory corpus, and the sentence above it must carry that same number. Asserted against the committed
+    bytes and against a fresh render, so a renderer that drifts is caught before the document is.
+    """
+    doc = report.read_g1_feasibility(REPO / report.G1_FEASIBILITY_JSON)
+    folded = " ".join(report.render_g1_feasibility(doc).split())
+    derived = len([row for row in doc["rows"] if row.get("table") != "inventory.corpus_options"])
+    assert "- scored decision tasks read from their certificates: %d" % derived in folded
+    assert "This tree scores %d and certifies none" % derived in folded, \
+        "the ceiling sentence states a task count its own table does not (derived %d)" % derived
+    for word in ("four", "five", "six"):
+        assert (" scores %s and certifies none" % word) not in folded.lower(), \
+            "a spelled-out task count in a document whose header forbids typed figures"

@@ -7,8 +7,7 @@ refuses the artefact at exit 4 if it is absent or unreadable. The document carri
 and no machine path, so the two lanes byte-compare the same bytes.
 
 G1 asks for at least three decision tasks certified at `autorate(alpha)` for the freeze's
-published alpha. This tree scores five and certifies none; `data/resplit_200.json` shows 0 of 200
-seeded splits certifying for all five. The stronger statement -- that **no automated size
+published alpha. This tree scores 6 and certifies none; `data/resplit_200.json` shows no seeded split certifying for any of them. The stronger statement -- that **no automated size
 certifies on this evidence base at this budget** -- lived in an untracked scratch probe until
 this arm, and by this repository's own ruling (`docs/G5.md` is that ruling's artefact) a
 simulation performed and deleted is not evidence. Everything below is re-derived from committed

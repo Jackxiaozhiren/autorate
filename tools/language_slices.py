@@ -225,8 +225,12 @@ def main(argv=None) -> int:
         print("  slice %s (n=%s cases): %s -- %s"
               % (group, cert["n_cal"] + cert["n_eval"],
                  "CERTIFIED" if cert["feasible"] else "NOT CERTIFIED", cert["reason"]))
-    print("  worst slice: %s; any slice refused: %s; the run certifies: %s"
-          % (run["thinnest"], run["any_slice_refused"], run["feasible"]))
+    worst = (run.get("worst_claim") or {}).get("worst")
+    worst_group = worst.get("group") if isinstance(worst, dict) else worst
+    print("  thinnest slice by case count: %s; tie-break group of the joint claim (metric `%s`): %s"
+          % (run["thinnest"], run["worst_claim"]["metric"], worst_group))
+    print("  any slice refused: %s; the run certifies: %s"
+          % (run["any_slice_refused"], run["feasible"]))
     print("  pooled (marginal) certificate published beside them: feasible=%s reason=%s"
           % (run["pooled"]["feasible"], run["pooled"]["reason"]))
     print("  refused by the size floor: %d" % len(run["n_min_violations"]))

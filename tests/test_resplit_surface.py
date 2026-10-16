@@ -131,3 +131,23 @@ def test_the_committed_experiment_document_carries_no_machine_path_and_names_its
     assert synthetic, "the control on the machinery is missing, so a rate would have no positive case"
     for task in synthetic:
         assert "synthetic" in task["label"], task["label"]
+
+
+def test_the_document_s_task_count_is_derived_in_the_prose_as_well_as_the_table(in_repo):
+    """A generated document that contradicts its own derived table is the renderer's bug, not the reader's.
+
+    `verify` byte-compares this document against the renderer, so while the renderer types a count the guard
+    re-derives the error on every run and can never fail. The task count is therefore asserted here in the
+    prose, read from the artefact: the header's `- tasks:` line and the refusal sentence must carry the same
+    derived number, and no spelled-out count may survive in the sentence the table already decides.
+    """
+    doc = json.loads((REPO / report.RESPLIT_JSON).read_text())
+    rubric = json.loads((REPO / "protocol.json").read_text())["rubric"]
+    folded = " ".join(report.render_resplit(doc, rubric).split())
+    derived = len(doc["tasks"]) - 1
+    assert "- tasks: %d (the %d published decision tasks" % (len(doc["tasks"]), derived) in folded
+    assert "The %d published tasks refuse in every split" % derived in folded, \
+        "the prose count disagrees with the table it sits under (derived %d)" % derived
+    for word in ("five", "six", "seven"):
+        assert (" %s published tasks" % word) not in folded.lower(), \
+            "a spelled-out task count is a typed figure in a document that forbids typed figures"
