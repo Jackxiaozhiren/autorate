@@ -49,12 +49,12 @@ with two owners and a gate that cannot see which one moved.
 G4's published run has 4 slices at `n_claims`=3, so `alpha` and `delta` become 0.0125 each, and the joint level the artefact states beside them is 0.85.
 
 - **The unit.** `case`: the certification unit is the case, never the archive row. Each artefact states the denominator it used in its own words, and the report quotes that field rather than writing a second justification for it:
-- `data/cert_jev.json`: 96 evaluation records over 32 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
-- `data/cert_laya.json`: 96 evaluation records over 32 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
-- `data/cert_massive_de_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
-- `data/cert_massive_en_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
-- `data/cert_massive_km_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
-- `data/cert_massive_sw_laya.json`: 1487 evaluation records over 1487 distinct cases: the bounds use the case denominator, because repeats of one case are one observation
+- `data/cert_jev.json`: 96 evaluation records over 32 distinct cases: the certificate's own bounds -- conditional, marginal and the automation-rate interval -- use the case denominator, because repeats of one case are one observation, while every diagnostic curve row and its closest_attempt copy bounds the record denominator and names its own operands beside it
+- `data/cert_laya.json`: 96 evaluation records over 32 distinct cases: the certificate's own bounds -- conditional, marginal and the automation-rate interval -- use the case denominator, because repeats of one case are one observation, while every diagnostic curve row and its closest_attempt copy bounds the record denominator and names its own operands beside it
+- `data/cert_massive_de_laya.json`: 1487 evaluation records over 1487 distinct cases: the certificate's own bounds -- conditional, marginal and the automation-rate interval -- use the case denominator, because repeats of one case are one observation, while every diagnostic curve row and its closest_attempt copy bounds the record denominator and names its own operands beside it
+- `data/cert_massive_en_laya.json`: 1487 evaluation records over 1487 distinct cases: the certificate's own bounds -- conditional, marginal and the automation-rate interval -- use the case denominator, because repeats of one case are one observation, while every diagnostic curve row and its closest_attempt copy bounds the record denominator and names its own operands beside it
+- `data/cert_massive_km_laya.json`: 1487 evaluation records over 1487 distinct cases: the certificate's own bounds -- conditional, marginal and the automation-rate interval -- use the case denominator, because repeats of one case are one observation, while every diagnostic curve row and its closest_attempt copy bounds the record denominator and names its own operands beside it
+- `data/cert_massive_sw_laya.json`: 1487 evaluation records over 1487 distinct cases: the certificate's own bounds -- conditional, marginal and the automation-rate interval -- use the case denominator, because repeats of one case are one observation, while every diagnostic curve row and its closest_attempt copy bounds the record denominator and names its own operands beside it
 
 ### What this rubric does not govern
 
