@@ -40,7 +40,8 @@ from .inventory import MASSIVE_PIN_LABEL, MASSIVE_PIN_PATH, massive_pin
 from .protocol import MASSIVE_PIN_FIELDS, Protocol, protocol_digest, published_certificates
 from .report import (CERTS, INVENTORY_JSON, MASSIVE_CERTIFICATES, PublishedArtefactUnavailable, RECORDS,
                      RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON, SLICE_N_MIN_KEY, first_clause,
-                     load_published, published_severity, read_resplit, read_slices)
+                     load_published, published_severity, read_resplit, read_slices,
+                            _worst_sentence)
 
 REPORT_MD = Path("docs/REPORT.md")
 LEDGER_MD = Path("docs/VERIFICATION.md")
@@ -544,9 +545,7 @@ def _refusals(inputs: ReportInputs) -> list:
                      % (group, cert["feasible"], cert["reason"], cert["n_cal"], cert["n_eval"]))
     lines += [
         "",
-        "- worst slice of the joint claim: `%s` on metric `%s`; any slice refused: %s"
-        % (run["worst_claim"]["worst"]["group"], run["worst_claim"]["metric"],
-           run["any_slice_refused"]),
+        _worst_sentence(run) + "; any slice refused: %s" % run["any_slice_refused"],
         "- slices refused by the size floor rather than by a bound: %d" % len(run[SLICE_N_MIN_KEY]),
         "- pooled over the same records: feasible=%s, reason=%s, n_eval=%s"
         % (run["pooled"]["feasible"], run["pooled"]["reason"], run["pooled"]["n_eval"]),

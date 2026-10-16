@@ -5,8 +5,8 @@
         --doc docs/FEASIBILITY.md --force
 
 Spec §2's G1 asks for at least three decision tasks certified at `autorate(alpha)` for the freeze's
-published alpha. This tree scores five and certifies none, and `data/resplit_200.json` shows 0 of 200
-seeded splits certifying for all five. The stronger statement -- that **no automated size certifies on
+published alpha. This tree scores the decision tasks its certificates name and certifies none, and
+the resplit experiment shows no seeded split certifying for any of them. The stronger statement -- that **no automated size certifies on
 this evidence base at this budget** -- lived only in an untracked scratch probe, and this project has
 already ruled that a simulation performed and deleted is not evidence (`docs/G5.md` is that ruling's
 artefact). This file turns the ceiling into committed bytes -- `data/g1_feasibility.json`, with

@@ -831,6 +831,30 @@ def _join_groups(rows) -> str:
     return ", ".join(_group_of(row) for row in rows or [])
 
 
+def _null_metric_count(run: dict) -> int:
+    """How many slices carry no value for the metric the joint claim ranked them on."""
+    return sum(1 for cert in run["per_group"].values() if cert.get("autorate") is None)
+
+
+def _worst_sentence(run: dict) -> str:
+    """The worst-slice line, with the metric's own coverage stated so a tie-break cannot read as a ranking.
+
+    The branch is derived from the run, not chosen by the author: all-null says the field names a tie-break,
+    none-null says the metric separated the slices, and a partial population says which slices it could not
+    see. `docs/SLICES.md` is byte-compared, so without this the document could keep the old phrasing after a
+    run started certifying.
+    """
+    metric = run["worst_claim"]["metric"]
+    nulls, total = _null_metric_count(run), len(run["per_group"])
+    head = "- worst slice of the joint claim: `%s`, ranked on `%s`; `%s` is null in %d of the %d slices" % (
+        _worst_group(run), metric, metric, nulls, total)
+    if nulls == total and total:
+        return head + ", so the field names a tie-break and not a measured worst"
+    if nulls == 0:
+        return head + ", so every slice carries the metric this run ranked"
+    return head + ", so the ranking below is made only over the slices that carry it"
+
+
 def _worst_group(run: dict) -> str:
     """The slice the joint worst-of-G claim names, read defensively: the claim is a mapping of shape
     `worst_claim.worst.group`, and a run that has not got that far says so rather than raising."""
@@ -866,7 +890,7 @@ def render_slices(doc: dict) -> str:
         % (run["corrected_alpha"], run["corrected_delta"]),
         "- joint level: %s" % run["level"],
         "- thinnest slice by case count: `%s`" % run["thinnest"],
-        "- worst slice of the joint claim: `%s`, ranked on `%s`" % (_worst_group(run), run["worst_claim"]["metric"]),
+        _worst_sentence(run),
         "- the run certifies: %s; any slice refused: %s" % (run["feasible"], run["any_slice_refused"]),
         "- slices refused by the size floor (`%s`): %d (%s)"
         % (SLICE_N_MIN_KEY, len(run.get(SLICE_N_MIN_KEY, [])),

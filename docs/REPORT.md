@@ -182,7 +182,7 @@ Slices are named by the key the producer declares (`language`), refused by name,
 | `km` | False | empty_feasible_set | 1487 | 1487 |
 | `sw` | False | empty_feasible_set | 1487 | 1487 |
 
-- worst slice of the joint claim: `de` on metric `autorate`; any slice refused: True
+- worst slice of the joint claim: `de`, ranked on `autorate`; `autorate` is null in 4 of the 4 slices, so the field names a tie-break and not a measured worst; any slice refused: True
 - slices refused by the size floor rather than by a bound: 0
 - pooled over the same records: feasible=False, reason=empty_feasible_set, n_eval=5948
 - inputs this run is a function of, with the digests that pin it: `data/records_massive_de.jsonl` (2974 rows, `2fb97c44e8209acbeadbda9db88e7887441891636c0f1a3ee325f8fa8b42c68f`), `data/records_massive_en.jsonl` (2974 rows, `432d7d10f53e5d148be8811dfe4d2f2e3ce4b7b97a2727445b2fd2f6d651f8db`), `data/records_massive_km.jsonl` (2974 rows, `dd302722ed49cef88e33deb9d8673faf18d54752f224ac867686917aae057239`), `data/records_massive_sw.jsonl` (2974 rows, `f423fc0161fdcd0c6d85180728c59ae1ea39a2b8a31d4b75f7cde91fbf8c821c`)

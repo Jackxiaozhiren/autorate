@@ -344,3 +344,32 @@ def test_the_frozen_g4_note_transcribes_the_worst_field_the_arm_compares(in_repo
             "the artefact names %r and the note does not transcribe it" % group
         assert doc["run"]["worst_claim"]["metric"] in note, \
             "a named worst without the metric it was ranked by is a ranking the data never made"
+
+
+def test_the_worst_slice_line_states_the_metric_coverage_and_changes_with_it(in_repo):
+    """The document may not keep calling a tie-break a ranking once the run starts certifying.
+
+    Today every slice's `autorate` is null, so the line must say the field is a tie-break. The two other
+    branches are forced by mutating the run in memory -- a partial population and a full one -- because a
+    conditional that no test ever takes is a comment with an `if` in front of it, and this document is only
+    byte-compared, which cannot tell a stale branch from a live one.
+    """
+    doc = json.loads((REPO / report.SLICE_JSON).read_text())
+    run = doc["run"]
+    total = len(run["per_group"])
+    assert report._null_metric_count(run) == total, sorted(run["per_group"])
+    line = report._worst_sentence(run)
+    assert "null in %d of the %d slices" % (total, total) in line
+    assert "tie-break and not a measured worst" in line
+
+    partial = json.loads((REPO / report.SLICE_JSON).read_text())["run"]
+    first = sorted(partial["per_group"])[0]
+    partial["per_group"][first]["autorate"] = 0.42
+    assert report._null_metric_count(partial) == total - 1
+    assert "null in %d of the %d slices" % (total - 1, total) in report._worst_sentence(partial)
+    assert "only over the slices that carry it" in report._worst_sentence(partial)
+
+    full = json.loads((REPO / report.SLICE_JSON).read_text())["run"]
+    for cert in full["per_group"].values():
+        cert["autorate"] = 0.5
+    assert "so every slice carries the metric this run ranked" in report._worst_sentence(full)
