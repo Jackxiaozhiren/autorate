@@ -9,7 +9,8 @@
 > contains this file - from this file's own directory, `git rev-parse --show-toplevel` prints the
 > repository root - and treat Sections 0-13 as your operating instructions. Do not
 > paste it into a chat window and do not summarise it: the file is the source of truth, and a
-> truncated paste loses Section 12's rails, which are the part that keeps the work safe. One
+> truncated paste loses the holds in Section 0.2 and the rails in Sections 6.2 and 12.1, which are the
+> part that keeps the work safe. One
 > milestone per session, in the order in Section 7.
 
 ---
@@ -37,23 +38,39 @@ Authorized without further confirmation, for every milestone:
 3. Add the missing `LICENSE` file with the canonical Apache-2.0 text, publish `autorate` and
    `autorate-portal` to PyPI, cut git tags and GitHub Releases, flip `Jackxiaozhiren/autorate` from
    private to public, and publish the GitHub Action and the README badge.
-4. Open issues/PRs upstream on `NandhaKishorM/laya` and submit an entry to
-   `v-modal/awesome-jev-tools`.
+4. ~~Open issues/PRs upstream on `NandhaKishorM/laya` and submit an entry to
+   `v-modal/awesome-jev-tools`.~~ **Withdrawn before execution.** The repository already contains the
+   decision records for both, and this PRD had not read them: `docs/upstream/awesome-jev-entry.md` is an
+   `OMITTED` record whose premise 2 was measured false three times over (the entry's only claim worth
+   printing is contradicted by `protocol.json`, whose `known_limits` say *"no certificate exists, so no
+   action is certified"*), and `docs/upstream/SUBMISSION.md` gates the upstream issue behind a four-part
+   human instruction that it explicitly says a plan, a green suite, or the directory's own existence does
+   not satisfy. Neither is re-opened by this PRD. Section 8.5 carries the corrected channel order.
 
-Two carve-outs survive the blanket grant, because they are not engineering decisions:
+Two holds survive the blanket grant, because they are not engineering decisions and the repository
+already gates them more tightly than this document may loosen:
 
-- **(a) Irreversible public exposure.** Flipping the repository to public is authorized, but it is
-  gated behind the pre-flight checklist in Section 8.3, whose blocking item is a human reading: the
-  published docs quote measured weaknesses of the upstream model, and a public repo is crawled -
-  going private later does not un-crawl it. Present the checklist result, then proceed.
-- **(b) Outbound messages to named third parties** (the upstream issue, the awesome-list PR). The
-  grant covers sending; it does not cover sending *stale* text. Print the exact payload, re-verify
-  every claim in it against the current tree (an upstream may have fixed your finding since the
-  finding was measured), and only then send. Record the payload hash in the ledger with the
-  revision it was verified against.
+- **(a) Irreversible public exposure.** Flipping the repository to public stays **held**, even though
+  the owner's 2026-10-15 grant covers it, for two reasons that are facts rather than caution. First, the
+  owner's own earlier decision (2026-10-01) conditions the flip on the upstream findings having been
+  *filed*, and hold (b) means they have not been. Second, publishing to PyPI is itself the exposure:
+  the sdist ships the README, which quotes measured weaknesses of the upstream model, so "publish first,
+  decide visibility later" is not a neutral order - see the corrected Section 8.1. The Section 8.3
+  pre-flight checklist still runs before either event, and its first item is a human reading.
+- **(b) Outbound messages to named third parties.** **This PRD does not grant them.** The bar already in
+  `docs/upstream/SUBMISSION.md` is stricter than anything written here and it wins: filing requires the
+  owner's own written instruction naming all four of (1) the target repository and the exact text of
+  `issue.md` to be filed, (2) the branch, fork and PR that `pr-description.md` describes, (3) who answers
+  review comments afterwards, and (4) the date the owner considers the re-measurements fresh enough to act
+  on. Note also that the draft was already reduced to **one** live finding on 2026-10-14 - the other three
+  describe code that has since moved, so filing the original four would post duplicates and a patch for a
+  fixed defect. Re-verify liveness again before asking, because that measurement is dated.
 
-Two decisions are **not** yours: the copyright holder that the `LICENSE` file added in M0 will carry,
-and whether `0.1.0` becomes `1.0.0`. Section 12 lists them as asks.
+The two owner decisions named in the first draft are now **settled**, so they are asks no longer: the
+`LICENSE` holder takes the repository's own documented default, `Copyright 2026 the autorate authors`
+(anonymous-by-design, proposed in the landing plan precisely so no person is named by an agent), and the
+version **stays `0.1.0`** - the README defines v1 by criteria G1-G5, and G1/G3/G4 are not met, so calling
+a release `1.0.0` would be a claim the frozen protocol contradicts. Section 12.3 keeps the remaining asks.
 
 ### 0.3 Facts protocol
 
@@ -613,11 +630,11 @@ because a GitHub Action and a pinned-wheel replay both require a resolvable rele
 
 | ID | Deliverable | Repo | Gate (definition of done) | Rollback point |
 |---|---|---|---|---|
-| **M0** Publish path | `LICENSE` (canonical Apache-2.0 text, fetched and proven byte-exact against a trusted copy - never retyped), version resolution, git tag, PyPI release of `autorate`, `autorate-portal` scaffold repo, GitHub Action + badge | both | `pip install autorate==<v>` in a clean venv; `autorate verify --protocol protocol.json` from the **installed** package exits 0 and prints the same denominators as B3; action runs on a real PR and prints `re-derived N /M`; badge renders; `verify` denominators unchanged from B3 | unpublish is possible but a release is forever: tag before publishing, and record the wheel SHA-256 in the ledger |
+| **M0** Publish path | `LICENSE` (canonical Apache-2.0 text, fetched and proven byte-exact against a trusted copy - never retyped) **[done; recorded in 13.8]**; in-repo GitHub Action + badge, built against the private repo **[unblocked]**; git tag + PyPI release **[BLOCKED on A4 and A7 - see the corrected order in 8.1]**; `autorate-portal` scaffold repo **[blocked on A3 being executed as a public repo, so after A4]** | both | `autorate verify --protocol protocol.json` from the **installed** package exits 0 and prints the same denominators as B3; action runs on a real PR and prints `re-derived N /M`; badge renders; `verify` denominators unchanged from B3 | a PyPI release is forever: tag before publishing, and record the wheel SHA-256 in the ledger |
 | **M1** Evidence Packet | manifest contract (Pydantic), `autorate-portal packet build|verify|html`, one packet built from this repo's committed artefacts, `verify-packet` replay in a container | portal | AC1, AC9, AC10, AC14 pass; I6 plant fires; packet builds reproducibly from a clean checkout of the pinned revision | packet contract is additive; the frozen repo is untouched |
 | **M2** Replay engine | job runner with argv/exit-code/stdout-hash capture, pinned-distribution registry, `doctor` | portal | AC4 (mismatch path) provable; run rows always carry argv; no endpoint computes a bound | engine is the only place with execution rights; if it fails, views degrade to "not run" |
 | **M3** Portal core | auth, orgs/projects, F1 ingest, F2 certificate view, F3 slice view, provenance drawer | portal | AC2, AC3, AC13, AC14; the frozen repo's committed artefacts render correctly end-to-end; parity job (6.3) green | read-only deployment first (no policies yet) |
-| **M4** Audience features | F4 claim check, F5 audit export, badge-as-shareable, localization pass (Section 11.4) | portal | AC5, AC6, AC7, AC8, AC11; a P1 and a P2 walkthrough completed with an external reader | F4/F5 are additive views over M3's data |
+| **M4** Audience features | F4 claim check, F5 audit export, badge-as-shareable, localization pass (Section 11's `Localization` row; second language fixed by A6) | portal | AC5, AC6, AC7, AC8, AC11; a P1 and a P2 walkthrough completed with an external reader | F4/F5 are additive views over M3's data |
 | **M5** Enforcement, monitor, in-browser verifier, `--format json` | F6, F7, F9, F10; Pyodide certificate self-checker reusing the *published* `verify` module; the frozen repo's `--format json` as one freeze round | portal + **frozen repo** | AC12; browser checker's verdict equals the container replay's for the same packet; freeze round for `--format json` passes with denominators **unchanged** and a recorded justification for adding a compared field or not | the browser checker must degrade to "replay required" if the wheel cannot be fetched |
 
 **Sequencing rules.** M5's frozen-repo items go through a freeze round; nothing in M0-M4 touches
@@ -630,21 +647,43 @@ artefact, it is re-planned as a freeze round and the owner is asked, per the app
 
 ### 8.1 The order that is load-bearing
 
-`LICENSE` -> version decision -> tag -> PyPI -> Action + badge (P4 adoption floor, needs no portal)
--> portal M1-M4 -> repository visibility -> upstream and awesome-list submissions.
+**Corrected 2026-10-15, after the first draft's order turned out to be wrong in execution.** The draft
+read `LICENSE -> tag -> PyPI -> Action + badge -> portal -> visibility -> upstream`, on the theory that
+visibility should come last. Writing M0 exposed the flaw: **a PyPI release is itself the irreversible
+public exposure** - the sdist ships the README, and the README quotes measured weaknesses of the upstream
+model - and a package whose `project_urls` point at a private repository is incoherent for the only person
+the badge is for. So visibility is not the last step; it is the *gate* that PyPI, the marketplace action
+and the share links all sit behind.
 
-Visibility is late in the order on purpose: the badge, the action, and the packet are what make a
-public repo useful, and publishing before them means the public artifact is a README with no path to
-reproduction.
+`LICENSE` (done, no dependency) -> in-repo Action + badge, built and tested against the private repo
+-> **owner's four-part instruction on the upstream filing** (hold (b)) -> upstream issue filed ->
+**repository visibility** -> PyPI release -> tag -> portal M1-M4.
+
+The PyPI arrow needs a publishing credential. Check for one before planning around it:
+`ls ~/.pypirc; env | grep -icE "TWINE|PYPI"; python3 -c "import importlib.util as u; print(u.find_spec('twine'))"`.
+None was present when this section was written, and the right instrument is a project-scoped API token,
+not a username and password.
+
+Nothing in that chain after `LICENSE` may be inferred as authorized: each arrow is either a human
+decision or a credential the owner must create.
 
 ### 8.2 Pre-flight for any publish (blocking)
 
-- `grep -rniE "(token|secret|passwd|password|api[_-]?key|BEGIN [A-Z]+ PRIVATE KEY)" ` over the tree
-  plus a GitHub secret-scanning pass on the pushed branch; zero hits before a flip, and any hit is
-  removed from history rather than deleted in a follow-up commit.
-- No machine-specific absolute paths in tracked files (`/Users/...`) - this project has been bitten
-  by a CI failure caused by exactly that, so the check runs against the pushed object, not the
-  working copy.
+- **Two-stage credential scan, not one.** The naive pattern `grep -rniE "(token|secret|passwd|password|
+  api[_-]?key|BEGIN [A-Z]+ PRIVATE KEY)"` measured **10 matching tracked files** on 2026-10-15 and **zero
+  real credentials**: the hits are MASSIVE dataset utterances ("keep playing secret garden", "chamber of
+  secrets f\u00fcr mich"), token *counts* (`state_tokens`, `input_tokens`), and the repo's own guard names
+  (`test_no_artefact_carries_a_secret_shaped_string`). Reading only stage one and demanding "zero hits
+  before a flip" therefore sends the executor hunting for secrets that do not exist, or worse, tempts an
+  ignore list. Stage two is the decision: `grep -nE "(api[_-]?key|secret|token|password)[\"' ]*[:=][\"'
+  ]*[A-Za-z0-9_\-]{12,}"` over `git ls-files` - assignment-shaped, high-entropy - which returned empty, and
+  that emptiness is the pass condition. Add a GitHub secret-scanning pass on the pushed branch. Any real
+  hit is removed from history, not deleted in a follow-up commit.
+- No absolute path literal that names a machine - an operator's home directory or a per-user macOS temp
+  shape - in tracked files. This project has been bitten by exactly that twice (a CI failure, and this
+  document's own first draft, which the export lane caught), so the check runs against the **pushed
+  object**, not the working copy, and it needs the manifest recipe in Section 13.1 to have a subject
+  outside a git checkout.
 - `git status` after the last `git add`: verify the committed object with `git show --stat`, not the
   working file. A directory glob has previously shipped half a change.
 - Gates run **after** commit for new files: a pre-commit gate never scanned the new file, so run each
@@ -658,7 +697,9 @@ reproduction.
    fixed a finding, the sentence is corrected or dropped before exposure - not annotated.
 2. Confirm `ERRATA` is append-only and no dated entry was rewritten.
 3. Confirm the privacy rule in Section 8.4 is implemented before any share link is enabled.
-4. Present items 1-3 as a checklist result, then proceed under the grant.
+4. Present items 1-3 as a checklist result and **stop**: hold (a) in Section 0.2 keeps the flip itself
+   outside this document's authority until the upstream filing is resolved, because the 2026-10-01
+   decision conditions visibility on findings having been filed first.
 
 ### 8.4 Data and privacy rules for shared artefacts
 
@@ -669,10 +710,16 @@ does. Retention defaults to a bounded number of days for records artefacts, conf
 
 ### 8.5 Adoption channels, in cost order
 
-1. `awesome-jev-tools` entry (its own README asks for a source for every number, a runnable check,
-   and a license - the product is built to satisfy that checklist, so the submission is a demo of it).
-   Category: Compliance & Legal (the least-populated category that is not empty) with a cross-note
-   under Calibration & Research.
+1. ~~`awesome-jev-tools` entry.~~ **Withdrawn.** `docs/upstream/awesome-jev-entry.md` is a committed
+   `OMITTED` decision record, and nothing in this PRD overturns it: the entry's only claim worth printing
+   would assert a certificate that travels with an answer, while `protocol.json` records G1 as
+   `not_certifiable`, G4 as `not_met`, and `known_limits` says *"no certificate exists, so no action is
+   certified"*. A portal that displays refusals beautifully is still not a certificate, so shipping M1-M5
+   does **not** re-open this channel. What re-opens it is a `verified` row in `docs/VERIFICATION.md`
+   describing a shipped `autorate` surface that certifies something. Until then the honest move is to
+   quote that list's own adoption checklist in our README rather than ask to be listed in it.
+   Re-derive the record before repeating any of this:
+   `sed -n '1,40p' docs/upstream/awesome-jev-entry.md`.
 2. GitHub Action marketplace listing (P4 finds gates in the marketplace before they find blogs).
 3. `laya` ecosystem integration docs: the Node/TypeScript and local-runtime projects are the largest
    untapped P4 population; a packet built by any runtime is the same packet, so the portal is
@@ -765,22 +812,38 @@ repository for the action's marketplace listing; the method spec and its rulings
 question; `awesome-jev-tools` inclusion rules; and one named external reader per persona group for
 the usability pass in Section 13.2.
 
-### 12.3 Asks that are the owner's alone
+### 12.3 Owner asks - settled 2026-10-15 under the owner's delegation, and the two that cannot be
 
-- **A1** the copyright holder to put in the `LICENSE` file M0 adds. There is no such line anywhere in
-  the repository today - `grep -rniE "copyright|rights reserved" docs/ README.md pyproject.toml`
-  returns nothing (and on 2026-10-15 the only matches in the whole tree were inside this document,
-  which is how an inherited claim about a nonexistent `Appendix A` line got caught). `pyproject.toml`
-  declares `license = { text = "Apache-2.0" }` with no holder and no `LICENSE` file exists
-  (`ls LICENSE*`), so the holder is genuinely undecided and only you can decide it.
-- **A2** Version decision: stay on `0.1.0` or cut `1.0.0` for the first release, and whether the
-  portal ships `0.x` alongside.
-- **A3** Product and repository names (`autorate-portal` is a default, not a decision).
-- **A4** Whether `Jackxiaozhiren/autorate` flips public now or after M0's badge exists (Section 8.1
-  recommends after, and Section 8.3 stays blocking either way).
-- **A5** Whether to run a hosted demo instance for share links (Section 1.3's SaaS rejection is about
-  *customer data*; a demo holding only the owner's own packets is a different question).
-- **A6** Which second language to ship for localization.
+The owner delegated these ("follow your own recommendation"), so they are decided here with the reason
+attached, and any of them is reversible by one sentence:
+
+- **A1 SETTLED** - `LICENSE` holder = `Copyright 2026 the autorate authors`. This is the repository's own
+  documented default, recorded in the landing plan precisely so that no agent names a person in a legal
+  attribution; the first draft of this section wrongly pointed at a `COPYRIGHT RIGHTS` line in
+  `docs/REPORT.md` Appendix A that does not exist (grep proved the tree's only occurrences were in this
+  document). Change it to a personal or entity name before the PyPI release if you prefer; after the
+  release the appendix line becomes history.
+- **A2 SETTLED** - the version **stays `0.1.0`**. The README defines v1 by criteria G1-G5, and the frozen
+  protocol prints G1 `not_certifiable`, G3 `not_measured`, G4 `not_met`. Cutting `1.0.0` would make the
+  package version contradict the document it ships with, which is the one thing this project's method is
+  not allowed to do. `1.0.0` is earned when the criteria are met, not when the portal exists.
+- **A3 SETTLED** - `autorate-portal` as the distribution, repository and console-script name; the import
+  package is `autorate_portal`. It is separable from `autorate` on purpose: the platform's web
+  dependencies must never enter the frozen repo's `numpy`-only floor.
+- **A5 SETTLED: no.** No hosted demo instance in v1. A demo is an operational commitment that turns this
+  project into the party holding evidence about other parties, which is the conflict of interest
+  Section 1.3 rejects; the self-contained HTML viewer (F9) is the shareable surface instead.
+- **A6 SETTLED** - second language is Simplified Chinese (`zh-Hans`), shipped through one message
+  catalog. Reason is concrete rather than demographic: the corpus this repository already certifies
+  against includes a Chinese workplace benchmark, so the localization can be verified against real
+  artefacts instead of translated lorem.
+- **A4 NOT MINE TO DECIDE, and not yours to delegate blind.** Public visibility of
+  `Jackxiaozhiren/autorate` is gated by your own 2026-10-01 decision (file the upstream findings first,
+  then go public for citability) and by the four-part instruction `docs/upstream/SUBMISSION.md` demands.
+  Answering those four items is what unblocks the chain; see Section 13.7.
+- **A7 (new) NOT MINE TO DECIDE** - PyPI credentials. No publishing credential exists on this machine as
+  of 2026-10-15 (`~/.pypirc` absent, no `TWINE_*`/`PYPI_*` env, `twine` not installed). Creating one is an
+  account action, and it should be an API token scoped to the project, not a username/password.
 
 ---
 
@@ -793,6 +856,7 @@ the usability pass in Section 13.2.
 | Frozen-repo non-interference | `uv run --frozen autorate verify --protocol protocol.json` | rc 0 and denominator line **identical to B3** for M0-M4; for M5's freeze round, unchanged unless the round was approved to change it |
 | Published-artefact untouched | `git diff --name-only HEAD~1 -- data/ docs/` | empty (M0 except the `LICENSE` addition) |
 | New-file coverage | each guard re-run **after** commit with explicit paths | rc 0 |
+| Corpus-absent export lane (the only view that sees a new tracked file the way CI does) | `git archive HEAD \| tar -x -C <dir>`; then **`git ls-files > <dir>/.tracked-files`** (without the manifest the path guard refuses loudly with "nothing to scan" - that is the design, not a defect); then `AUTORATE_TRACKED_FILES=<dir>/.tracked-files uv run --frozen pytest` | 0 failed. Measured on 2026-10-15: `1117 passed, 35 skipped` at the fixed tip, after the same lane had caught one failure at the unfixed one |
 | Portal suite | `uv run --frozen pytest -q` in the portal repo | 0 failures; the coverage floor never lowered |
 | Invariant plants | Section 6.1's plant per ACTIVE row | each observed red, then reverted with a hash receipt |
 | Parity | Section 6.3 job | byte-equal after formatting |
@@ -894,3 +958,65 @@ Baseline: run autorate verify --protocol protocol.json; if it is not rc 0, stop.
 The product's hard part is not the UI: it is that an honest first screen is often a refusal, and
 the fix is better refusal presentation, never a softer claim.
 ```
+
+### 13.7 What the owner must answer to unblock the release chain
+
+Written 2026-10-15 because the first draft of this document wrongly treated these as authorized.
+`docs/upstream/SUBMISSION.md` requires the owner's own written instruction naming all four items below;
+it states explicitly that a plan document, a green test suite, or the existence of that directory is not
+the instruction. Each item is pre-filled with this document's recommendation, so answering "all four as
+proposed" is sufficient - but item 4 must be re-measured, not copied, because its freshness is dated.
+
+| # | What to answer | Recommendation |
+|---|---|---|
+| 1 | Target repository, and the exact text to file | `NandhaKishorM/laya`, filing `docs/upstream/issue.md` **as reduced**, i.e. the single live finding (`tests/test_packaging.py` cannot run from the published sdist). Do not file the original four: three describe code that has since moved |
+| 2 | Branch / fork / PR | none in round one. The patch (`docs/upstream/patch/`, sha256 recorded beside it) is attached to the issue as a proposal, and a PR follows only if the maintainer asks - `pr-description.md` already says it must be rebased first |
+| 3 | Who answers review comments afterwards | only the owner can say. If nobody commits to responding, the issue should not be opened, because an unanswered bug report against an active repository ages into noise and costs the credibility this project's thesis depends on |
+| 4 | The date the re-measurements are fresh enough to act on | re-run the liveness check first: fetch current upstream `main` and confirm `tests/test_packaging.py` still reads repository files absent from the sdist. The existing measurement is dated 2026-10-14 and upstream moved the day this document was written |
+
+Until items 1-4 come back, the executable surface of this PRD is: **M1's packet contract against the
+private repo's committed artefacts, the in-repo Action and badge, and the portal scaffold under
+`autorate-portal` only once item 4 permits the repository to go public.** PyPI, the tag, public
+visibility, and any awesome-list interaction are not in that set.
+
+### 13.8 Amendment log (dated, append-only)
+
+What execution found wrong in this document, in the round that wrote it. Corrections go here rather than
+silently editing the body, because the body's earlier wording was read by a human and approved.
+
+**2026-10-15, same day as approval.** Commits `883b737` (this document plus the evidence snapshot) and
+`5ea04aa` (path literals).
+
+1. **Two phantom citations, both inherited rather than measured.** The body asserted a `COPYRIGHT RIGHTS`
+   line in `docs/REPORT.md` Appendix A; `grep -rniE "copyright|rights reserved"` proved the tree's only
+   occurrences were inside this document. It also asserted the repository had zero merge commits; on
+   2026-10-15 the count was nonzero against 226 commits, so Section 0.2 now tells the executor to derive
+   the convention rather than trust the sentence. Fix: both rewritten into commands.
+2. **Three machine path literals in a tracked document**, caught only by the corpus-absent export lane,
+   because the corpus-present suite had run *before* the commit while the files were still untracked - the
+   new-file blind spot in its exact recorded form. Fix `5ea04aa`: the document resolves the repo root with
+   `git rev-parse --show-toplevel`; the absolute path stays in the chat opener. Section 13.1 gains the
+   manifest recipe so a future session cannot repeat it.
+3. **`LICENSE` added** from the fetched canonical Apache-2.0 text, with provenance proved rather than
+   asserted: identical to the on-disk copy, containing the vendored `laya-0.3.20/LICENSE` as a contiguous
+   substring at offset 1, and a single-line delta on line 190 (the appendix placeholder replaced by the
+   repository's own documented default holder, `Copyright 2026 the autorate authors`). No licence wording
+   was typed by hand or memory.
+4. **Section 8.1's ordering was wrong, found while executing M0.** The draft put PyPI before repository
+   visibility; publishing is itself the irreversible exposure (the sdist carries the README, which quotes
+   measured upstream weaknesses) and a package pointing at a private repo is incoherent for the badge's
+   audience. Rewritten: visibility is a gate, not a last step, and it sits behind Section 13.7.
+5. **Section 0.2 was too generous, twice.** Grant item 4 proposed submitting an `awesome-jev-tools` entry;
+   `docs/upstream/awesome-jev-entry.md` is a committed `OMITTED` decision record whose premise 2 was
+   measured false three times over, and shipping a portal does not repair it - only a `verified` row about
+   a certifying shipped surface does. Carve-out (b) proposed "print the payload, then send" where
+   `SUBMISSION.md` demands a four-part human instruction. Both corrected: the stricter existing bar wins,
+   and Section 13.7 asks the owner to resolve it.
+6. **Section 8.2's credential scan was unsatisfiable as written.** Its one-stage pattern matched 10
+   tracked files that contain no credentials (dataset utterances, token counts, the names of the repo's own
+   guards), so "zero hits before a flip" would have sent the executor hunting phantoms or tempted an ignore
+   list. Now a two-stage scan whose pass condition is the emptiness of the assignment-shaped stage, with
+   the measured false positives named.
+7. **Two broken internal references** (`Section 11.4`, `Section 12's rails`) repointed; A1/A2/A3/A5/A6
+   settled under the owner's delegation and recorded in Section 12.3 with the reason each is reversible by
+   one sentence.
