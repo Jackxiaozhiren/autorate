@@ -1,0 +1,391 @@
+{
+  "aci_envelope": [
+    "adaptive conformal inference (mode 2): what this recursion buys is a threshold that tracks the target error rate while its iterate stays inside (0,1). It is not a bound on the average miscoverage, and aci_regret_bound is not this mode's guarantee -- the inequality it used to state, |mean err - alpha| <= aci_regret_bound(T, alpha, gamma), is withdrawn below",
+    "no per-round and no finite-sample statement, and no long-run regret statement either: on inputs _checked_round_scores accepts, at alpha=gamma=0.05 an all-1.0 sequence (this module's own SCORE_CEILING, the value its vacuous arm returns) converges to a long-run error rate of 0.500250 against a bound of 0.028778; an alternating 0.99/0.01 ordering reaches 0.166740 against 0.027978; a constant 0.99 sequence reaches 0.167100; an all-0.0 sequence reaches 0.000000 against the same formula",
+    "the mechanism, stated because a withdrawal without one is a retraction and not a fix: the step is clipped to [0,1] every round and a clip DISCARDS the update, so when the target rate is not reachable on the score sequence's own atoms the recursion settles into a cycle instead of a fixed point -- period 2 at the ceiling, which is exactly the 1/2 above. Over 400 constructed sequences (seed 20261008, T=2000) no violation fired without a clip (0 of 400), while 112 of 400 clipped sequences still held: the clip is necessary, not sufficient, and it is observable in the trace this function returns as step.lam in (0.0, 1.0)",
+    "stated for nonconformity scores in [0,1] and alpha in (0,0.5); a certificate built on this threshold carries this line and the trace check, not the split bound"
+  ],
+  "artefact_path": "data/drift_envelope.json",
+  "document_path": "docs/DRIFT.md",
+  "mode1": [
+    {
+      "cited_agrees_within_measured_three_se": true,
+      "delta_to_envelope_cited": -0.001034,
+      "envelope_cited": 0.1411,
+      "n": 25,
+      "nominal_alpha": 0.05,
+      "realised_miscoverage": 0.140066,
+      "standard_error": 0.002435,
+      "stream_seed": 20261033,
+      "three_se": 0.007305,
+      "trials": 4000,
+      "vacuous_share": 0.312,
+      "vacuous_share_cited_in_envelope": 0.3058,
+      "vacuous_share_three_se": 0.021977,
+      "vacuous_trials": 1248
+    },
+    {
+      "cited_agrees_within_measured_three_se": true,
+      "delta_to_envelope_cited": -0.002555,
+      "envelope_cited": 0.0933,
+      "n": 100,
+      "nominal_alpha": 0.05,
+      "realised_miscoverage": 0.090745,
+      "standard_error": 0.001298,
+      "stream_seed": 20261108,
+      "three_se": 0.003894,
+      "trials": 4000,
+      "vacuous_share": 0.0,
+      "vacuous_share_cited_in_envelope": null,
+      "vacuous_share_three_se": 0.0,
+      "vacuous_trials": 0
+    }
+  ],
+  "mode2": [
+    {
+      "clip_observable": true,
+      "construction": {
+        "kind": "constant",
+        "rounds": 20000,
+        "value": 1.0
+      },
+      "deviation_from_alpha": 0.45025,
+      "envelope_cited_bound": 0.028778,
+      "envelope_cited_rate": 0.50025,
+      "name": "every score == SCORE_CEILING",
+      "realised_long_run_rate": 0.50025,
+      "regret_bound": 0.02877777777777778,
+      "rounds": 20000,
+      "sequence_digest_sha256": "e0f31f1b7e6d2fc1b1bf973b2380425b4c9a076eb64cb0861bba8393b642a5fa",
+      "violates_bound": true
+    },
+    {
+      "clip_observable": true,
+      "construction": {
+        "kind": "alternating",
+        "rounds": 100000,
+        "values": [
+          0.99,
+          0.01
+        ]
+      },
+      "deviation_from_alpha": 0.11674,
+      "envelope_cited_bound": 0.027978,
+      "envelope_cited_rate": 0.16674,
+      "name": "adversarial period-2 0.99/0.01",
+      "realised_long_run_rate": 0.16674,
+      "regret_bound": 0.02797777777777778,
+      "rounds": 100000,
+      "sequence_digest_sha256": "3f1407fd2baf829846e4469edff08e50622289386825f338be7e5a1ecd614a01",
+      "violates_bound": true
+    },
+    {
+      "clip_observable": true,
+      "construction": {
+        "kind": "constant",
+        "rounds": 20000,
+        "value": 0.99
+      },
+      "deviation_from_alpha": 0.1171,
+      "envelope_cited_bound": 0.028778,
+      "envelope_cited_rate": 0.1671,
+      "name": "constant 0.99, below the ceiling",
+      "realised_long_run_rate": 0.1671,
+      "regret_bound": 0.02877777777777778,
+      "rounds": 20000,
+      "sequence_digest_sha256": "9125f6b77338aaa80c5f6aebff6e1b91c11cf75fc9df4237f4155420d20c530d",
+      "violates_bound": true
+    },
+    {
+      "clip_observable": true,
+      "construction": {
+        "kind": "constant",
+        "rounds": 20000,
+        "value": 0.0
+      },
+      "deviation_from_alpha": 0.05,
+      "envelope_cited_bound": 0.028778,
+      "envelope_cited_rate": 0.0,
+      "name": "every score == the floor 0.0",
+      "realised_long_run_rate": 0.0,
+      "regret_bound": 0.02877777777777778,
+      "rounds": 20000,
+      "sequence_digest_sha256": "9937a76d7dfdc2050f38f75ab3c8c146b34096776bb368bf9454dbb2fae7c9fc",
+      "violates_bound": true
+    }
+  ],
+  "mode2_controls": [
+    {
+      "clip_observable": false,
+      "construction": {
+        "kind": "grid",
+        "modulus": 100,
+        "rounds": 2000
+      },
+      "deviation_from_alpha": 0.004499999999999997,
+      "name": "grid control",
+      "realised_long_run_rate": 0.0545,
+      "regret_bound": 0.03777777777777778,
+      "rounds": 2000,
+      "sequence_digest_sha256": "0b786c6860064bc504307f87eaa98d6df4e7b8b16ff6c4815cdd55a30b05e1c7",
+      "violates_bound": false
+    },
+    {
+      "clip_observable": false,
+      "construction": {
+        "kind": "constant",
+        "rounds": 2000,
+        "value": 0.95
+      },
+      "deviation_from_alpha": 0.004499999999999997,
+      "name": "constant 0.95 control",
+      "realised_long_run_rate": 0.0545,
+      "regret_bound": 0.03777777777777778,
+      "rounds": 2000,
+      "sequence_digest_sha256": "e1590ca884f16047d600b63ca0f8fa37295b4d36c32e3d847a9a58e74f3ad373",
+      "violates_bound": false
+    }
+  ],
+  "mode2_sweep": {
+    "alpha": 0.05,
+    "bound": 0.03777777777777778,
+    "classes": 8,
+    "clipped": 312,
+    "envelope_cited_held_clipped": 112,
+    "envelope_cited_violated_without_clip": 0,
+    "gamma": 0.05,
+    "held_clipped": 112,
+    "rounds": 2000,
+    "seed": 20261008,
+    "sequences": 400,
+    "violated_without_clip": 0,
+    "violations": 200
+  },
+  "not_certifiable_under_drift": "NOT_CERTIFIABLE_UNDER_DRIFT: this certificate is marginal-only -- it never conditioned on a declared drift variable, so its finite-sample bounds hold only while the calibration regime holds and a shift in the score distribution is not bounded by anything in it",
+  "producer": "tools/drift_envelope.py",
+  "provenance": {
+    "alpha": 0.05,
+    "calibration_regime": "U[0,1]",
+    "cited_miscoverage_by_size": {
+      "100": 0.0933,
+      "25": 0.1411
+    },
+    "expected_weight_under_calibration": 1.0,
+    "gamma": 0.05,
+    "mode1_coverage_method": "closed form under the declared target regime: P(score > q) = 1 - q^10, so this measurement carries one Monte-Carlo layer (the calibration draws) and not a second over test points",
+    "mode1_stream_rule": "random.Random(seed + n) per size, so the two sizes are different streams",
+    "mode2_rounds_by_control": {
+      "constant 0.95 control": 2000,
+      "grid control": 2000
+    },
+    "mode2_rounds_by_sequence": {
+      "adversarial period-2 0.99/0.01": 100000,
+      "constant 0.99, below the ceiling": 20000,
+      "every score == SCORE_CEILING": 20000,
+      "every score == the floor 0.0": 20000
+    },
+    "module_constants": {
+      "DRIFT_DECLARATION_KEY": "drift_declaration",
+      "SCORE_CEILING": 1.0,
+      "TEST_POINT_WEIGHT": 1.0
+    },
+    "produced_by": {
+      "aci_regret_bound": "aci_regret_bound",
+      "aci_threshold": "aci_threshold",
+      "weighted_quantile": "weighted_quantile"
+    },
+    "published_decimals": 6,
+    "read_from": "autorate.drift",
+    "seed": 20261008,
+    "sizes": [
+      25,
+      100
+    ],
+    "target_density": "10*s^9",
+    "test_points_stated_by_envelope": 2000,
+    "three_se_stated_by_envelope": 0.004,
+    "trials_per_size": 4000,
+    "vacuous_share_cited_in_envelope": 0.3058,
+    "vacuous_share_stated_for_size": 25
+  },
+  "reproduction": {
+    "all_agree": true,
+    "checks": [
+      {
+        "agrees": true,
+        "envelope_states": 0.1411,
+        "id": "mode1 realised miscoverage at n=25",
+        "measured": 0.140066,
+        "tolerance": 0.007305,
+        "tolerance_basis": "the measurement's own 3 standard errors"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.3058,
+        "id": "mode1 vacuous-ceiling share at n=25",
+        "measured": 0.312,
+        "tolerance": 0.021977,
+        "tolerance_basis": "3 standard errors of a share over the stated trials"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.0933,
+        "id": "mode1 realised miscoverage at n=100",
+        "measured": 0.090745,
+        "tolerance": 0.003894,
+        "tolerance_basis": "the measurement's own 3 standard errors"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.50025,
+        "id": "mode2 long-run rate: every score == SCORE_CEILING",
+        "measured": 0.50025,
+        "tolerance": 0.0005,
+        "tolerance_basis": "the precision the envelope quotes its rates at"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.02877777777777778,
+        "id": "mode2 regret inequality violated: every score == SCORE_CEILING",
+        "measured": 0.45025,
+        "tolerance": null,
+        "tolerance_basis": "a direction, not a band: the deviation must EXCEED the bound"
+      },
+      {
+        "agrees": true,
+        "envelope_states": true,
+        "id": "mode2 clip observable: every score == SCORE_CEILING",
+        "measured": true,
+        "tolerance": null,
+        "tolerance_basis": "the envelope names a fired clip beside every one of these"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.16674,
+        "id": "mode2 long-run rate: adversarial period-2 0.99/0.01",
+        "measured": 0.16674,
+        "tolerance": 0.0005,
+        "tolerance_basis": "the precision the envelope quotes its rates at"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.02797777777777778,
+        "id": "mode2 regret inequality violated: adversarial period-2 0.99/0.01",
+        "measured": 0.11674,
+        "tolerance": null,
+        "tolerance_basis": "a direction, not a band: the deviation must EXCEED the bound"
+      },
+      {
+        "agrees": true,
+        "envelope_states": true,
+        "id": "mode2 clip observable: adversarial period-2 0.99/0.01",
+        "measured": true,
+        "tolerance": null,
+        "tolerance_basis": "the envelope names a fired clip beside every one of these"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.1671,
+        "id": "mode2 long-run rate: constant 0.99, below the ceiling",
+        "measured": 0.1671,
+        "tolerance": 0.0005,
+        "tolerance_basis": "the precision the envelope quotes its rates at"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.02877777777777778,
+        "id": "mode2 regret inequality violated: constant 0.99, below the ceiling",
+        "measured": 0.1171,
+        "tolerance": null,
+        "tolerance_basis": "a direction, not a band: the deviation must EXCEED the bound"
+      },
+      {
+        "agrees": true,
+        "envelope_states": true,
+        "id": "mode2 clip observable: constant 0.99, below the ceiling",
+        "measured": true,
+        "tolerance": null,
+        "tolerance_basis": "the envelope names a fired clip beside every one of these"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.0,
+        "id": "mode2 long-run rate: every score == the floor 0.0",
+        "measured": 0.0,
+        "tolerance": 0.0005,
+        "tolerance_basis": "the precision the envelope quotes its rates at"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.02877777777777778,
+        "id": "mode2 regret inequality violated: every score == the floor 0.0",
+        "measured": 0.05,
+        "tolerance": null,
+        "tolerance_basis": "a direction, not a band: the deviation must EXCEED the bound"
+      },
+      {
+        "agrees": true,
+        "envelope_states": true,
+        "id": "mode2 clip observable: every score == the floor 0.0",
+        "measured": true,
+        "tolerance": null,
+        "tolerance_basis": "the envelope names a fired clip beside every one of these"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.03777777777777778,
+        "id": "mode2 control holds: grid control",
+        "measured": 0.004499999999999997,
+        "tolerance": null,
+        "tolerance_basis": "a direction, not a band: the control must sit INSIDE the bound"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0.03777777777777778,
+        "id": "mode2 control holds: constant 0.95 control",
+        "measured": 0.004499999999999997,
+        "tolerance": null,
+        "tolerance_basis": "a direction, not a band: the control must sit INSIDE the bound"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 0,
+        "id": "mode2 sweep: no violation fired without a clip",
+        "measured": 0,
+        "tolerance": 0,
+        "tolerance_basis": "an exact count over the sweep's own sequences"
+      },
+      {
+        "agrees": true,
+        "envelope_states": 112,
+        "id": "mode2 sweep: clipped sequences that still held",
+        "measured": 112,
+        "tolerance": 0,
+        "tolerance_basis": "an exact count over the sweep's own sequences"
+      }
+    ],
+    "disagreements": []
+  },
+  "weighted_envelope": [
+    "weighted conformal (mode 1): the density weights are DECLARED by the caller and never estimated here, so the bound is only as good as that declaration",
+    "assumed: the declared weights are the density ratio between the calibration regime and the regime the decision runs in; nothing in this module tests that assumption",
+    "the finite-sample correction is the EXCHANGEABLE case's: the denominator adds weight 1.0 for the test point, which is exact for unit weights -- where the answer reproduces split_quantile value for value and flag for flag -- and is not the weighted-conformal correction, whose denominator is sum(w) + w_{n+1} with w_{n+1} the test point's own target-regime weight",
+    "so mode 1 buys a re-weighted estimate of the target-regime quantile and NO finite-sample bound: measured on an exactly declared ratio (calibration ~ U[0,1], target density 10*s^9, E_F0[w] = 1, alpha = 0.05, seed 20261008, 4000 trials x 2000 test points), realised miscoverage is 0.0933 at n=100 (3SE 0.0040) and 0.1411 at n=25 against a nominal 0.05, with 0.3058 of those n=25 trials returning the vacuous ceiling"
+  ],
+  "withdrawals": {
+    "mode1": {
+      "owner": "drift.WEIGHTED_ENVELOPE",
+      "statement_withdrawn": "the finite-sample coverage statement",
+      "status": "withdrawn",
+      "what_the_mode_buys": "a re-weighted estimate of the target-regime quantile, and no bound on it",
+      "why": "the shipped correction is the exchangeable case's: the test point's own target-regime weight is supplied as the constant TEST_POINT_WEIGHT named in provenance.module_constants instead of being known at calibration time"
+    },
+    "mode2": {
+      "owner": "drift.ACI_ENVELOPE",
+      "statement_withdrawn": "the long-run regret statement |mean err - alpha| <= aci_regret_bound(T, alpha, gamma)",
+      "status": "withdrawn",
+      "what_the_mode_buys": "a threshold that tracks the target rate while its iterate stays inside (0,1)",
+      "why": "the round's update is clipped to the score range and a clip discards it, so a target rate unreachable on the sequence's own atoms settles into a cycle instead of a fixed point"
+    }
+  }
+}
