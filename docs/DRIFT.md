@@ -1,8 +1,9 @@
 # B3's drift envelope, published
 
-Written by `python3 tools/drift_envelope.py --out data/drift_envelope.json --doc
-docs/DRIFT.md --force` and re-checked by `python3 tools/drift_envelope.py --check`, which
-re-reads `src/autorate/drift.py`, re-runs every measurement below on the shipped
+Written by `python3 tools/drift_envelope.py --out data/drift_envelope.json --doc docs/DRIFT.md --force`,
+and re-checked by `python3 tools/drift_envelope.py --check`.
+
+That check re-reads `src/autorate/drift.py`, re-runs every measurement below on the shipped
 `weighted_quantile`, `aci_threshold` and `aci_regret_bound`, byte-compares this document
 against a fresh render of the artefact, and refuses at exit 4 if the committed bytes cannot
 reproduce what they publish. Exit 3 is a measured disagreement: the artefact is written
@@ -17,14 +18,15 @@ be quietly summarised.
 
 ## In plain words
 
-**Mode 1 (a declared density ratio): the finite-sample statement is withdrawn.** a re-
-weighted estimate of the target-regime quantile, and no bound on it The shipped estimator
-adds the constant test-point weight named in the provenance block below instead of the test
-point's own target-regime weight, which is not knowable at calibration time, so on an
-exactly declared ratio it under-covers, and the Mode 1 table is that under-coverage measured
-against the figure the envelope states. (the shipped correction is the exchangeable case's:
-the test point's own target-regime weight is supplied as the constant TEST_POINT_WEIGHT
-named in provenance.module_constants instead of being known at calibration time)
+**Mode 1 (a declared density ratio): the finite-sample statement is withdrawn.** What the
+mode buys instead is a re-weighted estimate of the target-regime quantile, and no bound on
+it. The shipped estimator adds the constant test-point weight named in the provenance block
+below instead of the test point's own target-regime weight, which is not knowable at
+calibration time; the module states the reason as "the shipped correction is the
+exchangeable case's: the test point's own target-regime weight is supplied as the constant
+TEST_POINT_WEIGHT named in provenance.module_constants instead of being known at calibration
+time". On an exactly declared ratio it therefore under-covers, and the Mode 1 table is that
+under-coverage measured against the figure the envelope states.
 
 **Mode 2 (an adaptive threshold): the regret statement is withdrawn.** The inequality this
 module used to publish as mode 2's guarantee -- `|mean err - alpha| <= aci_regret_bound(T,
@@ -32,20 +34,20 @@ alpha, gamma)` -- is false on sequences the module's own validator accepts. Four
 below, each with its realised long-run rate, its deviation from the target, and the bound it
 exceeds. The clip that keeps the iterate inside the score range discards the update whenever
 it fires, and every violation below has a fired clip beside it; a clip is necessary for a
-violation, not sufficient, which is what the sweep counts say. (the round's update is
-clipped to the score range and a clip discards it, so a target rate unreachable on the
-sequence's own atoms settles into a cycle instead of a fixed point)
+violation, not sufficient, which is what the sweep counts say. The module states the reason
+as "the round's update is clipped to the score range and a clip discards it, so a target
+rate unreachable on the sequence's own atoms settles into a cycle instead of a fixed point".
 
 ## Mode 1: the declared ratio, measured
 
 Calibration regime U[0,1], declared target density 10*s^9, `E_F0[w] = 1.0`, nominal alpha
 0.05, seed 20261008, 4000 trials per size at sizes [25, 100], streams derived as
-`random.Random(seed + n) per size, so the two sizes are different streams`. Coverage comes
-from the closed form under the declared target regime: P(score > q) = 1 - q^10, so this
-measurement carries one Monte-Carlo layer (the calibration draws) and not a second over test
-points, so the figure the envelope quotes and the figure below carry one Monte-Carlo layer
-between them and not two: the envelope's own provenance names 2000 test points per trial,
-and this run does not sample them.
+`random.Random(seed + n) per size, so the two sizes are different streams`. Coverage: closed
+form under the declared target regime: P(score > q) = 1 - q^10, so this measurement carries
+one Monte-Carlo layer (the calibration draws) and not a second over test points. The
+envelope's own provenance names 2000 test points per trial, and this run does not sample
+them, so the figure below and the figure the envelope quotes share one Monte-Carlo layer and
+not two.
 
 | n | trials | realised miscoverage | standard error | 3SE | envelope states | agrees | vacuous trials | vacuous share | vacuous 3SE | vacuous envelope states |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -75,32 +77,32 @@ blanket "nothing holds": there the inequality holds, and no clip fires.
 
 ## Mode 2: the mechanism sweep
 
-400 constructed sequences (seed 20261008, T=2000, 8 classes cycled) at alpha=0.05
-gamma=0.05, against a bound of 0.03777777777777778: 200 of them deviate more than the bound,
-0 of those fired without a single clipped round, and 112 clipped sequences still held. The
+400 constructed sequences (seed 20261008, T=2000, 8 classes cycled) at alpha=0.050000
+gamma=0.050000, against a bound of 0.037778: 200 of them deviate more than the bound, 0 of
+those fired without a single clipped round, and 112 clipped sequences still held. The
 envelope states 0 violated-without-a-clip and 112 clipped-but-held. Both counts are re-run
 by `--check`: a violation firing with no clip would make the mechanism sentence in
 `ACI_ENVELOPE` wrong rather than merely unproven.
 
 ## What this artefact re-tests
 
-- `mode1 realised miscoverage at n=25`: measured 0.140066, envelope states 0.1411, tolerance 0.007305 (the measurement's own 3 standard errors) -- agrees
-- `mode1 vacuous-ceiling share at n=25`: measured 0.312, envelope states 0.3058, tolerance 0.021977 (3 standard errors of a share over the stated trials) -- agrees
-- `mode1 realised miscoverage at n=100`: measured 0.090745, envelope states 0.0933, tolerance 0.003894 (the measurement's own 3 standard errors) -- agrees
-- `mode2 long-run rate: every score == SCORE_CEILING`: measured 0.50025, envelope states 0.50025, tolerance 0.0005 (the precision the envelope quotes its rates at) -- agrees
-- `mode2 regret inequality violated: every score == SCORE_CEILING`: measured 0.45025, envelope states 0.02877777777777778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
-- `mode2 clip observable: every score == SCORE_CEILING`: measured True, envelope states True, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
-- `mode2 long-run rate: adversarial period-2 0.99/0.01`: measured 0.16674, envelope states 0.16674, tolerance 0.0005 (the precision the envelope quotes its rates at) -- agrees
-- `mode2 regret inequality violated: adversarial period-2 0.99/0.01`: measured 0.11674, envelope states 0.02797777777777778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
-- `mode2 clip observable: adversarial period-2 0.99/0.01`: measured True, envelope states True, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
-- `mode2 long-run rate: constant 0.99, below the ceiling`: measured 0.1671, envelope states 0.1671, tolerance 0.0005 (the precision the envelope quotes its rates at) -- agrees
-- `mode2 regret inequality violated: constant 0.99, below the ceiling`: measured 0.1171, envelope states 0.02877777777777778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
-- `mode2 clip observable: constant 0.99, below the ceiling`: measured True, envelope states True, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
-- `mode2 long-run rate: every score == the floor 0.0`: measured 0.0, envelope states 0.0, tolerance 0.0005 (the precision the envelope quotes its rates at) -- agrees
-- `mode2 regret inequality violated: every score == the floor 0.0`: measured 0.05, envelope states 0.02877777777777778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
-- `mode2 clip observable: every score == the floor 0.0`: measured True, envelope states True, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
-- `mode2 control holds: grid control`: measured 0.004499999999999997, envelope states 0.03777777777777778, tolerance direction only (a direction, not a band: the control must sit INSIDE the bound) -- agrees
-- `mode2 control holds: constant 0.95 control`: measured 0.004499999999999997, envelope states 0.03777777777777778, tolerance direction only (a direction, not a band: the control must sit INSIDE the bound) -- agrees
+- `mode1 realised miscoverage at n=25`: measured 0.140066, envelope states 0.141100, tolerance 0.007305 (the measurement's own 3 standard errors) -- agrees
+- `mode1 vacuous-ceiling share at n=25`: measured 0.312000, envelope states 0.305800, tolerance 0.021977 (3 standard errors of a share over the stated trials) -- agrees
+- `mode1 realised miscoverage at n=100`: measured 0.090745, envelope states 0.093300, tolerance 0.003894 (the measurement's own 3 standard errors) -- agrees
+- `mode2 long-run rate: every score == SCORE_CEILING`: measured 0.500250, envelope states 0.500250, tolerance 0.000500 (the precision the envelope quotes its rates at) -- agrees
+- `mode2 regret inequality violated: every score == SCORE_CEILING`: measured 0.450250, envelope states 0.028778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
+- `mode2 clip observable: every score == SCORE_CEILING`: measured true, envelope states true, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
+- `mode2 long-run rate: adversarial period-2 0.99/0.01`: measured 0.166740, envelope states 0.166740, tolerance 0.000500 (the precision the envelope quotes its rates at) -- agrees
+- `mode2 regret inequality violated: adversarial period-2 0.99/0.01`: measured 0.116740, envelope states 0.027978, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
+- `mode2 clip observable: adversarial period-2 0.99/0.01`: measured true, envelope states true, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
+- `mode2 long-run rate: constant 0.99, below the ceiling`: measured 0.167100, envelope states 0.167100, tolerance 0.000500 (the precision the envelope quotes its rates at) -- agrees
+- `mode2 regret inequality violated: constant 0.99, below the ceiling`: measured 0.117100, envelope states 0.028778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
+- `mode2 clip observable: constant 0.99, below the ceiling`: measured true, envelope states true, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
+- `mode2 long-run rate: every score == the floor 0.0`: measured 0.000000, envelope states 0.000000, tolerance 0.000500 (the precision the envelope quotes its rates at) -- agrees
+- `mode2 regret inequality violated: every score == the floor 0.0`: measured 0.050000, envelope states 0.028778, tolerance direction only (a direction, not a band: the deviation must EXCEED the bound) -- agrees
+- `mode2 clip observable: every score == the floor 0.0`: measured true, envelope states true, tolerance direction only (the envelope names a fired clip beside every one of these) -- agrees
+- `mode2 control holds: grid control`: measured 0.004500, envelope states 0.037778, tolerance direction only (a direction, not a band: the control must sit INSIDE the bound) -- agrees
+- `mode2 control holds: constant 0.95 control`: measured 0.004500, envelope states 0.037778, tolerance direction only (a direction, not a band: the control must sit INSIDE the bound) -- agrees
 - `mode2 sweep: no violation fired without a clip`: measured 0, envelope states 0, tolerance 0 (an exact count over the sweep's own sequences) -- agrees
 - `mode2 sweep: clipped sequences that still held`: measured 112, envelope states 112, tolerance 0 (an exact count over the sweep's own sequences) -- agrees
 

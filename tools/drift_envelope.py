@@ -43,7 +43,7 @@ written and printed first -- the disagreement is the result, and it is published
 refusals about an argument the operator typed: `--check` combined with a write flag, exactly one of
 `--out`/`--doc` when the run would publish, a pair off the paths this build declares, `--trials` below the
 stated scale on a publishing run, an existing `--out` without `--force`, an unwritable destination, or a
-`--check --artefact` path that is missing or unusable. **4** for a defect in the state this build declares:
+`--check --artefact` path that is missing, unusable, or does not reproduce. **4** for a defect in the state this build declares:
 `autorate.drift` absent or holding a malformed envelope, or a `--check` of the DECLARED artefact that is
 absent, wrong-shaped, truncated, re-provenanced, byte-different from its own document, or carrying a figure
 the arithmetic no longer yields. Nothing escapes at 1: every input problem is a `ValueError` subclass mapped to
@@ -330,10 +330,15 @@ def measure_mode1(trials: int, provenance: dict) -> list:
             cal = [rng.random() for _ in range(n)]
             try:
                 q, flag = drift.weighted_quantile(cal, [10.0 * s ** 9 for s in cal], alpha)
-            except ArithmeticError as exc:
+            except (ArithmeticError, ValueError) as exc:
+                # Both classes mean the same thing here: the shipped estimator refused the calibration stream
+                # this producer built from the module's own constants. No argument selected those values, so it
+                # is never a 2 -- a bare `ValueError` reaching the CLI with a message about the operator's input
+                # is the defect `drift.py`'s own exit-code paragraph forbids.
                 raise DriftEnvelopeState(
-                    "INVARIANT: drift.weighted_quantile refused its own crossing at n=%d: %s -- this "
-                    "project's published arithmetic contradicted itself mid-measurement" % (n, exc)) from None
+                    "INVARIANT: drift.weighted_quantile refused the declared-ratio stream at n=%d (%s: %s) -- "
+                    "this project's published arithmetic contradicted itself mid-measurement"
+                    % (n, type(exc).__name__, exc)) from None
             if flag:
                 vacuous += 1
             misses.append(1.0 - q ** 10)
@@ -379,7 +384,14 @@ def walk_mode2(scores: list, alpha: float, gamma: float) -> tuple:
     total = 0
     count = 0
     clipped = False
-    for step in drift.aci_threshold(scores, alpha, gamma):
+    try:
+        rounds = drift.aci_threshold(scores, alpha, gamma)
+    except (ValueError, ArithmeticError) as exc:
+        raise DriftEnvelopeState(
+            "INVARIANT: drift.aci_threshold refused a sequence this producer built from drift.py's own atoms "
+            "(%s: %s) -- the published constructions are no longer inputs the shipped validator accepts"
+            % (type(exc).__name__, exc)) from None
+    for step in rounds:
         total += step.err
         count += 1
         if step.lam in (0.0, drift.SCORE_CEILING):
@@ -605,16 +617,17 @@ def render_document(doc: dict) -> str:
     provenance = doc["provenance"]
     reproduction = doc["reproduction"]
     lines = ["# B3's drift envelope, published", ""]
+    lines += ["Written by `python3 %(producer)s --out %(artefact)s --doc %(document)s --force`,"
+              % {"producer": PRODUCER, "artefact": doc["artefact_path"], "document": doc["document_path"]},
+              "and re-checked by `python3 %s --check`." % PRODUCER]
+    lines += [""]
     lines += _wrap(
-        "Written by `python3 %(producer)s --out %(artefact)s --doc %(document)s --force` and re-checked by "
-        "`python3 %(producer)s --check`, which re-reads `src/autorate/drift.py`, re-runs every measurement "
-        "below on the shipped `weighted_quantile`, `aci_threshold` and `aci_regret_bound`, byte-compares this "
-        "document against a fresh render of the artefact, and refuses at exit 4 if the committed bytes cannot "
-        "reproduce what they publish. Exit 3 is a measured disagreement: the artefact is written anyway, "
-        "carrying both the figure the envelope states and the figure the arithmetic yielded. Nothing here reads "
-        "the corpus, so both lanes re-derive the same bytes, and this document carries no timestamp and no "
-        "machine path." % {"producer": PRODUCER, "artefact": doc["artefact_path"],
-                           "document": doc["document_path"]})
+        "That check re-reads `src/autorate/drift.py`, re-runs every measurement below on the shipped "
+        "`weighted_quantile`, `aci_threshold` and `aci_regret_bound`, byte-compares this document against a "
+        "fresh render of the artefact, and refuses at exit 4 if the committed bytes cannot reproduce what they "
+        "publish. Exit 3 is a measured disagreement: the artefact is written anyway, carrying both the figure "
+        "the envelope states and the figure the arithmetic yielded. Nothing here reads the corpus, so both "
+        "lanes re-derive the same bytes, and this document carries no timestamp and no machine path.")
     lines += [""]
     lines += _wrap(
         "Every envelope sentence below is a copy of `drift.WEIGHTED_ENVELOPE` and `drift.ACI_ENVELOPE`: the "
@@ -623,11 +636,13 @@ def render_document(doc: dict) -> str:
     lines += ["", "## In plain words", ""]
     withdrawal1 = doc["withdrawals"]["mode1"]
     withdrawal2 = doc["withdrawals"]["mode2"]
-    lines += _wrap("**Mode 1 (a declared density ratio): the finite-sample statement is %s.** %s The shipped "
-                   "estimator adds the constant test-point weight named in the provenance block below instead "
-                   "of the test point's own target-regime weight, which is not knowable at calibration time, so "
-                   "on an exactly declared ratio it under-covers, and the Mode 1 table is that under-coverage "
-                   "measured against the figure the envelope states. (%s)"
+    lines += _wrap("**Mode 1 (a declared density ratio): the finite-sample statement is %s.** What the mode "
+                   "buys instead is %s. The shipped estimator adds the constant test-point weight named in the "
+                   "provenance block below instead of the test point's own target-regime weight, which is not "
+                   "knowable at calibration time; the module states the reason as \"%s\". On an exactly "
+                   "declared "
+                   "ratio it therefore under-covers, and the Mode 1 table is that under-coverage measured "
+                   "against the figure the envelope states."
                    % (withdrawal1["status"], withdrawal1["what_the_mode_buys"], withdrawal1["why"]))
     lines += [""]
     lines += _wrap("**Mode 2 (an adaptive threshold): the regret statement is %s.** The inequality this module "
@@ -636,18 +651,19 @@ def render_document(doc: dict) -> str:
                    "each with its realised long-run rate, its deviation from the target, and the bound it "
                    "exceeds. The clip that keeps the iterate inside the score range discards the update whenever "
                    "it fires, and every violation below has a fired clip beside it; a clip is necessary for a "
-                   "violation, not sufficient, which is what the sweep counts say. (%s)"
+                   "violation, not sufficient, which is what the sweep counts say. The module states the "
+                   "reason as \"%s\"."
                    % (withdrawal2["status"], withdrawal2["why"]))
     lines += ["", "## Mode 1: the declared ratio, measured", ""]
     lines += _wrap(
         "Calibration regime %s, declared target density %s, `E_F0[w] = %s`, nominal alpha %s, seed %s, %s "
-        "trials per size at sizes %s, streams derived as `%s`. Coverage comes from the %s, so the figure the "
-        "envelope quotes and the figure below carry one Monte-Carlo layer between them and not two: the "
-        "envelope's own provenance names %s test points per trial, and this run does not sample them."
+        "trials per size at sizes %s, streams derived as `%s`. Coverage: %s The envelope's own provenance "
+        "names %s test points per trial, and this run does not sample them, so the figure below and the figure "
+        "the envelope quotes share one Monte-Carlo layer and not two."
         % (provenance["calibration_regime"], provenance["target_density"],
            provenance["expected_weight_under_calibration"], provenance["alpha"], provenance["seed"],
            provenance["trials_per_size"], provenance["sizes"], provenance["mode1_stream_rule"],
-           provenance["mode1_coverage_method"], provenance["test_points_stated_by_envelope"]))
+           provenance["mode1_coverage_method"] + ".", provenance["test_points_stated_by_envelope"]))
     lines += [""]
     lines += [
         "| n | trials | realised miscoverage | standard error | 3SE | envelope states | agrees | "
@@ -693,15 +709,15 @@ def render_document(doc: dict) -> str:
         "clipped sequences still held. The envelope states %s violated-without-a-clip and %s clipped-but-held. "
         "Both counts are re-run by `--check`: a violation firing with no clip would make the mechanism sentence "
         "in `ACI_ENVELOPE` wrong rather than merely unproven."
-        % (sweep["sequences"], sweep["seed"], sweep["rounds"], sweep["classes"], sweep["alpha"],
-           sweep["gamma"], sweep["bound"], sweep["violations"], sweep["violated_without_clip"],
+        % (sweep["sequences"], sweep["seed"], sweep["rounds"], sweep["classes"], _cell(sweep["alpha"]),
+           _cell(sweep["gamma"]), _cell(sweep["bound"]), sweep["violations"], sweep["violated_without_clip"],
            sweep["held_clipped"], sweep["envelope_cited_violated_without_clip"],
            sweep["envelope_cited_held_clipped"]))
     lines += ["", "## What this artefact re-tests", ""]
     for check in reproduction["checks"]:
         lines.append("- `%s`: measured %s, envelope states %s, tolerance %s (%s) -- %s" % (
-            check["id"], check["measured"], check["envelope_states"],
-            "direction only" if check["tolerance"] is None else check["tolerance"],
+            check["id"], _cell(check["measured"]), _cell(check["envelope_states"]),
+            "direction only" if check["tolerance"] is None else _cell(check["tolerance"]),
             check["tolerance_basis"], "agrees" if check["agrees"] else "DISAGREES"))
     lines += [""]
     lines += _wrap("Every figure in this section is read out of `%s`; the renderer takes no number from "
@@ -721,6 +737,19 @@ def render_document(doc: dict) -> str:
         lines.append("- **%s** withdraws `%s`. Owner: `%s`. What it buys instead: %s." % (
             mode, block["statement_withdrawn"], block["owner"], block["what_the_mode_buys"]))
     return "\n".join(lines) + "\n"
+
+
+def _cell(value) -> str:
+    """One published figure as text, at the precision the artefact stores it at.
+
+    A float is never printed with the 17 significant digits `repr` gives it: the last bits of a double are a
+    platform fact (ledger R-121), and this document is the prose a reader quotes.
+    """
+    if isinstance(value, bool) or value is None:
+        return json.dumps(value)
+    if isinstance(value, float):
+        return format(value, "." + str(PUBLISHED_DECIMALS) + "f")
+    return str(value)
 
 
 def _provenance_cell(value) -> str:
@@ -912,11 +941,16 @@ def _run_check(args) -> int:
         print("%s: %s: %s" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
         return EXIT_DRIFT if declared else EXIT_USAGE
     if disagreements:
-        print("%s: ARTEFACT DRIFT: %s cannot reproduce what it publishes (%d claim%s)"
-              % (PRODUCER, path, len(disagreements), "" if len(disagreements) == 1 else "s"), file=sys.stderr)
+        # The same axis as every other check refusal: the defect's class names WHAT is wrong, and who named the
+        # path decides whose fault it is. A scratch artefact the operator pointed at is their input (2); the
+        # declared artefact is this build's own table, and a broken one there is the checkout's (4).
+        code = EXIT_DRIFT if declared else EXIT_USAGE
+        print("%s: %s: %s cannot reproduce what it publishes (%d claim%s)"
+              % (PRODUCER, "ARTEFACT DRIFT" if declared else "NAMED ARTEFACT DOES NOT REPRODUCE", path,
+                 len(disagreements), "" if len(disagreements) == 1 else "s"), file=sys.stderr)
         for label in disagreements:
             print("  DRIFT: %s" % label, file=sys.stderr)
-        return EXIT_DRIFT
+        return code
     print("re-derived %d claims from %s; the document is a render of those bytes"
           % (len(doc["reproduction"]["checks"]), path))
     return EXIT_CERTIFIED

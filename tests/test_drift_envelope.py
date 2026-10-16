@@ -500,12 +500,14 @@ def test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4(kin
 def test_an_operator_named_artefact_that_is_wrong_is_usage_rc_2_not_drift_rc_4(tmp_path, capsys):
     """The who-named-the-path axis: a path the operator typed is theirs, so a bad one is 2.
 
-    The same forged bytes as the row above; only the naming differs. This is the distinction the exit table in
-    `cli.py` draws everywhere else, and the reason a missing published artefact and a typo cannot share a code.
+    The same forged bytes as the row above; only the naming differs -- including the two plants whose defect is
+    a figure that no longer re-derives, because the defect's class names WHAT is wrong and who named the path
+    decides whose fault it is. This is the distinction the exit table in `cli.py` draws everywhere else, and the
+    reason a missing published artefact and a typo cannot share a code.
     """
     from tools import drift_envelope
 
-    for kind in ("truncated-weighted", "seed-moved", "empty"):
+    for kind in ("truncated-weighted", "seed-moved", "empty", "figure-moved", "recipe-moved"):
         forged = _forge_artefact(kind, tmp_path)
         assert drift_envelope.main(["--check", "--artefact", str(forged)]) == 2, (kind,
                                                                                   capsys.readouterr())
