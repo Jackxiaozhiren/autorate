@@ -731,8 +731,9 @@ DECLARED_UNOWNED_NOTE_DIGITS = {
     # The row below refuses a new addition and refuses a listed token that has left the note, so this table is
     # an inventory rather than an ignore list (review M4: the old enumeration row could not see a fourth note
     # or a fourth spelling, and a digit outside three literals stayed silently unowned).
-    "G2": {"2", "64", "1", "0.50", "0.15", "0.9747"},
-    "G3": {"4", "64", "600", "200", "36", "0", "0.014867"},
+    # G2's whole audit family and G3's population family now have owner rows below; only the knob-cell
+    # sweep's two counts and the upstream-quoted pair remain, each named with the site that computes it.
+    "G3": {"4", "64"},
     "G4": {"0.000", "0.952", "100"},
 }
 
@@ -785,14 +786,43 @@ def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inven
                 | _g1_num(alpha) | _g1_num(corrected) | _g1_num(family) | _g1_num(1 - family)
                 | {"%d" % slice_run["n_claims"], "%d" % certified_slices})
     assert option_counts, "the committed MASSIVE rows carry no option_count, so the note has nothing to state"
+    # G2's note states the audit's `laya`/`confidence` row. The row is produced from the committed records by
+    # the same function that renders `docs/AUDIT.md`, which `verify` already byte-compares, so the note's five
+    # digits are derived here rather than agreed with the prose.
+    from autorate.audit import audit_fields
+    audit_recs = report.load_records(REPO / "data" / "records_feishu.jsonl")
+    conf = audit_fields(audit_recs["laya"])["confidence"]
+    g2_audit = ({"%d" % conf["automated_cases"], "%d" % conf["n_cases"], "%d" % conf["erroneous_cases"]}
+                | _g1_num(conf["measured_error"]) | _g1_num(conf["implied_error"])
+                | _g1_num(conf["bound"]) | _g1_num(conf["multiple"]))
+
+    # G3's note states the ordinal contrast's own population: records, cases, empty sets, the over-top count
+    # and the set certificate's marginal bound. All five come out of the generator and certifiers the contrast
+    # test uses, through the shared helper so this is the same pair, not a look-alike.
+    from _records import build_ordinal, g3_pair
+    from autorate.ordinal import interval_set
+    rows = build_ordinal(n=1200, seed=5, shift=0.0, error_rate=0.0, temp=1.4)
+    score, sev = g3_pair(rows)
+    ev_ids = set(sev.meta["eval_ids"])
+    ev = [r for r in rows if r.id in ev_ids]
+    over_hi = empty = 0
+    for r in ev:
+        C = interval_set(r.probs, score.qhat)
+        if not C:
+            empty += 1
+            continue
+        over_hi += r.gold_index > C[-1]
+    g3_contrast = ({"%d" % len(ev), "%d" % len({r.case_id for r in ev}), "%d" % empty, "%d" % over_hi}
+                   | _g1_num(score.marginal_error_bound))
+
     resplit_doc = report.read_resplit(REPO / report.RESPLIT_JSON)
     control = [t for t in resplit_doc["tasks"] if "synthetic" in str(t["label"])]
     rates = {"%.3f" % c["violation_rate"] for c in control if c["violation_rate"] is not None}
     owned = {
         "G1": {"%d" % resplit_doc["resplits"],
                "%d" % len(seen_resplit), "%d" % len(seen_resplit_rubric), "0"} | rates,
-        "G2": set(),
-        "G3": {"19", "%d" % len(seen_sev), "%d" % len(seen_sev_rubric)},
+        "G2": g2_audit,
+        "G3": {"19", "%d" % len(seen_sev), "%d" % len(seen_sev_rubric)} | g3_contrast,
         "G4": g4_owned,
         "G5": {"249", "284", "35", "0"},
     }

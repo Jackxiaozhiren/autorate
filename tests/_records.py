@@ -154,3 +154,17 @@ def build_ordinal(*, n=1200, seed=1, k=K, shift=0.0, error_rate=0.0, temp=1.4, j
                               gold=None if len(out) < unlabelled else options[gold],
                               predicted=options[centre], case_id=cid, seed=seed, u=rng.random()))
     return out
+
+def g3_pair(rows):
+    """The set certificate and the severity certificate for one ordinal population.
+
+    Shared because two rows ask about the same pair from different sides: `tests/test_g3_contrast.py` asks
+    whether the contrast holds, and the note-digit guard in `tests/test_verify_protocol.py` asks whether the
+    digits G3's frozen note states are the ones this pair actually produces. A helper, not a second copy.
+    """
+    from autorate.certify_score import certify_score
+    from autorate.severity import certify_severity
+    from autorate.certificate import ALPHA, BETA, DELTA, SEED
+    return (certify_score(rows, alpha=ALPHA, beta=BETA, delta=DELTA, seed=SEED),
+            certify_severity(rows, alpha=ALPHA, delta=DELTA, direction="under", seed=SEED))
+
