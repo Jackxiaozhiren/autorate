@@ -64,13 +64,18 @@ def stage_published(work):
     publication declares -- and only the first two are files to copy; the direction is a rule, not a
     path. It joins the same way the set tables do, because G3's artefact is now as published as theirs,
     and a fixture that forgets it makes every refusal test below name the absent ordinal file instead of
-    the tamper it planted.
+    the tamper it planted. The contamination pair joins the same way -- the gap document's own artefact and
+    the pin it is re-pooled from -- because a scratch tree without them refuses on
+    `data/contamination_probe.json` before it can reach the defect it was built to plant.
+    (`docs/CONTAMINATION.md` itself needs no mention here: `stage_documents` reads it out of
+    `cli.PUBLISHED_DOCS`.)
     """
     from autorate.cli import PROTOCOL_JSON
-    from autorate.report import (CERTS, G1_FEASIBILITY_JSON, MASSIVE_CERTIFICATES, RECORDS,
-                                 RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON)
+    from autorate.report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_PIN, G1_FEASIBILITY_JSON,
+                                 MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON)
 
-    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON, G1_FEASIBILITY_JSON}
+    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON, G1_FEASIBILITY_JSON,
+              CONTAMINATION_JSON, CONTAMINATION_PIN}
              | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
              | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
@@ -159,7 +164,9 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     from autorate.cli import (PIN_DERIVED_KEYS, PUBLISHED_DOCS, SEVERITY_COMPARE_FIELDS,
                               SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
-    from autorate.report import (CERTS, G1_FEASIBILITY_JSON, G1_FEASIBILITY_REFERENCE_FIELDS,
+    from autorate.report import (CERTS, CONTAMINATION_HEADLINE_FIELDS, CONTAMINATION_RUBRIC_FIELDS,
+                                 CONTAMINATION_STRATA_KEYS, G1_FEASIBILITY_JSON,
+                                 G1_FEASIBILITY_REFERENCE_FIELDS,
                                  G1_FEASIBILITY_ROW_FIELDS, G1_FEASIBILITY_RUBRIC_FIELDS,
                                  MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
                                  SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
@@ -184,8 +191,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
                                                          "docs/AUDIT.md", "docs/SEVERITY.md",
                                                          "docs/RESPLIT.md", "docs/SLICES.md",
-                                                         "docs/FEASIBILITY.md",
-                                                         "docs/REPORT.md"}, PUBLISHED_DOCS
+                                                         "docs/FEASIBILITY.md", "docs/REPORT.md",
+                                                         "docs/CONTAMINATION.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
     # `verify` re-derived neither them nor this row's knowledge of them: the row was red at
@@ -244,6 +251,19 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + (len(G1_FEASIBILITY_REFERENCE_FIELDS) - 2) * len(feas_doc["reference"])
                 + (len(G1_FEASIBILITY_ROW_FIELDS) - 3) * len(feas_doc["rows"])
                 + len(G1_FEASIBILITY_RUBRIC_FIELDS)
+                # G4's contamination arm enters the same way, from its own field lists and from the strata the
+                # pin declares: `errors`, `cases`, `rows` and the pointer count for each stratum, then the five
+                # values compared whole (`pin.rows`, `pin.sha256`, `pin.bytes`, `pin.excluded` and `claim`),
+                # the nine the probe block carries (`R_in`, `R_out`, `delta_hat`, `interval`, `interval_width`,
+                # `worse`, `sign`, `excludes_zero`, `interpretation`), one per headline field, and one rubric
+                # row per field the freeze owns. Measured on the committed bytes: the absent lane printed 612
+                # and the present 649, and the two corpus-only re-digest checks are the reason the gap is 37
+                # rather than the 35 every earlier round carried.
+                + len(CONTAMINATION_STRATA_KEYS) * 4
+                + 5
+                + 9
+                + len(CONTAMINATION_HEADLINE_FIELDS)
+                + len(CONTAMINATION_RUBRIC_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 

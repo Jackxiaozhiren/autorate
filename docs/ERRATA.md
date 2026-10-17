@@ -2130,3 +2130,51 @@ worst-group certified `autorate` with 0.30, and no slice certifies, so there is 
 in the comparison -- the same zero-denominator refusal the note invokes four sentences earlier for the violation
 rate. The note now says the condition is not evaluable, and that the pivot it names is only half published:
 G2's audit is, Plan B3's contamination layer is not.
+
+## 2026-10-17 — the residue guard was red under the eleventh freeze, and a `§` pointer needed no owner
+
+**The eleventh freeze shipped a red guard.** `test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inventory_owns`
+failed at `242aac4` in both lanes, measured on the tree as committed:
+
+    AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir  -> FAILED: G4 states digit(s) ['0.207502', '0.235208',
+                                                       '0.262646', '27', '29'] that no row re-derives
+    AUTORATE_FEISHU_ROOT=<the vendored corpus>    -> FAILED: the same five digits
+
+The contamination additions were computed into the local name `g4_owned` *after* `owned = {…}` had already
+bound `owned["G4"]` to the earlier set, so every digit the eleventh freeze put into G4's note -- the arm's `29`
+field checks and `4` budget values, the `27` pinned rows, `delta_hat` and both interval ends -- had no owner.
+The row the tenth freeze wrote to stop ungated digits was itself the thing that let them through, and this
+round's "green" was quoted from the export of `b9be801`, which predates the contamination block: a suite run on
+an older tree is not evidence about the tree it was quoted for. The block now runs before the dictionary is
+built. The pre-fix red above is the row's own falsification -- it goes from failing to passing with no change to
+the note, the artefacts, or the protocol digest (`25e76b21af4c…`, unchanged: no claim note moved, so this round
+is a correction and not a tenth re-emission).
+
+**A note could point at a spec section that does not exist.** The residue rule treats a digit next to a section
+sign as structural, so `§14` was never a candidate for ownership: a note citing `§99` would have been waived, not
+checked. Both spellings -- `section 9` and `§9` -- are now policed against the spec's own top-level headings by
+`test_every_spec_section_pointer_in_the_frozen_notes_names_a_real_section`, and the residue row subtracts a
+pointer only where the heading exists, so a renumbered spec reddens the note that cites it rather than quietly
+exempting the pointer. Measured on the committed bytes, G1 carries two pointers, `9` (Contamination
+stratification) and `14` (Risks, and what would make us stop), and the spec has 17 top-level sections.
+
+**A new published artefact reddened seven rows that build a scratch checkout.** The same run that found the
+guard defect above found this one: `tests/test_cli.py` and `tests/test_inventory.py` in the corpus-visible lane
+returned 9 failures against 1169 passes and 2 skips. Seven were real. Freeze 11 added
+`data/contamination_probe.json`, `data/pin_app_benchmark.json` and `docs/CONTAMINATION.md` to the gate's tables
+and left behind the rows that fabricate a partial checkout to plant a *different* defect: `stage_published(work)`
+copies the artefacts the tables declare, and its table list predated the contamination pair, so
+`test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error`, `test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error`,
+`test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_error`, the two inventory-snapshot
+drift rows, `test_verify_reds_when_a_transcribed_bound_column_is_wrong` and
+`test_verify_runs_and_agrees_where_the_corpus_does_not_exist` all refused on
+`PUBLISHED ARTEFACT UNAVAILABLE: data/contamination_probe.json` -- the right exit code for the wrong witness,
+because the planted tamper never got to speak. The fixture now reads the pair from `report.CONTAMINATION_JSON`
+and `report.CONTAMINATION_PIN` the way it reads every other table, and the agreement row's independent
+membership literal gained `docs/CONTAMINATION.md` plus the arm's comparison terms (its own count of 612 in the
+absent lane, derived from the strata, the whole-value and probe-block comparisons, the headline fields and the
+rubric, not typed). The other two failures were the probe, not the tree: they need the `autorate` console script
+on PATH to run the shipped entry point, and the run that reported them launched pytest without it -- re-run with
+`.venv/bin` on PATH, both pass. What is disclosed here is the class: every one of these rows was green in CI
+because CI cannot see them failing, and the round that published the arm reported its suite from an export of an
+earlier commit.

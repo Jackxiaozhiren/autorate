@@ -1977,6 +1977,11 @@ CONTAMINATION_RUBRIC_FIELDS = ("delta", "pieces", "min_cases_per_stratum", "max_
 CONTAMINATION_STRATA_FIELDS = ("errors", "cases", "rows", "pointers", "declared_in_training")
 CONTAMINATION_PIN_ROW_FIELDS = ("suite", "variant", "n", "accuracy", "errors", "in_training", "pointer")
 CONTAMINATION_HEADLINE_FIELDS = ("delta_hat", "interval", "R_in", "R_out", "excludes_zero", "worse", "sign")
+# The two comparisons the corpus-absent lane cannot make, named here rather than only inside the arm, because
+# the corpus-present denominator that `verify` prints is derived from the absent one plus these: a check that
+# exists in one place cannot drift from the count it is cited to explain.
+CONTAMINATION_CORPUS_ONLY_CHECKS = ("contamination pin.recomputed_digest",
+                                    "contamination pin.recomputed_bytes")
 
 
 def read_contamination(path: Path) -> dict:
@@ -2142,19 +2147,24 @@ def rederive_contamination(expect, expect_rubric, rubric=None) -> None:
         import hashlib
 
         raw = (root / "research/results/app_benchmark_results.json").read_bytes()
-        expect("contamination pin.recomputed_digest", doc["pin"]["source"]["sha256"],
+        expect(CONTAMINATION_CORPUS_ONLY_CHECKS[0], doc["pin"]["source"]["sha256"],
                hashlib.sha256(raw).hexdigest())
-        expect("contamination pin.recomputed_bytes", doc["pin"]["source"]["bytes"], len(raw))
+        expect(CONTAMINATION_CORPUS_ONLY_CHECKS[1], doc["pin"]["source"]["bytes"], len(raw))
 
 
 def _corpus_root_for_contamination():
-    """The checkout the pin came from, or None where the corpus is absent (the CI lane)."""
+    """The checkout the pin came from, or None where no corpus is visible (the CI lane).
+
+    Resolved the way every other corpus path in this build is -- environment first, then the sibling
+    default -- because a lane difference that depends on *how* the corpus was named would make the printed
+    denominator a fact about the invocation rather than about the tree.
+    """
     import os
 
+    from autorate.cli import _default_corpus
+
     env = os.environ.get("AUTORATE_FEISHU_ROOT")
-    if not env:
-        return None
-    root = Path(env)
+    root = Path(env) if env else Path(_default_corpus())
     return root.parents[2] if (root / "data" / "manifest.json").is_file() else None
 
 

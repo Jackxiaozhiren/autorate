@@ -90,21 +90,33 @@ def test_the_document_carries_no_machine_path_and_no_run_timestamp(in_repo):
     assert "delta_hat" in text and "`claim` | False" in text, text[:400]
 
 
-def test_the_arm_re_pools_the_pin_and_compares_the_published_gap_field_by_field(in_repo):
+def _arm_in_lane(monkeypatch, root):
+    """Run the arm with the corpus deliberately visible or not, so the lane is a fact of the test."""
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", root)
+
+
+def test_the_arm_re_pools_the_pin_and_compares_the_published_gap_field_by_field(in_repo, monkeypatch):
     """The arm's own numbers: it must disagree with nothing, and it must be making comparisons.
 
     The counts are asserted, not the labels, because the note quotes them; the mismatch check is what shows
     the re-pooling agrees with the artefact on this tree.
     """
+    _arm_in_lane(monkeypatch, "/nonexistent-corpus-dir")
     field, budget = _arm_counts()
     assert field and budget, (field, budget)
     assert [name for name, ok in field if not ok] == [], [n for n, ok in field if not ok]
     assert [name for name, ok in budget if not ok] == [], [n for n, ok in budget if not ok]
     assert len(field) == 29 and len(budget) == 4, (len(field), len(budget))
+    _arm_in_lane(monkeypatch, str(REPO.parent / "laya-0.3.20" / "research" / "benchmarks" / "feishu_zh"))
+    seen, _ = _arm_counts()
+    labels = {name for name, ok in seen}
+    extra = sorted(labels - {name for name, _ in field})
+    assert extra == sorted(report.CONTAMINATION_CORPUS_ONLY_CHECKS), extra
 
 
-def test_the_note_digit_for_the_arm_is_the_number_of_comparisons_the_arm_makes(in_repo):
+def test_the_note_digit_for_the_arm_is_the_number_of_comparisons_the_arm_makes(in_repo, monkeypatch):
     """The frozen note claims 29 quantities and 4 budget values; this row recomputes both from the arm."""
+    _arm_in_lane(monkeypatch, "/nonexistent-corpus-dir")
     note = " ".join(next(c for c in json.loads((REPO / "protocol.json").read_text())["claims"]
                          if c["id"] == "G4")["note"].split())
     field, budget = _arm_counts()
@@ -185,3 +197,23 @@ def test_the_committed_artefact_publishes_no_claim(in_repo):
     assert doc["claim"] is False and doc["probe"]["claim"] is False, doc["claim"]
     assert "not a proof of leakage" in (REPO / report.CONTAMINATION_MD).read_text()
     assert doc["headline"]["excludes_zero"] is True, doc["headline"]
+
+
+def test_the_present_lane_extras_do_not_depend_on_how_the_corpus_was_named(monkeypatch):
+    """A denominator that changes with the *form* of the corpus argument would be a fact about the call.
+
+    The two re-digest checks are the corpus-present lane's own work, so they must fire wherever a real corpus
+    is reachable -- environment variable or the sibling default every other corpus path also uses. The row
+    that fails without the fix is this one: resolving through the default and getting nothing back would make
+    `verify` print a smaller present-lane denominator than the tree can support.
+    """
+    from autorate.cli import _default_corpus
+
+    monkeypatch.delenv("AUTORATE_FEISHU_ROOT", raising=False)
+    default = Path(_default_corpus())
+    if not (default / "data" / "manifest.json").is_file():
+        pytest.skip("no sibling corpus to resolve: %s; the env-var lane is covered by every other row"
+                    % default)
+    root = report._corpus_root_for_contamination()
+    assert root is not None, "the sibling default resolved to nothing, so the lane would lose its two checks"
+    assert (root / "research/results/app_benchmark_results.json").is_file(), root

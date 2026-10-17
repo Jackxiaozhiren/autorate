@@ -409,7 +409,7 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
 
     Red if: a quoted output line disagrees with the run, its two halves disagree with each other, a
     lane-shaped number names neither lane, the lanes no longer differ by the comparisons the committed
-    snapshot owns, or either lane stops being quoted at all.
+    snapshot and the contamination arm's corpus-only checks own, or either lane stops being quoted at all.
     """
     import re
 
@@ -428,7 +428,10 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
 
     inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
     non_machine = [k for k in inv if k not in SNAPSHOT_MACHINE_KEYS]
-    gap = len(inv["digests"]) + len(non_machine)
+    # The present lane is the absent lane plus the snapshot's corpus-only comparisons and the contamination
+    # arm's two re-digest checks. Both parts are counts of published structure, so a check added to either arm
+    # moves the derivation instead of making this row disagree with the run.
+    gap = len(inv["digests"]) + len(non_machine) + len(report.CONTAMINATION_CORPUS_ONLY_CHECKS)
     n_present = n_absent + gap
 
     corpus_root = REPO.parent / "laya-0.3.20" / "research" / "benchmarks" / "feishu_zh"
@@ -440,10 +443,11 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
         direct = re.search(r"re-derived (\d+) /(\d+) values", present_out)
         assert direct and direct.group(1) == direct.group(2), present_out[-400:]
         assert int(direct.group(1)) == n_present, (
-            "the corpus-present lane prints %s but the committed snapshot says it should be %s = %s + %d "
-            "digests + %d non-machine keys -- the derivation this row falls back to on other machines is "
-            "the thing that just disagreed with the real run"
-            % (direct.group(1), n_present, n_absent, len(inv["digests"]), len(non_machine)))
+            "the corpus-present lane prints %s but the published structure says it should be %s = %s + %d "
+            "digests + %d non-machine snapshot keys + %d corpus-only contamination checks -- the derivation "
+            "this row falls back to on other machines is the thing that just disagreed with the real run"
+            % (direct.group(1), n_present, n_absent, len(inv["digests"]), len(non_machine),
+               len(report.CONTAMINATION_CORPUS_ONLY_CHECKS)))
         checked = "measured directly"
     else:
         checked = "derived from the committed snapshot (corpus not visible here)"
@@ -677,7 +681,8 @@ NOTE_WORDS = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6
 # that is not part of an identifier, a hex sha or a section sign has to be owned. Structural is decided by the
 # character next to the digit -- `g1_feasibility.py`'s 1 and `9e6363a`'s 9 are inside words, `200-resplit` and
 # `42 re-derivations` are not -- so the exclusion is a rule with a reason rather than a noun whitelist the next
-# sentence can step around.
+# sentence can step around. Section signs are the one waiver this rule leaves standing, and the row below
+# (`test_every_spec_section_pointer_in_the_frozen_notes_names_a_real_section`) is what closes it.
 NOTE_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 NOTE_STRUCTURAL_NEIGHBOURS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_\u00a7")
 
@@ -697,6 +702,29 @@ def _folded_notes():
     return {c["id"]: " ".join(c["note"].split()) for c in doc["claims"]}
 
 
+# A note points at the spec either as `§9` or as "section 9". The first spelling is invisible to the residue
+# rule -- a section sign is a structural neighbour -- so before this row a pointer to a section the spec does
+# not have was waived, not checked. Both spellings are one claim with one owner: the spec's own heading list.
+NOTE_SECTION_POINTER = re.compile("(?:\u00a7|sections? )(\\d+)")
+SPEC_MD = "docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md"
+
+
+def _spec_sections():
+    return {m.group(1) for m in re.finditer(r"^## (\d+)\.", (REPO / SPEC_MD).read_text(), re.M)}
+
+
+def test_every_spec_section_pointer_in_the_frozen_notes_names_a_real_section(in_repo):
+    """The frozen notes cite the spec by number; the numbers have to exist there.
+
+    Plant that proves this row can fail: in a `git archive` copy, change G1's note "section 9" to "section 99"
+    and re-emit `protocol.json` -- the row reddens naming 99, and the residue row reddens on it too.
+    """
+    sections = _spec_sections()
+    assert len(sections) >= 10, "the spec's headings are no longer enumerable, so nothing owns a pointer"
+    for cid, note in sorted(_folded_notes().items()):
+        pointers = set(NOTE_SECTION_POINTER.findall(note))
+        assert pointers <= sections, "%s points at section(s) %s, which %s has no top-level heading for" % (
+            cid, sorted(pointers - sections, key=int), SPEC_MD)
 
 
 def test_the_frozen_notes_count_of_tasks_and_cases_is_derived_from_the_files_they_name(in_repo):
@@ -738,7 +766,7 @@ DECLARED_UNOWNED_NOTE_DIGITS = {
 }
 
 
-def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inventory_owns(in_repo):
+def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inventory_owns(in_repo, monkeypatch):
     """Invert the arm-count row: take every number a note states, then subtract what is derived.
 
     `test_every_claim_note_that_counts_an_arm_is_counted_by_a_row` matches three spellings and compares note
@@ -818,6 +846,19 @@ def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inven
     resplit_doc = report.read_resplit(REPO / report.RESPLIT_JSON)
     control = [t for t in resplit_doc["tasks"] if "synthetic" in str(t["label"])]
     rates = {"%.3f" % c["violation_rate"] for c in control if c["violation_rate"] is not None}
+    # G4 now states the contamination arm's sizes and the gap it publishes; both come from the artefacts.
+    # The contamination arm's size is a lane fact (two checks exist only where the corpus is visible), and the
+    # note quotes the corpus-absent pair, so the derivation is pinned to that lane rather than inherited.
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", "/nonexistent-corpus-dir")
+    contamination_field, contamination_budget = [], []
+    report.rederive_contamination(lambda label, actual, wanted: contamination_field.append(label),
+                                  lambda label, actual, wanted: contamination_budget.append(label))
+    pin = json.loads((REPO / report.CONTAMINATION_PIN).read_text())
+    gap = report.build_contamination(pin)["headline"]
+    g4_owned = (g4_owned | {"%d" % len(contamination_field), "%d" % len(contamination_budget),
+                            "%d" % len(pin["rows"]), "%d" % len(pin["excluded"])}
+                | {t for key in ("delta_hat", "R_in", "R_out") for t in _g1_num(abs(gap[key]))}
+                | {t for end in gap["interval"] for t in _g1_num(abs(end))})
     owned = {
         "G1": {"%d" % resplit_doc["resplits"],
                "%d" % len(seen_resplit), "%d" % len(seen_resplit_rubric), "0"} | rates,
@@ -829,26 +870,20 @@ def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inven
     # G1's note quotes spec section 14's kill threshold, so the spec is its only honest source: read the
     # number there and require the note to carry that spelling. A threshold that moves in the spec reddens
     # the note, which is the whole point of transcribing rather than restating.
-    spec = (REPO / "docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md").read_text()
+    spec = (REPO / SPEC_MD).read_text()
     kill = re.search(r"worst-group certified autorate < (\S+) on all tasks", spec)
     assert kill, "spec section 14's kill criterion changed wording, so the note's threshold lost its source"
     owned["G1"] = owned["G1"] | {kill.group(1)}
     assert kill.group(1) in notes["G1"], (
         "spec section 14 says %s and G1's note quotes a different threshold" % kill.group(1))
-    # G4 now states the contamination arm's sizes and the gap it publishes; both come from the artefacts.
-    contamination_field, contamination_budget = [], []
-    report.rederive_contamination(lambda label, actual, wanted: contamination_field.append(label),
-                                  lambda label, actual, wanted: contamination_budget.append(label))
-    pin = json.loads((REPO / report.CONTAMINATION_PIN).read_text())
-    gap = report.build_contamination(pin)["headline"]
-    g4_owned = (g4_owned | {"%d" % len(contamination_field), "%d" % len(contamination_budget),
-                            "%d" % len(pin["rows"]), "%d" % len(pin["excluded"])}
-                | {t for key in ("delta_hat", "R_in", "R_out") for t in _g1_num(abs(gap[key]))}
-                | {t for end in gap["interval"] for t in _g1_num(abs(end))})
 
     contract = {str(v) for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
+    sections = _spec_sections()
     for cid, note in sorted(notes.items()):
         stated = _note_tokens(note)
+        # A section pointer is a claim about the spec's structure, not a quantity, so the spec owns it -- but
+        # only where the heading exists. A pointer to a section the spec does not have stays in the residue.
+        stated = stated - (set(NOTE_SECTION_POINTER.findall(note)) & sections)
         # An `rc=N` digit is owned by the published exit-code contract, and only if the contract has that code:
         # a note citing exit 5 would be a claim about an exit code `cli.main` cannot return.
         rc_digits = {m.group(1) for m in re.finditer(r"rc=(\d+)", note)}

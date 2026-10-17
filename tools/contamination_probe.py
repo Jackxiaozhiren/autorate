@@ -28,14 +28,15 @@ import sys
 from pathlib import Path
 
 from autorate.cli import EXIT_CERTIFIED, EXIT_DRIFT, EXIT_NOT_CERTIFIABLE, EXIT_USAGE
-from autorate.report import (CONTAMINATION_JSON, CONTAMINATION_PIN, ContaminationRefusal,
-                             build_contamination, render_contamination)
+from autorate.report import (CONTAMINATION_JSON, CONTAMINATION_MD, CONTAMINATION_PIN,
+                             ContaminationRefusal, build_contamination,
+                             render_contamination)
 
 ProbeRefusal = ContaminationRefusal
 
-PIN_PATH = Path("data/pin_app_benchmark.json")
+PIN_PATH = CONTAMINATION_PIN
 PROBE_PATH = CONTAMINATION_JSON
-PROBE_DOC = "docs/CONTAMINATION.md"
+PROBE_DOC = str(CONTAMINATION_MD)
 PROBE_PRODUCER = "tools/contamination_probe.py"
 
 
