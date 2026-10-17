@@ -18,16 +18,19 @@ from .inventory import corpus_label, inventory, write_inventory
 from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (CERTS, G1_FEASIBILITY_JSON, G1_FEASIBILITY_MD, INVENTORY_JSON,
+from .report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_MD, G1_FEASIBILITY_JSON,
+                     G1_FEASIBILITY_MD, INVENTORY_JSON,
                      PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
                      RESPLIT_MD, SEVERITY_CERTS,
                      SEVERITY_LABEL, SEVERITY_RECORDS, SLICE_JSON, SLICE_MD,
                      build_report, certify_all, load_published,
-                     load_records, published_severity, read_certificate, read_g1_feasibility,
+                     load_records, published_severity, read_certificate, read_contamination,
+                     read_g1_feasibility,
                      read_inventory_snapshot,
                      read_resplit, read_slices, rederive_g1_feasibility, rederive_massive,
                      rederive_resplit, rederive_severity,
-                     rederive_slices, render_g1_feasibility, render_resplit, render_severity,
+                     rederive_contamination, rederive_slices, render_contamination,
+                     render_g1_feasibility, render_resplit, render_severity,
                      render_slices, write_report)
 from .severity import DIRECTIONS, certify_severity
 from .techreport import REPORT_MD, load_inputs, render_report
@@ -762,6 +765,9 @@ PUBLISHED_DOCS = (
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
     (RESPLIT_MD, lambda inv, records: _render_resplit_doc()),
     (SLICE_MD, lambda inv, records: _render_slice_doc()),
+    # G4's contamination gap, same shape again: rendered from the committed artefact, whose numbers the arm
+    # above re-pools from the pin.
+    (CONTAMINATION_MD, lambda inv, records: _render_contamination_doc()),
     # G1's ceiling document, same shape as the two above: rendered from the committed artefact's bytes,
     # and the artefact itself is re-derived field by field by `rederive_g1_feasibility` in both lanes.
     (G1_FEASIBILITY_MD, lambda inv, records: _render_feasibility_doc()),
@@ -771,6 +777,12 @@ PUBLISHED_DOCS = (
     # formatting choice here -- it decides which failure a reader is told about.
     (REPORT_MD, lambda inv, records: _render_techreport_doc(inv, records)),
 )
+
+
+def _render_contamination_doc() -> str:
+    """G4's `delta_hat` document, from the committed artefact and nothing else."""
+    doc = load_published(CONTAMINATION_JSON, "report.CONTAMINATION_JSON", read_contamination)
+    return render_contamination(doc)
 
 
 def _render_resplit_doc() -> str:
@@ -949,6 +961,7 @@ def cmd_verify(args) -> int:
     # corpus, so the ceiling -- including the nulls that name their missing inputs -- re-derives in the
     # corpus-absent lane exactly as it does here; a stale ceiling is drift with a field name on it.
     rederive_g1_feasibility(expect, expect_rubric, rubric)
+    rederive_contamination(expect, expect_rubric, rubric)
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:

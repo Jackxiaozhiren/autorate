@@ -163,7 +163,9 @@ NON_G1_CLAIMS = (
                        "collapsed (e.g. Khmer: accuracy 0.000 at mean confidence 0.952)",
         "status": CLAIM_STATUS_NOT_MET,
         "artefacts": ["data/slices_language.json", "docs/SLICES.md", "tools/language_slices.py",
-                      "tests/test_slice_surface.py"],
+                      "tests/test_slice_surface.py", "data/pin_app_benchmark.json",
+                      "data/contamination_probe.json", "docs/CONTAMINATION.md",
+                      "tools/contamination_probe.py", "tools/contamination_pin.py"],
         "note": "measured, and short of its own wording -- which is why this row reads `not_met` and not "
                 "`not_measured` any more. The behaviour the criterion describes is now a published artefact "
                 "rather than terminal scrollback: `tools/language_slices.py` certifies the four committed "
@@ -191,7 +193,19 @@ NON_G1_CLAIMS = (
                 "other three; upstream's `accuracy 0.000 at mean confidence 0.952` is its own 100-case read, "
                 "which this corpus neither replicates nor contradicts -- it is a fourth refusal at a "
                 "different sample size, and the claim ledger records the line. What "
-                "the run does emit is the criterion's own word: each refused slice's summary carries "
+                "The criterion's second named output is published beside that run. "
+                "`tools/contamination_probe.py` pools `data/pin_app_benchmark.json` -- upstream's own "
+                "per-suite `in_training` declarations, 27 usable rows and 3 excluded by name because their "
+                "rounded rate is not a whole number of cases -- into the two strata and writes the gap to "
+                "`data/contamination_probe.json` and `docs/CONTAMINATION.md`. `verify` re-pools it and "
+                "compares 29 quantities plus 4 budget values in both lanes, and re-digests the upstream file "
+                "where the corpus is visible; the arithmetic is `contamination.from_counts`, the same one "
+                "`stratified` uses. What it publishes is `delta_hat` = -0.235208 over a two-sided interval of "
+                "[-0.262646, -0.207502]: the in-training stratum errs less, which is the direction a "
+                "contamination signature predicts, and the interval is clear of zero. Its `claim` is false "
+                "and stays false, because the two strata are different suites, so task difficulty is "
+                "confounded with the flag and a gap between two aggregate rates does not show that any "
+                "checkpoint was trained on any of these cases. What "
                 "`NOT_CERTIFIABLE: reason=empty_feasible_set`, and `certify --groups language` over these "
                 "records exits 3, which is `EXIT_NOT_CERTIFIABLE`. An earlier draft of this note claimed the "
                 "opposite and was corrected by review, not by the author noticing; a later draft then denied "
@@ -434,8 +448,9 @@ def _g1_claim(certs: tuple) -> dict:
                 "for this criterion is not evaluable on this tree rather than fired: its condition compares a "
                 "worst-group certified `autorate` with 0.30, and with nothing certified there is no certified "
                 "`autorate` to put in that comparison -- the same refusal that keeps the violation rate "
-                "undefined. Of the pivot's two halves only one is published: the audit multiple G2 measures, "
-                "while the contamination layer Plan B3 wrote is tested and not published as evidence. So the "
+                "undefined. Both halves of the pivot are published now: the audit multiple G2 measures, "
+                "and the contamination gap section 9 defines, which the eleventh freeze publishes as "
+                "`data/contamination_probe.json` with its interval and its `claim = False`. So the "
                 "headline this project publishes is the audit multiple G2 measures and the worst-slice "
                 "refusal G4 names, not a certified automation rate. Nothing in this row licenses reading G1 "
                 "as met.",

@@ -1965,3 +1965,271 @@ def write_report(text: str, out: Path) -> None:
 
 def read_certificate(path: Path) -> Certificate:
     return Certificate.from_dict(json.loads(Path(path).read_text()))
+
+
+# --- G4's contamination gap: the pinned strata, the interval, and the document that quotes them -------
+
+CONTAMINATION_PIN = "data/pin_app_benchmark.json"
+CONTAMINATION_JSON = "data/contamination_probe.json"
+CONTAMINATION_MD = Path("docs/CONTAMINATION.md")
+CONTAMINATION_PRODUCER = "tools/contamination_probe.py"
+CONTAMINATION_RUBRIC_FIELDS = ("delta", "pieces", "min_cases_per_stratum", "max_interval_width")
+CONTAMINATION_STRATA_FIELDS = ("errors", "cases", "rows", "pointers", "declared_in_training")
+CONTAMINATION_PIN_ROW_FIELDS = ("suite", "variant", "n", "accuracy", "errors", "in_training", "pointer")
+CONTAMINATION_HEADLINE_FIELDS = ("delta_hat", "interval", "R_in", "R_out", "excludes_zero", "worse", "sign")
+
+
+def read_contamination(path: Path) -> dict:
+    """Load the probe artefact or refuse its shape, before any number in it is compared.
+
+    Same posture as the other published-artefact loaders: a missing key is named with the key, because the
+    alternative is a `KeyError` that reads like the gate failing rather than the artefact being wrong.
+    """
+    doc = json.loads(Path(path).read_text())
+    if not isinstance(doc, dict):
+        raise ValueError("the contamination artefact must be a JSON object, found %s"
+                         % type(doc).__name__)
+    absent = sorted(set(("producer", "pin", "rubric", "strata", "probe", "claim", "what_this_is"))
+                    - set(doc))
+    if absent:
+        raise ValueError("the contamination artefact is missing %s" % absent)
+    for name, stratum in doc["strata"].items():
+        missing = sorted(set(CONTAMINATION_STRATA_FIELDS) - set(stratum))
+        if missing:
+            raise ValueError("the contamination artefact's stratum %r is missing %s" % (name, missing))
+    missing_rubric = sorted(set(CONTAMINATION_RUBRIC_FIELDS) - set(doc["rubric"]))
+    if missing_rubric:
+        raise ValueError("the contamination artefact records no budget value for %s" % missing_rubric)
+    return doc
+
+
+def read_contamination_pin(path: Path) -> dict:
+    """The pinned upstream rows, shape-checked before the arm pools them.
+
+    The pin is what lets the corpus-absent lane re-derive the gap at all, so a pin that lost its `rows` or
+    its `source` is refused here rather than producing a gap out of nothing.
+    """
+    doc = json.loads(Path(path).read_text())
+    if not isinstance(doc, dict) or not isinstance(doc.get("rows"), list) or not doc["rows"]:
+        raise ValueError("the contamination pin must carry a non-empty `rows` list, found %r"
+                         % (type(doc.get("rows")).__name__ if isinstance(doc, dict) else type(doc).__name__,))
+    missing = sorted(set(("producer", "source", "excluded")) - set(doc))
+    if missing:
+        raise ValueError("the contamination pin is missing %s" % missing)
+    for row in doc["rows"]:
+        absent = sorted(set(CONTAMINATION_PIN_ROW_FIELDS) - set(row))
+        if absent:
+            raise ValueError("a pinned row is missing %s" % absent)
+    return doc
+
+
+def render_contamination(record: dict) -> str:
+    """G4's `delta_hat` as derived prose: every figure is read out of the artefact, and none is typed.
+
+    No timestamp and no machine path, so both lanes byte-compare the same bytes. The interpretation paragraph is
+    built from `worse` rather than written twice, because the direction is the one sentence a reader could
+    otherwise believe even after the data said the opposite.
+    """
+    probe, headline = record["probe"], record.get("headline")
+    lines = ["# The contamination gap (G4's second named output)",
+             "",
+             "Written by `python3 %s --out %s --doc %s --force` and re-checked by `python -m autorate.cli"
+             % (CONTAMINATION_PRODUCER, CONTAMINATION_JSON, CONTAMINATION_MD),
+             "verify`, which pools the pinned rows again and refuses a disagreement. The pin is committed, so",
+             "both lanes produce these bytes; what the corpus-absent lane cannot do is re-digest the upstream",
+             "file the pin came from, and the document says that rather than implying otherwise.",
+             "",
+             "Spec section 9 defines this quantity: run the same model over the strata its own harness",
+             "declares in-training and held-out, publish the gap with a two-sided interval, and label it a",
+             "diagnostic with an interpretation rule -- not a proof of leakage. `claim` is false in the",
+             "artefact because no aggregate gap licenses a leakage finding, and the two strata are carried by",
+             "different suites, which means task difficulty is confounded with the flag.",
+             "",
+             "- pin: `%s` from `%s`, sha256 `%s`, %d bytes, %d rows, %d interval pieces"
+             % (record["pin"]["path"], record["pin"]["source"]["path"], record["pin"]["source"]["sha256"],
+                record["pin"]["source"]["bytes"], record["pin"]["rows"], record["rubric"]["pieces"]),
+             "- budget it answers at: delta=%s, floor %s cases per stratum, ceiling %s interval width"
+             % (record["rubric"]["delta"], record["rubric"]["min_cases_per_stratum"],
+                record["rubric"]["max_interval_width"])]
+    for name in sorted(record["strata"]):
+        stratum = record["strata"][name]
+        lines.append("- `%s` (`in_training=%s`): %d pinned rows, %d errors over %d cases"
+                     % (name, stratum["declared_in_training"], stratum["rows"], stratum["errors"],
+                        stratum["cases"]))
+    excluded = record["pin"]["excluded"]
+    lines.append("- excluded from the pin by name: %d row(s)%s"
+                 % (len(excluded), "" if not excluded else " -- "
+                    + ", ".join("`%s`" % e["pointer"] for e in excluded)
+                    + ", each publishing a rounded rate whose `accuracy x n` is not a whole number"))
+    lines.append("")
+    if headline is None:
+        return "\n".join(lines + ["The probe ran and refused. The refusal is the result:", "", "```",
+                                  probe["refusal"], "```", "",
+                                  "Nothing is pooled away and nothing is printed as a measurement of nothing.",
+                                  ""])
+    lines += ["| quantity | value |", "|---|---|",
+              "| `R_in` (in-training error rate) | %s |" % headline["R_in"],
+              "| `R_out` (held-out error rate) | %s |" % headline["R_out"],
+              "| `delta_hat = R_in - R_out` | %s |" % headline["delta_hat"],
+              "| two-sided interval | [%s, %s] |" % (headline["interval"][0], headline["interval"][1]),
+              "| interval excludes zero | %s |" % headline["excludes_zero"],
+              "| stratum with the higher rate | `%s` |" % headline["worse"],
+              "| sign | `%s` |" % headline["sign"],
+              "| `claim` | %s |" % record["claim"],
+              "",
+              "The interpretation rule, stated because the number without it would be read as a finding:",
+              "",
+              "> %s" % probe["interpretation"],
+              "",
+              "Read as: the %s stratum errs more, across %d in-training rows and %d held-out ones; %s. The two"
+              % ("held-out" if headline["worse"] == "in_stratum" else "in-training",
+                 record["strata"]["in_stratum"]["rows"], record["strata"]["out_stratum"]["rows"],
+                 "that is the direction a contamination signature predicts"
+                 if headline["worse"] == "in_stratum"
+                 else "that is the opposite of the direction a contamination signature predicts"),
+              "strata are different suites, so the gap is confounded with task difficulty: it bounds a",
+              "difference between two aggregate rates and does not show that any checkpoint was trained on any",
+              "of these cases.",
+              "",
+              "## Reproducing it",
+              "",
+              "```",
+              "AUTORATE_FEISHU_ROOT=<corpus> python3 tools/contamination_pin.py --out %s" % CONTAMINATION_PIN,
+              "python3 %s --out %s --doc %s --force" % (CONTAMINATION_PRODUCER, CONTAMINATION_JSON,
+                                                        CONTAMINATION_MD),
+              "```", ""]
+    return "\n".join(lines)
+
+
+def rederive_contamination(expect, expect_rubric, rubric=None) -> None:
+    """G4's gap, pooled again from the committed pin and compared field by field with the artefact.
+
+    The arm calls the producer's own `build`, because a re-derivation that re-implements the pooling would be a
+    second arithmetic and could agree with a stale artefact for its own reasons. The upstream file's digest is
+    recomputed only where the corpus is visible -- the same split `verify` prints for the inventory snapshot,
+    and the reason the two lanes carry different denominators.
+    """
+    doc = load_published(Path(CONTAMINATION_JSON), "report.CONTAMINATION_JSON", read_contamination)
+    pin = load_published(Path(CONTAMINATION_PIN), "report.CONTAMINATION_PIN", read_contamination_pin)
+    pooled = contamination_strata(pin)
+    rebuilt = build_contamination(pin)
+    for name in sorted(pooled):
+        for key in ("errors", "cases", "rows"):
+            expect("contamination strata.%s.%s" % (name, key), doc["strata"][name][key], pooled[name][key])
+        expect("contamination strata.%s.pointers" % name, len(doc["strata"][name]["pointers"]),
+               len(pooled[name]["pointers"]))
+    for key in CONTAMINATION_RUBRIC_FIELDS:
+        expect_rubric("contamination rubric.%s" % key, doc["rubric"][key], rebuilt["rubric"][key])
+    expect("contamination pin.rows", doc["pin"]["rows"], len(pin["rows"]))
+    expect("contamination pin.sha256", doc["pin"]["source"]["sha256"], pin["source"]["sha256"])
+    expect("contamination pin.bytes", doc["pin"]["source"]["bytes"], pin["source"]["bytes"])
+    expect("contamination pin.excluded", len(doc["pin"]["excluded"]), len(pin.get("excluded", [])))
+    expect("contamination claim", doc["claim"], rebuilt["claim"])
+    for side in ("in", "out"):
+        expect("contamination R_%s" % side, doc["probe"]["R_%s" % side], rebuilt["probe"]["R_%s" % side])
+    expect("contamination delta_hat", doc["probe"]["delta_hat"], rebuilt["probe"]["delta_hat"])
+    expect("contamination interval", list(doc["probe"]["interval"]), list(rebuilt["probe"]["interval"]))
+    expect("contamination interval_width", doc["probe"]["interval_width"],
+           rebuilt["probe"]["interval_width"])
+    expect("contamination worse", doc["probe"]["worse"], rebuilt["probe"]["worse"])
+    expect("contamination sign", doc["probe"]["sign"], rebuilt["probe"]["sign"])
+    expect("contamination excludes_zero", doc["probe"]["excludes_zero"], rebuilt["probe"]["excludes_zero"])
+    expect("contamination interpretation", doc["probe"]["interpretation"], rebuilt["probe"]["interpretation"])
+    for key in CONTAMINATION_HEADLINE_FIELDS:
+        expect("contamination headline.%s" % key, doc["headline"][key], rebuilt["headline"][key])
+    root = _corpus_root_for_contamination()
+    if root is not None:
+        import hashlib
+
+        raw = (root / "research/results/app_benchmark_results.json").read_bytes()
+        expect("contamination pin.recomputed_digest", doc["pin"]["source"]["sha256"],
+               hashlib.sha256(raw).hexdigest())
+        expect("contamination pin.recomputed_bytes", doc["pin"]["source"]["bytes"], len(raw))
+
+
+def _corpus_root_for_contamination():
+    """The checkout the pin came from, or None where the corpus is absent (the CI lane)."""
+    import os
+
+    env = os.environ.get("AUTORATE_FEISHU_ROOT")
+    if not env:
+        return None
+    root = Path(env)
+    return root.parents[2] if (root / "data" / "manifest.json").is_file() else None
+
+
+class ContaminationRefusal(ValueError):
+    """The pin answered, but not with two strata that can be pooled and bounded."""
+
+
+CONTAMINATION_STRATA_KEYS = {"in_stratum": True, "out_stratum": False}
+
+
+def contamination_strata(pin: dict) -> dict:
+    """Pool the pinned rows into the two declared strata, refusing a row that cannot be pooled.
+
+    Every operand keeps the JSON pointer it came from, so a reader who distrusts a pooled total can go and
+    look at the individual rows that produced it.
+    """
+    rows = pin.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise ContaminationRefusal("the pin carries no rows to pool; it was written by %s and re-read here"
+                                   % pin.get("producer"))
+    totals = {name: {"errors": 0, "cases": 0, "rows": 0, "pointers": []} for name in CONTAMINATION_STRATA_KEYS}
+    for row in rows:
+        for key in ("errors", "n", "in_training", "pointer"):
+            if key not in row:
+                raise ContaminationRefusal("a pinned row is missing %r: %s" % (key, sorted(row)))
+        name = next(n for n, flag in CONTAMINATION_STRATA_KEYS.items() if flag is row["in_training"])
+        totals[name]["errors"] += int(row["errors"])
+        totals[name]["cases"] += int(row["n"])
+        totals[name]["rows"] += 1
+        totals[name]["pointers"].append(row["pointer"])
+    for name, pooled in totals.items():
+        if not pooled["rows"]:
+            raise ContaminationRefusal("no pinned row declared %s, so the strata are not real" % name)
+    return totals
+
+
+def build_contamination(pin: dict, root: Path = None) -> dict:
+    """The probe's record: gap, strata, interval, exclusion census, and what it does not license.
+
+    `from_counts` is the arithmetic owner and `claim` stays False in every branch, because an aggregate gap
+    is a diagnostic. Nothing here reads the corpus: the pin is the committed input, which is what lets the
+    corpus-absent lane rebuild these bytes and compare them.
+    """
+    from .contamination import (MAX_STRATUM_INTERVAL_WIDTH, MIN_CASES_PER_STRATUM, N_PIECES,
+                            PROBE_DELTA, from_counts)
+
+    pooled = contamination_strata(pin)
+    try:
+        probe = from_counts(
+            in_stratum={"errors": pooled["in_stratum"]["errors"], "cases": pooled["in_stratum"]["cases"]},
+            out_stratum={"errors": pooled["out_stratum"]["errors"],
+                         "cases": pooled["out_stratum"]["cases"]},
+            delta=PROBE_DELTA)
+    except ValueError as refusal:
+        probe = {"refusal": str(refusal)}
+    record = {"producer": CONTAMINATION_PRODUCER,
+              "pin": {"path": str(CONTAMINATION_PIN), "source": pin["source"],
+                      "rows": len(pin["rows"]), "excluded": pin.get("excluded", [])},
+              "rubric": {key: probe_value for key, probe_value in (
+                  ("delta", probe.get("delta", PROBE_DELTA)),
+                  ("pieces", probe.get("n_pieces", N_PIECES)),
+                  ("min_cases_per_stratum", MIN_CASES_PER_STRATUM),
+                  ("max_interval_width", MAX_STRATUM_INTERVAL_WIDTH))},
+              "strata": {name: {"errors": pooled[name]["errors"], "cases": pooled[name]["cases"],
+                                "rows": pooled[name]["rows"], "pointers": sorted(pooled[name]["pointers"]),
+                                "declared_in_training": CONTAMINATION_STRATA_KEYS[name]}
+                         for name in sorted(pooled)},
+              "probe": probe, "claim": False,
+              "what_this_is": ("a diagnostic gap between two aggregate rates published by the harness that "
+                               "ran the suites, not a certificate and not a per-case re-scoring")}
+    if "refusal" not in probe:
+        record["headline"] = {"delta_hat": canonicalise_bound(probe["delta_hat"]),
+                             "interval": [canonicalise_bound(b) for b in probe["interval"]],
+                             "R_in": canonicalise_bound(probe["R_in"]),
+                             "R_out": canonicalise_bound(probe["R_out"]),
+                             "excludes_zero": probe["excludes_zero"], "worse": probe["worse"],
+                             "sign": probe["sign"]}
+    return record

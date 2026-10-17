@@ -1,0 +1,144 @@
+{
+  "claim": false,
+  "headline": {
+    "R_in": 0.191666666667,
+    "R_out": 0.426875,
+    "delta_hat": -0.235208333333,
+    "excludes_zero": true,
+    "interval": [
+      -0.262646017928,
+      -0.20750167304
+    ],
+    "sign": "held-out worse",
+    "worse": "out_stratum"
+  },
+  "pin": {
+    "excluded": [
+      {
+        "accuracy": 0.6391,
+        "n": 399,
+        "pointer": "/suites/app.model_routing_domain/english",
+        "reason": "accuracy x n is not a whole number of cases"
+      },
+      {
+        "accuracy": 0.1228,
+        "n": 399,
+        "pointer": "/suites/app.model_routing_domain/multilingual",
+        "reason": "accuracy x n is not a whole number of cases"
+      },
+      {
+        "accuracy": 0.6591,
+        "n": 399,
+        "pointer": "/suites/app.model_routing_domain/typed-decisions",
+        "reason": "accuracy x n is not a whole number of cases"
+      }
+    ],
+    "path": "data/pin_app_benchmark.json",
+    "rows": 27,
+    "source": {
+      "bytes": 12514,
+      "lane_note": "recomputed by `autorate verify` only in the corpus-present lane; transcribed from these bytes when the corpus is absent",
+      "path": "research/results/app_benchmark_results.json",
+      "sha256": "15a7ba8a4d123cd1de499ef8036d14ce52e25bfb2bf6ac1d03702135d79c0a05"
+    }
+  },
+  "probe": {
+    "R_in": 0.19166666666666668,
+    "R_out": 0.426875,
+    "cases": {
+      "in_stratum": 6000,
+      "out_stratum": 4800
+    },
+    "claim": false,
+    "delta": 0.05,
+    "delta_hat": -0.23520833333333332,
+    "excludes_zero": true,
+    "interpretation": "the in-training stratum errs less than the held-out stratum by 0.235208, and the interval [-0.262646, -0.207502] excludes zero; this is a diagnostic with an interpretation rule, not a proof of leakage: the two strata are carried by different suites, so the gap is confounded with which tasks sit on which side of the flag",
+    "interval": [
+      -0.2626460179287902,
+      -0.20750167304039122
+    ],
+    "interval_width": 0.055144344888399005,
+    "n_pieces": 4,
+    "piece": 0.0125,
+    "sign": "held-out worse",
+    "strata": {
+      "in_stratum": {
+        "bounds": [
+          0.18038668466483143,
+          0.20332877748010716
+        ],
+        "cases": 6000,
+        "errors": 1150,
+        "label": "in_stratum",
+        "rate": 0.19166666666666668,
+        "sources": []
+      },
+      "out_stratum": {
+        "bounds": [
+          0.4108304505204984,
+          0.44303270259362165
+        ],
+        "cases": 4800,
+        "errors": 2049,
+        "label": "out_stratum",
+        "rate": 0.426875,
+        "sources": []
+      }
+    },
+    "worse": "out_stratum"
+  },
+  "producer": "tools/contamination_probe.py",
+  "rubric": {
+    "delta": 0.05,
+    "max_interval_width": 0.2,
+    "min_cases_per_stratum": 20,
+    "pieces": 4
+  },
+  "strata": {
+    "in_stratum": {
+      "cases": 6000,
+      "declared_in_training": true,
+      "errors": 1150,
+      "pointers": [
+        "/suites/app.email_spam/english",
+        "/suites/app.email_spam/multilingual",
+        "/suites/app.email_spam/typed-decisions",
+        "/suites/app.phishing/english",
+        "/suites/app.phishing/multilingual",
+        "/suites/app.phishing/typed-decisions",
+        "/suites/app.rag_relevance/english",
+        "/suites/app.rag_relevance/multilingual",
+        "/suites/app.rag_relevance/typed-decisions",
+        "/suites/app.support_triage/english",
+        "/suites/app.support_triage/multilingual",
+        "/suites/app.support_triage/typed-decisions",
+        "/suites/jev.ag_news/english",
+        "/suites/jev.ag_news/multilingual",
+        "/suites/jev.ag_news/typed-decisions"
+      ],
+      "rows": 15
+    },
+    "out_stratum": {
+      "cases": 4800,
+      "declared_in_training": false,
+      "errors": 2049,
+      "pointers": [
+        "/suites/app.guardrails_jailbreak/english",
+        "/suites/app.guardrails_jailbreak/multilingual",
+        "/suites/app.guardrails_jailbreak/typed-decisions",
+        "/suites/app.moderation_toxicity/english",
+        "/suites/app.moderation_toxicity/multilingual",
+        "/suites/app.moderation_toxicity/typed-decisions",
+        "/suites/jev.banking77_full/english",
+        "/suites/jev.banking77_full/multilingual",
+        "/suites/jev.banking77_full/typed-decisions",
+        "/suites/jev.emotion/english",
+        "/suites/jev.emotion/multilingual",
+        "/suites/jev.emotion/typed-decisions"
+      ],
+      "rows": 12
+    }
+  },
+  "what_this_is": "a diagnostic gap between two aggregate rates published by the harness that ran the suites, not a certificate and not a per-case re-scoring"
+}

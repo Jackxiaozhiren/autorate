@@ -479,3 +479,79 @@ def _source(meta: dict) -> str:
     if not isinstance(source, dict):
         return "no source stated"
     return "%s declares %s" % (source.get("declared_by", "?"), source.get("evidence", "?"))
+
+
+def from_counts(in_stratum: dict, out_stratum: dict, delta: float = PROBE_DELTA) -> dict:
+    """The same gap, the same interval and the same refusals, taken from two aggregates.
+
+    `stratified` takes certificates, because the probe was designed to be run on records this repository
+    scored itself. The only in-training-versus-held-out census that exists at all is upstream's own per-suite
+    result file, which publishes `n` and `accuracy` and no per-case probabilities, so no certificate can be
+    built from it. This is the door for that case: it takes `(errors, cases)` per stratum and reuses
+    `_exact_two_sided`, so the piece budget, the level and the reflected lower tail keep the one owner they
+    have in `stratified`, and `claim` stays False here too -- a gap between two aggregate rates is a signal to
+    go and read the strata, never a finding of leakage.
+
+    Refusals are `ValueError` (exit 2), and each names the stratum it is complaining about: a count that is
+    not a whole number, errors above cases, a stratum thinner than `MIN_CASES_PER_STRATUM`, and a gap whose
+    interval is wider than `MAX_STRATUM_INTERVAL_WIDTH` -- the last one is refused rather than printed,
+    because an interval that wide cannot exclude zero and the row would read as a measurement of nothing.
+    """
+    if isinstance(delta, bool) or not isinstance(delta, (int, float)):
+        raise ValueError("delta must be a number in (0,1), got %r" % (delta,))
+    if not 0.0 < float(delta) < 1.0:
+        raise ValueError("delta must be in (0,1): it is the tail budget of the interval, got %r"
+                         % (delta,))
+    delta = float(delta)
+    piece = delta / N_PIECES
+
+    out: dict = {"strata": {}, "claim": False, "delta": delta, "piece": piece,
+                 "n_pieces": N_PIECES}
+    rates: dict = {}
+    for name, stratum in (("in_stratum", in_stratum), ("out_stratum", out_stratum)):
+        if not isinstance(stratum, dict):
+            raise ValueError("%s must be a mapping with 'errors' and 'cases'; got %r"
+                             % (name, type(stratum).__name__))
+        errors, cases = stratum.get("errors"), stratum.get("cases")
+        for label, value in (("errors", errors), ("cases", cases)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError("%s: %s must be a whole number of cases, got %r" % (name, label, value))
+        if errors > cases:
+            raise ValueError("%s: %d errors over %d cases is not a rate; the counts do not order"
+                             % (name, errors, cases))
+        if cases < MIN_CASES_PER_STRATUM:
+            raise ValueError("%s: %d cases is below the published floor of %d, so pooling it would hide a "
+                             "stratum too thin to bound" % (name, cases, MIN_CASES_PER_STRATUM))
+        low, high = _exact_two_sided(errors, cases, piece)
+        rates[name] = errors / cases
+        out["strata"][name] = {"errors": errors, "cases": cases, "rate": rates[name],
+                               "bounds": (low, high),
+                               "label": stratum.get("label", name),
+                               "sources": list(stratum.get("sources", ()))}
+
+    out["R_in"] = rates["in_stratum"]
+    out["R_out"] = rates["out_stratum"]
+    out["delta_hat"] = rates["in_stratum"] - rates["out_stratum"]
+    in_low, in_high = out["strata"]["in_stratum"]["bounds"]
+    out_low, out_high = out["strata"]["out_stratum"]["bounds"]
+    interval = (in_low - out_high, in_high - out_low)
+    out["interval"] = interval
+    out["cases"] = {"in_stratum": out["strata"]["in_stratum"]["cases"],
+                    "out_stratum": out["strata"]["out_stratum"]["cases"]}
+    width = interval[1] - interval[0]
+    out["interval_width"] = width
+    if width > MAX_STRATUM_INTERVAL_WIDTH:
+        raise ValueError("the gap's interval is %s wide, above the published ceiling of %s, so it cannot "
+                         "exclude zero and is not a measurement of anything: %s"
+                         % (width, MAX_STRATUM_INTERVAL_WIDTH, interval))
+    worse = "in_stratum" if out["R_in"] >= out["R_out"] else "out_stratum"
+    out["worse"] = worse
+    out["sign"] = ("in-training worse" if worse == "in_stratum" else "held-out worse")
+    out["excludes_zero"] = interval[0] > 0.0 or interval[1] < 0.0
+    out["interpretation"] = (
+        "the in-training stratum errs %s than the held-out stratum by %.6f, and the interval %s %s zero; "
+        "this is a diagnostic with an interpretation rule, not a proof of leakage: the two strata are carried "
+        "by different suites, so the gap is confounded with which tasks sit on which side of the flag"
+        % ("more" if worse == "in_stratum" else "less", abs(out["delta_hat"]),
+           "[%0.6f, %0.6f]" % interval, "excludes" if out["excludes_zero"] else "contains"))
+    return out

@@ -1,0 +1,274 @@
+{
+  "excluded": [
+    {
+      "accuracy": 0.6391,
+      "n": 399,
+      "pointer": "/suites/app.model_routing_domain/english",
+      "reason": "accuracy x n is not a whole number of cases"
+    },
+    {
+      "accuracy": 0.1228,
+      "n": 399,
+      "pointer": "/suites/app.model_routing_domain/multilingual",
+      "reason": "accuracy x n is not a whole number of cases"
+    },
+    {
+      "accuracy": 0.6591,
+      "n": 399,
+      "pointer": "/suites/app.model_routing_domain/typed-decisions",
+      "reason": "accuracy x n is not a whole number of cases"
+    }
+  ],
+  "producer": "tools/contamination_pin.py",
+  "rows": [
+    {
+      "accuracy": 0.9925,
+      "errors": 3,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.email_spam/english",
+      "suite": "app.email_spam",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.9925,
+      "errors": 3,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.email_spam/multilingual",
+      "suite": "app.email_spam",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.9575,
+      "errors": 17,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.email_spam/typed-decisions",
+      "suite": "app.email_spam",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.7075,
+      "errors": 117,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/app.guardrails_jailbreak/english",
+      "suite": "app.guardrails_jailbreak",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.755,
+      "errors": 98,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/app.guardrails_jailbreak/multilingual",
+      "suite": "app.guardrails_jailbreak",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.7625,
+      "errors": 95,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/app.guardrails_jailbreak/typed-decisions",
+      "suite": "app.guardrails_jailbreak",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.53,
+      "errors": 188,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/app.moderation_toxicity/english",
+      "suite": "app.moderation_toxicity",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.525,
+      "errors": 190,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/app.moderation_toxicity/multilingual",
+      "suite": "app.moderation_toxicity",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.53,
+      "errors": 188,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/app.moderation_toxicity/typed-decisions",
+      "suite": "app.moderation_toxicity",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.98,
+      "errors": 8,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.phishing/english",
+      "suite": "app.phishing",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.9925,
+      "errors": 3,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.phishing/multilingual",
+      "suite": "app.phishing",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.94,
+      "errors": 24,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.phishing/typed-decisions",
+      "suite": "app.phishing",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.625,
+      "errors": 150,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.rag_relevance/english",
+      "suite": "app.rag_relevance",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.6575,
+      "errors": 137,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.rag_relevance/multilingual",
+      "suite": "app.rag_relevance",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.625,
+      "errors": 150,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.rag_relevance/typed-decisions",
+      "suite": "app.rag_relevance",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.5025,
+      "errors": 199,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.support_triage/english",
+      "suite": "app.support_triage",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.5225,
+      "errors": 191,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.support_triage/multilingual",
+      "suite": "app.support_triage",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.505,
+      "errors": 198,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/app.support_triage/typed-decisions",
+      "suite": "app.support_triage",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.95,
+      "errors": 20,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/jev.ag_news/english",
+      "suite": "jev.ag_news",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.93,
+      "errors": 28,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/jev.ag_news/multilingual",
+      "suite": "jev.ag_news",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.9525,
+      "errors": 19,
+      "in_training": true,
+      "n": 400,
+      "pointer": "/suites/jev.ag_news/typed-decisions",
+      "suite": "jev.ag_news",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.425,
+      "errors": 230,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/jev.banking77_full/english",
+      "suite": "jev.banking77_full",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.425,
+      "errors": 230,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/jev.banking77_full/multilingual",
+      "suite": "jev.banking77_full",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.4925,
+      "errors": 203,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/jev.banking77_full/typed-decisions",
+      "suite": "jev.banking77_full",
+      "variant": "typed-decisions"
+    },
+    {
+      "accuracy": 0.595,
+      "errors": 162,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/jev.emotion/english",
+      "suite": "jev.emotion",
+      "variant": "english"
+    },
+    {
+      "accuracy": 0.53,
+      "errors": 188,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/jev.emotion/multilingual",
+      "suite": "jev.emotion",
+      "variant": "multilingual"
+    },
+    {
+      "accuracy": 0.6,
+      "errors": 160,
+      "in_training": false,
+      "n": 400,
+      "pointer": "/suites/jev.emotion/typed-decisions",
+      "suite": "jev.emotion",
+      "variant": "typed-decisions"
+    }
+  ],
+  "source": {
+    "bytes": 12514,
+    "lane_note": "recomputed by `autorate verify` only in the corpus-present lane; transcribed from these bytes when the corpus is absent",
+    "path": "research/results/app_benchmark_results.json",
+    "sha256": "15a7ba8a4d123cd1de499ef8036d14ce52e25bfb2bf6ac1d03702135d79c0a05"
+  }
+}

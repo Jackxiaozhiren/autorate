@@ -119,27 +119,28 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 578 /578 values` where the corpus is absent, `re-derived 613 /613
+prints say so: `re-derived 612 /612 values` where the corpus is absent, `re-derived 649 /649
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 613: every CI run is a 578 run, on both of its arms. Green CI is
+alone can never reach the 649: every CI run is a 612 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 578 run proves a lot inside that lane. Every published number that is a function of a
+A 612 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all seven published certificates, each from the committed
 records it was actually made from, G4's slice run from the four committed MASSIVE record files
 it names inside itself, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
 for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
-for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows from their committed pin. What a 578 run
+for byte, `docs/CONTAMINATION.md` byte for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows
+from their committed pin. What a 612 run
 cannot prove is what its own disclosure says in so many words --
-`this run cannot see whether that snapshot went stale`. The gap is exactly 35
-checks: the 9 upstream `SOURCE.json` digests and the 26 snapshot keys a corpus-present run
+`this run cannot see whether that snapshot went stale`. The gap is exactly 37
+checks: the 9 upstream `SOURCE.json` digests, the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 578 /578.
+had drifted from the corpus would agree with itself and report 612 /612.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -175,8 +176,9 @@ second place to keep them.
   here' *is* a certification result"). §14's kill criterion for this row is not evaluable rather than
   fired: its condition compares a worst-group certified `autorate` with 0.30, and with nothing certified there
   is no certified `autorate` to put in that comparison -- the same refusal that keeps the violation rate
-  undefined. Only one half of the pivot is published (the audit multiple G2 measures; Plan B3's contamination
-  layer is tested but not published as evidence), so the headline this project ships is the audit multiple G2
+  undefined. Both halves of the pivot are published now: the audit multiple G2 measures, and the
+  contamination gap section 9 defines, frozen as `data/contamination_probe.json` with its interval and its
+  `claim = False` (see the G4 bullet). So the headline this project ships is the audit multiple G2
   measures and the worst-slice refusal G4 names. Read the G1 row as unmet; that is what it says.
 - **G2, the reference README's gate demonstrably violating its implied error rate: `measured_not_bounded`.**
   `autorate audit` measures the gate upstream instructs and `docs/AUDIT.md` publishes the multiplier, but the
@@ -230,7 +232,14 @@ second place to keep them.
   100-case read, which these 1,487 evaluated Khmer cases neither replicate nor contradict. What the run does
   say is the criterion's own word:
   every refused slice's summary carries `NOT_CERTIFIABLE: reason=empty_feasible_set`, and the command over
-  these records exits 3, `EXIT_NOT_CERTIFIABLE`. The four marginal certificates, read from their own `detail`, are the at-a-glance version of
+  these records exits 3, `EXIT_NOT_CERTIFIABLE`. The criterion's second named output is published beside
+  that run: `tools/contamination_probe.py` pools `data/pin_app_benchmark.json` -- upstream's own per-suite
+  `in_training` declarations, 27 usable rows and 3 excluded by name because their rounded rate is not a whole
+  number of cases -- and publishes `delta_hat` = -0.235208 over [-0.262646, -0.207502], so the in-training
+  stratum errs less and the interval is clear of zero. `verify` re-pools it (29 quantities plus 4 budget
+  values in both lanes, and re-digests the upstream file where the corpus is visible), and the artefact's
+  `claim` is false: the strata are different suites, so task difficulty is confounded with the flag and a gap
+  between aggregate rates is a diagnostic, not a proof of leakage. The four marginal certificates, read from their own `detail`, are the at-a-glance version of
   the same evidence: `de` automates 0 of 1,487 cases (no singleton at that coverage, so nothing to bound);
   `en` automates 709 with 43 wrong, upper bound 0.078; `km` 11 with 5 wrong, 0.729; `sw` 39 with 13 wrong,
   0.477. Every non-empty slice is above the 0.050 budget, and none of the four certifies.

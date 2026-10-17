@@ -3320,7 +3320,7 @@
     "multi_label": 1476,
     "n_cal_cases": 1487,
     "n_eval_cases": 1487,
-    "protocol_digest": "cb75531ba0dab745b5eebd39d8deee4b13124ee326bb91af2292b5bce35c6794",
+    "protocol_digest": "25e76b21af4c40f95236d8d34d3c36278f3540e300b623fbfe80b888e22d92e5",
     "seed": 7,
     "skipped_no_gold": 0,
     "skipped_wrong_qtype": 0,

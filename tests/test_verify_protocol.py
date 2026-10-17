@@ -835,6 +835,17 @@ def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inven
     owned["G1"] = owned["G1"] | {kill.group(1)}
     assert kill.group(1) in notes["G1"], (
         "spec section 14 says %s and G1's note quotes a different threshold" % kill.group(1))
+    # G4 now states the contamination arm's sizes and the gap it publishes; both come from the artefacts.
+    contamination_field, contamination_budget = [], []
+    report.rederive_contamination(lambda label, actual, wanted: contamination_field.append(label),
+                                  lambda label, actual, wanted: contamination_budget.append(label))
+    pin = json.loads((REPO / report.CONTAMINATION_PIN).read_text())
+    gap = report.build_contamination(pin)["headline"]
+    g4_owned = (g4_owned | {"%d" % len(contamination_field), "%d" % len(contamination_budget),
+                            "%d" % len(pin["rows"]), "%d" % len(pin["excluded"])}
+                | {t for key in ("delta_hat", "R_in", "R_out") for t in _g1_num(abs(gap[key]))}
+                | {t for end in gap["interval"] for t in _g1_num(abs(end))})
+
     contract = {str(v) for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
     for cid, note in sorted(notes.items()):
         stated = _note_tokens(note)

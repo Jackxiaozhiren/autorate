@@ -531,3 +531,78 @@ def test_the_probe_reads_the_denominators_the_certifier_published_and_counts_not
     assert "count_outcome(" not in source, "the probe must not count cases a second time"
     assert "binom_cdf" not in source, "the binomial machinery has one owner: tails.py"
     assert source.count("clopper_pearson_upper") >= 2, "both tails go through the owner"
+
+
+class TestFromCounts:
+    """`from_counts` is the probe's aggregate door: two strata of (errors, cases), no certificate.
+
+    Why this exists beside `stratified`: spec section 9 asks for `delta_hat` with an interval, and the only
+    in-training-vs-held-out census that exists at all is upstream's own per-suite aggregate results, which
+    carry `n` and `accuracy` and no per-case probabilities. A certificate cannot be built from them, so the
+    alternative was to state the gap without the library that owns the interval arithmetic. This takes the
+    counts and reuses `_exact_two_sided`, so the pieces, the level and the reflection of the lower tail have
+    exactly one owner, and it keeps `claim: False` because an aggregate gap is a diagnostic by construction.
+    """
+
+    def test_the_gap_and_its_interval_come_from_the_two_strata_counts(self):
+        from autorate.contamination import from_counts
+
+        out = from_counts(in_stratum={"errors": 300, "cases": 6000},
+                          out_stratum={"errors": 1500, "cases": 6000})
+        assert out["R_in"] == 0.05, out
+        assert out["R_out"] == 0.25, out
+        assert out["delta_hat"] == out["R_in"] - out["R_out"], out
+        low, high = out["interval"]
+        assert low < out["delta_hat"] < high, out
+        assert high - low <= 0.05, out
+        assert out["claim"] is False, out
+
+    def test_a_count_that_is_not_an_integer_number_of_cases_is_refused_by_name(self):
+        from autorate.contamination import from_counts
+
+        with pytest.raises(ValueError, match="in_stratum"):
+            from_counts(in_stratum={"errors": 300.5, "cases": 6000},
+                        out_stratum={"errors": 1500, "cases": 6000})
+
+    def test_errors_above_the_case_count_is_refused_as_the_impossible_thing_it_is(self):
+        from autorate.contamination import from_counts
+
+        with pytest.raises(ValueError, match="out_stratum"):
+            from_counts(in_stratum={"errors": 300, "cases": 6000},
+                        out_stratum={"errors": 6001, "cases": 6000})
+
+    def test_a_stratum_thinner_than_the_published_floor_is_refused_rather_than_pooled_away(self):
+        from autorate.contamination import MIN_CASES_PER_STRATUM, from_counts
+
+        with pytest.raises(ValueError, match="in_stratum"):
+            from_counts(in_stratum={"errors": 1, "cases": MIN_CASES_PER_STRATUM - 1},
+                        out_stratum={"errors": 1500, "cases": 6000})
+
+    def test_the_denominators_are_published_beside_the_rates_they_divide(self):
+        from autorate.contamination import from_counts
+
+        out = from_counts(in_stratum={"errors": 300, "cases": 6000},
+                          out_stratum={"errors": 1500, "cases": 4800})
+        assert out["cases"] == {"in_stratum": 6000, "out_stratum": 4800}, out
+        low, high = out["strata"]["in_stratum"]["bounds"]
+        assert low <= out["R_in"] <= high, out
+        assert out["strata"]["in_stratum"]["errors"] == 300, out
+        assert out["strata"]["out_stratum"]["cases"] == 4800, out
+
+    def test_an_interval_wider_than_the_published_ceiling_is_refused_not_printed_as_a_result(self):
+        from autorate.contamination import MAX_STRATUM_INTERVAL_WIDTH, from_counts
+
+        with pytest.raises(ValueError, match="interval"):
+            from_counts(in_stratum={"errors": 1, "cases": 21},
+                        out_stratum={"errors": 20, "cases": 21})
+        assert MAX_STRATUM_INTERVAL_WIDTH == 0.20
+
+    def test_which_stratum_is_worse_is_stated_and_never_called_a_contamination_claim(self):
+        from autorate.contamination import from_counts
+
+        out = from_counts(in_stratum={"errors": 1500, "cases": 6000},
+                          out_stratum={"errors": 300, "cases": 6000})
+        assert out["worse"] == "in_stratum", out
+        assert out["sign"] == "in-training worse", out
+        assert "not a proof" in out["interpretation"], out
+        assert out["claim"] is False
