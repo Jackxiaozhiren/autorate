@@ -257,8 +257,8 @@ second place to keep them.
   platform witness of the frozen comparison; `docs/G5.md` states that workflow fact without quoting a run
   id, because a run belongs to the push that produced it and the transcript names a commit instead.
   Three limits stay stated: the archive lane is a local obligation, the
-  no-network claim covers the gate steps and not the dependency install, and the drift and contamination
-  figures are unpublished, so they are absent from both denominators instead of re-derived.
+  no-network claim covers the gate steps and not the dependency install, and the drift figures are
+  unpublished, so they are absent from both denominators instead of re-derived.
 
 The honest summary is that the gate's reproduction story is the strongest part of this tree today. G4's
 slice criterion now has published evidence and is short of its own wording, not short of an artefact; the
@@ -286,14 +286,19 @@ Covered by code and by tests: the `choice` primitive, marginal two-sided control
 Clopper-Pearson one-sided bounds, and the gate that turns a certificate into
 `auto` / `escalate` / `abstain`.
 
-Written and tested, but not yet published as evidence: the threshold certifier (`certify_threshold.py`),
-drift-adaptive conformal (`drift.py`), and the contamination stratification (`contamination.py`). Each of
-them is a library with unit tests and no committed artefact that `verify` re-derives, which is the
-difference between "implemented" and "certified" in this project -- see the criteria above. The
-group-conditional (Mondrian) surface and its simultaneous per-slice correction
-(`certify_choice.certify_groups`, `correction.py`) left that list when `tools/language_slices.py` published
-`data/slices_language.json` and `docs/SLICES.md`: those are the artefacts the G4 row above is about, and
-`verify` recomputes the run from the committed records field by field.
+Written and tested, but not yet published as evidence: the threshold certifier (`certify_threshold.py`)
+and drift-adaptive conformal (`drift.py`). Each of them is a library with unit tests and no committed
+artefact that `verify` re-derives, which is the difference between "implemented" and "certified" in this
+project -- see the criteria above. The contamination stratification (`contamination.py`) left that list when
+the eleventh freeze published `tools/contamination_probe.py`'s `data/contamination_probe.json` and
+`docs/CONTAMINATION.md`: `verify` re-pools the committed pin and compares the gap field by field in both
+lanes, which is what the G4 row above names as its second output. The group-conditional (Mondrian) surface
+and its simultaneous per-slice correction (`certify_choice.certify_groups`, `correction.py`) left it earlier,
+when `tools/language_slices.py` published `data/slices_language.json` and `docs/SLICES.md`: those are the
+artefacts the G4 row is about, and `verify` recomputes the run from the committed records field by field.
+A row reads this list against the committed artefacts' own `producer` fields, so a surface cannot stay in
+prose after its evidence lands -- the sentence did exactly that for one freeze, and `report.UNPUBLISHED_SURFACES`
+is now the single owner of it.
 
 Published, re-derived, and still not the evidence its criterion asks for: the ordinal one-sided severity
 certificate (`severity.py`), reachable as `autorate severity`, committed as `data/cert_severity_ordinal.json`

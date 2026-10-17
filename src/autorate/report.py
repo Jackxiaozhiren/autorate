@@ -1983,6 +1983,11 @@ CONTAMINATION_PIN = "data/pin_app_benchmark.json"
 CONTAMINATION_JSON = "data/contamination_probe.json"
 CONTAMINATION_MD = Path("docs/CONTAMINATION.md")
 CONTAMINATION_PRODUCER = "tools/contamination_probe.py"
+# README's "written and tested, but not yet published as evidence" list, declared beside the tables it talks
+# about. A surface joins this tuple when it has unit tests and leaves it when `verify` re-derives an artefact
+# for it -- and `test_readme_s_unpublished_list_agrees_with_the_artefacts_producers` refuses either lie, by
+# reading the committed artefacts' own `producer` fields rather than trusting this list.
+UNPUBLISHED_SURFACES = ("certify_threshold.py", "drift.py")
 CONTAMINATION_RUBRIC_FIELDS = ("delta", "pieces", "min_cases_per_stratum", "max_interval_width")
 CONTAMINATION_STRATA_FIELDS = ("errors", "cases", "rows", "pointers", "declared_in_training")
 CONTAMINATION_PIN_ROW_FIELDS = ("suite", "variant", "n", "accuracy", "errors", "in_training", "pointer")

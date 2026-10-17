@@ -908,3 +908,51 @@ def _g1_num(value) -> str:
             out.add("%.*f" % (places, value))
         out.add("%s" % float("%s" % value))
     return {str(v) for v in out}
+
+
+def _published_surface_stems():
+    """The stems of every committed artefact's own `producer` field: what the artefacts say produced them."""
+    stems = set()
+    for path in sorted((REPO / "data").glob("*.json")):
+        try:
+            doc = json.loads(path.read_text())
+        except ValueError:
+            continue
+        producer = doc.get("producer") if isinstance(doc, dict) else None
+        if isinstance(producer, str):
+            stems.add(producer.rsplit("/", 1)[-1][:-len(".py")])
+    return stems
+
+
+def test_readme_s_unpublished_list_agrees_with_the_artefacts_producers(in_repo):
+    """README's "written and tested, but not yet published as evidence" claim is policed against the artefacts.
+
+    Red when it was written: README still named `contamination.py` as unpublished after the eleventh freeze
+    committed `data/contamination_probe.json`, whose own `producer` field names the contamination tool -- the
+    document contradicted the G1 claim note in the same release, and no row could see it because nothing read
+    the sentence. The predicate is the artefact's `producer`, so a surface is caught leaving the list by its
+    evidence landing, not by someone remembering prose. The matching is substring-on-stem, which errs toward
+    calling a surface published: the safe direction, since the cost is a README sentence that has to be edited.
+    """
+    from autorate.report import UNPUBLISHED_SURFACES
+
+    readme = re.sub(r"\s+", " ", (REPO / "README.md").read_text())
+    listed = re.search(r"not yet published as evidence: (.*?) Each of", readme)
+    assert listed, "README no longer states the unpublished list, so the table has no witness"
+    named = sorted(set(re.findall(r"`([a-z0-9_]+\.py)`", listed.group(1))))
+    assert named == sorted(UNPUBLISHED_SURFACES), (
+        "README names %s and `report.UNPUBLISHED_SURFACES` names %s -- one list, two places that remember it"
+        % (named, sorted(UNPUBLISHED_SURFACES)))
+    stems = _published_surface_stems()
+    assert stems, "no committed artefact names a producer, so this row would certify anything as unpublished"
+    for module in UNPUBLISHED_SURFACES:
+        stem = module[:-len(".py")]
+        assert not any(stem in producer for producer in stems), (
+            "%s is listed as unpublished while a committed artefact names %s as its producer"
+            % (module, [p for p in stems if stem in p]))
+    for sentence in re.split(r"(?<=[.]) ", readme):
+        if "unpublished" not in sentence:
+            continue
+        for producer in stems:
+            assert producer.split("_")[0] not in sentence or producer in sentence, (
+                    "README calls %r unpublished in %r while an artefact names it as produced" % (producer, sentence[:160]))
