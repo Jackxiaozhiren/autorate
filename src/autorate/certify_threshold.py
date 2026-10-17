@@ -57,8 +57,8 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 from .case_count import AUTO, Verdict, case_key, count_outcome
-from .certificate import (CANONICALISED_BOUND_FIELDS, N_CLAIMS, Certificate, Reason,
-                          canonicalise_bound)
+from .certificate import (BOUND_UNIT_CASE, BOUND_UNIT_RECORD, CANONICALISED_BOUND_FIELDS, N_CLAIMS,
+                          Certificate, Reason, canonicalise_bound)
 from .certify_choice import split_cal
 from .tails import bound_width, clopper_pearson_upper
 
@@ -341,9 +341,13 @@ def certify_threshold(records: Sequence, score_field: str = "confidence",
     ev_carriers = len(_values_of(ev, score_field))
     meta.update(n_eval_cases=n_case, n_cal_cases=len({case_key(r) for r in cal}),
                 missing_score=n_ev - ev_carriers,
-                unit_note="%d evaluation records over %d distinct cases: the bounds use the case "
-                          "denominator, because repeats of one case are one observation"
-                          % (n_ev, n_case))
+                unit_note="%d evaluation records over %d distinct cases: the certificate's own bounds "
+                          "-- conditional, marginal and the automation-rate interval -- use the %s "
+                          "denominator, because repeats of one case are one observation, while every "
+                          "diagnostic curve row, and its closest_attempt copy, publishes both: "
+                          "conditional_error_bound on the %s denominator beside "
+                          "record_conditional_error_bound on the %s denominator"
+                          % (n_ev, n_case, BOUND_UNIT_CASE, BOUND_UNIT_CASE, BOUND_UNIT_RECORD))
     chosen = _select_lambda(cal, score_field, points, beta, delta)
     if chosen is None:
         return Certificate.refused(

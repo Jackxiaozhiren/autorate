@@ -40,7 +40,8 @@ from .case_count import Verdict, case_key, count_outcome
 # restatement of one. `SPLIT_SEED_DEFAULT` is the library default for a shuffle and is deliberately
 # NOT `SEED`, the published rubric's 7: the two are separate promises, and a seed that changes
 # re-rolls the partition every published bound was measured on.
-from .certificate import (ALPHA, BETA, CANONICALISED_BOUND_FIELDS, DELTA, DIAGNOSTIC_GRID, METHOD,
+from .certificate import (ALPHA, BETA, BOUND_UNIT_CASE, BOUND_UNIT_RECORD,
+                          CANONICALISED_BOUND_FIELDS, DELTA, DIAGNOSTIC_GRID, METHOD,
                           MIN_CAL, MIN_EVAL, N_CLAIMS, SPLIT_SEED_DEFAULT, Certificate, Reason,
                           canonicalise_bound)
 from .conformal import METHODS, classify_set, conformal_set, split_quantile
@@ -206,9 +207,16 @@ def certify_choice(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
                 automated=autom, errors_among_automated=err, n_eval_cases=n_case,
                 automated_cases=auto_case, erroneous_cases=err_case,
                 n_cal_cases=len({case_key(r) for r in cal}),
-                unit_note="%d evaluation records over %d distinct cases: the bounds use the "
-                          "case denominator, because repeats of one case are one "
-                          "observation" % (n_ev, n_case))
+                # Ledger #37/#71: the note used to claim the case denominator for EVERY bound this
+                # artefact publishes, which is true of the three headline claims and false of every
+                # diagnostic curve row and of `closest_attempt`. The sentence now states the split
+                # instead of glossing it, and it is still built only from counts the artefact carries.
+                unit_note="%d evaluation records over %d distinct cases: the certificate's own bounds "
+                          "-- conditional, marginal and the automation-rate interval -- use the %s "
+                          "denominator, because repeats of one case are one observation, while every "
+                          "diagnostic curve row and its closest_attempt copy bounds the %s denominator "
+                          "and names its own operands beside it"
+                          % (n_ev, n_case, BOUND_UNIT_CASE, BOUND_UNIT_RECORD))
     if vacuous:
         return Certificate.refused(
             Reason.VACUOUS_QUANTILE, alpha=alpha, beta=beta, n_cal=len(cal), n_eval=n_ev,
@@ -257,7 +265,14 @@ def certify_choice(records: Sequence, alpha: float = ALPHA, beta: float = BETA,
                    "automated request; the exact case-level upper bound %.3f exceeds the "
                    "budget %.3f" % (1.0 - alpha, auto_case, err_case, cond_hi, beta),
             meta=_with_diagnostic({**meta, "at_requested_alpha": {
-                "automated": autom, "errors": err, "conditional_error_bound": cond_hi}},
+                # The bound two lines above is `clopper_pearson_upper(err_case, auto_case, delta)`: a
+                # CASE bound. Publishing the record counts beside it under their own names, and the
+                # case operands under theirs, is what makes the number attestable from this block
+                # alone instead of from a reader's knowledge of the producer (ledger #37/#71).
+                "automated": autom, "errors": err,
+                "automated_cases": auto_case, "errors_cases": err_case,
+                "bound_unit": BOUND_UNIT_CASE,
+                "conditional_error_bound": cond_hi}},
                 cal_scores, ev, method, grid, beta, delta))
     return cert
 
@@ -303,6 +318,14 @@ def _with_diagnostic(meta: dict, cal_scores, ev, method: str, grid, beta: float,
             "multi_label": obs["multi_label"],
             "observed_automation_rate": obs["automated"] / len(ev),
             "observed_conditional_error": obs["errors"] / obs["automated"],
+            # Both operands of that `bound` are the RECORD counts, and the certificate's headline
+            # field of the same name is over cases. `bound_unit` says which, and
+            # `evaluated_records` is the `len(ev)` the automation rate above was divided by -- a
+            # denominator that appeared nowhere on the row until this round (ledger #37/#71).
+            # `closest_attempt` is one of these rows, so it inherits both keys rather than
+            # being special-cased.
+            "bound_unit": BOUND_UNIT_RECORD,
+            "evaluated_records": len(ev),
             "conditional_error_bound": bound}))
     if not curve:
         return {**meta, "closest_attempt": None, "diagnostic_curve": []}

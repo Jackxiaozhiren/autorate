@@ -2131,6 +2131,49 @@ in the comparison -- the same zero-denominator refusal the note invokes four sen
 rate. The note now says the condition is not evaluable, and that the pivot it names is only half published:
 G2's audit is, Plan B3's contamination layer is not.
 
+## 2026-10-16 -- ledger #37/#71: one bound name carried two denominators, and the artefact's own note claimed only one
+
+**What the artefact used to claim.** `data/cert_jev.json` publishes
+`meta.at_requested_alpha = {"automated": 96, "errors": 1, "conditional_error_bound": 0.139849460275}`. The two
+counts are RECORD counts; the bound beside them is `clopper_pearson_upper(1, 32, 0.05)`, computed over the 32
+automated CASES. On the same artefact `meta.closest_attempt.conditional_error_bound` is `0.048462071706`, which
+is over 1 error in those 96 records. One field name, two denominators, no key saying which -- and
+`meta.unit_note` read "96 evaluation records over 32 distinct cases: the bounds use the case denominator,
+because repeats of one case are one observation", which is true of the three headline bounds and false of every
+`meta.diagnostic_curve` row and of its `closest_attempt` copy. The prose was the part that misled a reader who
+trusted the artefact rather than the code. Each row also divided `automated` by `len(ev)` to publish
+`observed_automation_rate` without naming that divisor anywhere on the row.
+
+**What it names now.** Every diagnostic curve row of the two set gates (`certify_choice.py`, `certify_score.py`)
+carries `bound_unit` and `evaluated_records`, and `at_requested_alpha` carries `automated_cases` and
+`errors_cases` beside the record counts with `bound_unit: "case"`. `closest_attempt` is one of those rows, so it
+inherits the naming rather than being special-cased. The two spellings have exactly one owner,
+`certificate.BOUND_UNIT_RECORD` and `BOUND_UNIT_CASE`, which the producers import. `meta.unit_note` states the
+split -- headline bounds over cases, curve rows and `closest_attempt` over records -- from the same two counts it
+quoted before, with no new number typed into it. The change is additive and inside `meta`, so `SHAPE_VERSION`
+stays 2: the shape check diffs the top-level serialized field set, and a key added inside `meta` is invisible to
+it.
+
+**What did not move, measured rather than asserted.** Each artefact was re-emitted to a scratch directory and
+compared field by field with the committed bytes before anything was copied into `data/`: 61 added keys for
+`laya` and `jev`, 48 for `de`, 57 for `en`, 59 for `km`, 55 for `sw`, and exactly one changed value per file --
+`meta.unit_note`. No bound, rate, count, quantile or interval moved. `docs/REPORT.md` re-renders with the new
+note on its six artefact lines and nothing else; `docs/RESULTS.md`, `data/inventory.md`, `docs/AUDIT.md`,
+`docs/SEVERITY.md`, `docs/RESPLIT.md`, `docs/SLICES.md` and `docs/FEASIBILITY.md` re-emit byte for byte. All four
+`verify` invocations exit 0: `re-derived 578 /578 values` with the corpus absent and `re-derived 613 /613 values`
+with it present, each without `--protocol` and with `--protocol protocol.json`. Neither published denominator
+moved, so this row owes no freeze round and the gap is still the 35 corpus-only checks.
+
+**What is still stale, named rather than quietly left.** `data/slices_language.json` embeds the per-slice and
+pooled certificate `meta` this same producer writes, and its ten `unit_note` strings are still the old
+single-unit sentence with none of the new keys -- that artefact was emitted before this change landed. The gate
+cannot see it: `report.SLICE_GROUP_FIELDS` and `report.SLICE_POOLED_FIELDS` compare named headline fields and
+never `meta`, so `verify` stays green over a stale embedded note. Re-emitting it belongs to
+`python3 tools/language_slices.py --out data/slices_language.json` and the `docs/SLICES.md` re-render, both
+owned by another round, so they are not touched here. `certify_threshold.py` keeps its own style on purpose --
+each of its rows already publishes the operands of both bounds and two unit-named bound keys, which is the
+standard this naming follows -- and `data/cert_severity_ordinal.json` keeps the single-unit sentence because it
+publishes no curve and every bound it carries is over cases, so nothing there contradicts its note.
 ## 2026-10-17 — the residue guard was red under the eleventh freeze, and a `§` pointer needed no owner
 
 **The eleventh freeze shipped a red guard.** `test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inventory_owns`
