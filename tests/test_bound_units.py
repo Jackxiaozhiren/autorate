@@ -292,6 +292,17 @@ def test_the_threshold_gate_keeps_its_own_style_and_is_not_renamed_into_the_new_
             row["erroneous_cases"], row["automated_cases"], cert.delta)), row
         assert row["record_conditional_error_bound"] == canonicalise_bound(
             clopper_pearson_upper(row["errors"], row["automated"], cert.delta)), row
+    # The prose has to keep up with the keys. Review M2: this producer publishes BOTH denominators in
+    # every row and in `closest_attempt`, while its `unit_note` still claimed the sentence the other two
+    # producers had just retired -- an overclaim about a bound the same rows carry. Asserting the note
+    # names the record denominator, and that the retired sentence is gone, is what makes the prose a
+    # checked statement instead of a remembered one.
+    note = cert.meta["unit_note"]
+    assert "record denominator" in note, note
+    assert note.count("denominator") >= 2, note
+    assert "the bounds use the case denominator" not in note, note
+    for named in ("conditional_error_bound", "record_conditional_error_bound"):
+        assert named in note, (named, note)
 
 
 def test_the_two_unit_names_have_exactly_one_owner_and_no_third_spelling_exists():
