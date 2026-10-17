@@ -2228,3 +2228,51 @@ The resolver that closed the lane difference was itself landed incomplete: it wr
 rc 1 out of `verify`, and the branch that returns `None` for that case went in beside the row that now asserts it
 (`test_the_resolver_returns_nothing_rather_than_raising_where_no_corpus_exists`, red as a crash before the fix).
 Nothing published carried the defect: it was caught between two commits on the same round, before the push.
+
+## 2026-10-17 — the twelfth freeze: #37's naming lands, and the slice artefact was the last holder of the retired sentence
+
+**The round's evidence.** `protocol.json` was emitted at `frozen_at` 2026-10-17 with digest
+`ce43f8e29cc1f2ddeeec0132d3d2392225c95bb844c27f964eeeb01d43062d69`, and all seven stamped artefacts were
+re-emitted by their own shipped commands rather than edited: `autorate certify` for the two marginal
+certificates and the four MASSIVE ones (rc 3 each -- every one is a published refusal), `autorate severity
+--direction under` for the ordinal certificate. Measured against the committed bytes before anything was
+installed, each of the seven differed in exactly one leaf, `meta.protocol_digest`. The emission is a fixed
+point (a second `autorate protocol` produced the same bytes), and re-emitting the protocol after the
+artefacts moved produced the same file again, so no note stated a count the re-emission changed. `verify`
+answers `re-derived 612 /612 values` with the corpus absent and `649 /649` with it present, in both the bare
+and the `--protocol` shape, all rc 0; the lane gap is still 37 and neither published denominator moved.
+
+**Review M1 was real and is now closed.** `data/slices_language.json` embedded ten certificate `meta` blocks
+written by the same producer that #37 changed, and after that branch landed they were the only published place
+still carrying the retired sentence: the committed artefact had `bound_unit` 0 times and `evaluated_records` 0
+times while holding 261 record-denominator bounds. `verify` compares the slice arm's `run` fields and never
+those embedded metas, so the gate stayed green over the artefact that disagreed with its own producer.
+Re-running `tools/language_slices.py --out data/slices_language.json --doc docs/SLICES.md --force` emits 261
+`bound_unit` keys, all ten notes naming both denominators, and the run block moved with them. `docs/SLICES.md`
+did not change a byte -- nothing in the document reads a certificate `meta` -- which is the reason the
+artefact and its document could hold opposite statements about the same certification.
+
+**Review M2 was real, and its blast radius was bigger than the review measured.**
+`certify_threshold.py` published "the bounds use the case denominator" while every one of its curve rows and
+its `closest_attempt` copy carries `conditional_error_bound` over cases beside `record_conditional_error_bound`
+over records. The note now names both keys, and the row that polices it (`test_the_threshold_gate_keeps_its_own_style_and_is_not_renamed_into_the_new_one`)
+failed first by quoting the producer's own words: "195 evaluation records over 65 distinct cases: the bounds use
+the case denominator, ...". The review's claim that no committed artefact carries that sentence was wrong: the
+phrase also appears in `data/cert_severity_ordinal.json`, written by `severity.py:545`. That one is not a
+defect and was not touched -- all three of the severity gate's bounds are Clopper-Pearson over cases
+(`severity.py:347,498,499`) and it publishes no record-denominator bound, so its sentence is true, and a
+repo-wide guard on the phrase would have indicted an honest statement.
+
+**What the same measurement could not settle, and is therefore filed rather than fixed.** The ordinal
+artefact's own case counts are `n_cal_cases = n_eval_cases`, so recomputing its three bounds from a pair inside
+the object reproduces them from either denominator: the artefact cannot evidence which one its note means. That
+is the same defect class as the two ratios #71 already carries, so it is recorded there, not papered over with a
+guard that cannot fail.
+
+**Two probe defects found and fixed inside this round, neither of them a repository bug.** A linked worktree has
+no interpreter of its own, so `-m autorate.cli` resolved through the main checkout's editable install and the
+first pass re-emitted the six certificates from a producer without #37's naming -- its own key comparison caught
+it ("keys disappeared: .../bound_unit"), which is why the chain now prints `autorate.__file__` and refuses when
+it is not this tree. And `restamp.py` refuses a disk whose stamped artefacts disagree about which freeze they
+carry, so re-emitting six of seven certificates left the seventh at the eleventh digest and the re-stamp
+correctly stopped; the seventh is now produced in the chain as well.
