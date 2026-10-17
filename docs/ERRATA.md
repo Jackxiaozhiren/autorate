@@ -2276,3 +2276,36 @@ it ("keys disappeared: .../bound_unit"), which is why the chain now prints `auto
 it is not this tree. And `restamp.py` refuses a disk whose stamped artefacts disagree about which freeze they
 carry, so re-emitting six of seven certificates left the seventh at the eleventh digest and the re-stamp
 correctly stopped; the seventh is now produced in the chain as well.
+
+## 2026-10-17 — the published contamination interval reproduced on one libc and not the other
+
+**A published number that only reproduces where it was computed.** `data/contamination_probe.json` stored the
+interval and its width as the raw doubles its binomial inversions returned, and `verify` compares them with
+`==`. macOS agreed with itself; GitHub's Linux runner did not. The failing witness, from CI run 39013012554 on
+`9f6fa88`:
+
+    DRIFT: contamination interval_width: recomputed 0.055144344888399005, published 0.05514434488839934
+    DRIFT: contamination interval: recomputed [-0.2626460179287902, -0.20750167304039122],
+                                        published [-0.26264601792879055, -0.207501673040...]
+
+Eighteen rows of the suite went red on the runner while the same commit had passed 1144/1144 in a `git archive`
+export and 1180/1180 in the corpus-visible lane on this machine. The export could not have caught it: an export
+on the same disk is the same libm. What was published as "re-derived by `verify`" was re-derived only on the
+platform that wrote it, which is the one thing that claim is for.
+
+**The fix is the repository's own rule, applied to a bracket instead of a bound.** `certificate.canonicalise_bound`
+already answers this class for published bounds: quantise the transcendental number once onto
+`PUBLISHED_DECIMALS` and let whatever is derived from it be a correctly-rounded function of reproducible values.
+`contamination._exact_two_sided` now does the same for both ends, outward -- a lower end snapped up would publish
+a narrower interval than the one the arithmetic produced, which is precisely the conservatism the module claims.
+The width is not quantised of its own: it is pinned to be exactly the published pair's difference. Re-emitting
+the artefact through `tools/contamination_probe.py` moved the stored interval from 17 significant digits to grid
+values (`[-0.26264601793, -0.207501673039]`), and nothing a claim note or README renders changed, because both
+are quoted at six decimals. `verify` answers `612 /612` absent and `649 /649` present in both shapes at rc 0 with
+zero drift lines, the protocol re-emits to the same digest `ce43f8e29cc1…`, and no certificate stamp moved -- so
+this is a correction inside the twelfth freeze rather than a thirteenth emission.
+
+**What this file did not do.** It did not add a repo-wide guard on the phrase "the bounds use the case
+denominator" (see the entry above: the severity artefact's copy of that sentence is true), and it did not touch
+the ordinal certificate's denominator question, which stays open because its two case counts are equal and no
+assertion on that artefact can tell them apart.

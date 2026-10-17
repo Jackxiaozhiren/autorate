@@ -22,7 +22,7 @@ different suites, which means task difficulty is confounded with the flag.
 | `R_in` (in-training error rate) | 0.191666666667 |
 | `R_out` (held-out error rate) | 0.426875 |
 | `delta_hat = R_in - R_out` | -0.235208333333 |
-| two-sided interval | [-0.262646017928, -0.20750167304] |
+| two-sided interval | [-0.26264601793, -0.207501673039] |
 | interval excludes zero | True |
 | stratum with the higher rate | `out_stratum` |
 | sign | `held-out worse` |

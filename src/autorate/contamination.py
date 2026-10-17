@@ -71,6 +71,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from .certificate import PUBLISHED_DECIMALS
 from .tails import clopper_pearson_upper
 
 # --- the declaration contract ---------------------------------------------------------------
@@ -137,6 +138,28 @@ COMPARABLE_FIELDS = ("alpha", "beta", "delta", "method", "backend")
 
 # --- helpers ----------------------------------------------------------------------------------
 
+_GRID = 10.0 ** -PUBLISHED_DECIMALS
+
+
+def _quantise_outward(value: float, side: str) -> float:
+    """One transcendental bound, snapped onto `PUBLISHED_DECIMALS` away from the interval's centre.
+
+    `certificate.canonicalise_bound` does this for an upper bound alone. A bracket has two sides, and the
+    direction is the content: a lower end rounded UP would publish an interval narrower than the one the
+    arithmetic produced, which is exactly the claim this module makes about its own bracket. The grid is
+    the same one the published bounds use, so the operation is idempotent -- a value already on the grid
+    rounds to itself -- and the most either platform can move a number is one grid step, four orders
+    above the last-bit difference that made the first published artefact unreproducible (CI run
+    39013012554: `interval_width` 0.05514434488839934 published against 0.055144344888399005 recomputed).
+    """
+    snapped = round(value, PUBLISHED_DECIMALS)
+    if side == "upper" and snapped < value:
+        snapped = round(snapped + _GRID, PUBLISHED_DECIMALS)
+    elif side == "lower" and snapped > value:
+        snapped = round(snapped - _GRID, PUBLISHED_DECIMALS)
+    return snapped
+
+
 def _exact_two_sided(k: int, n: int, piece: float) -> tuple:
     """(lower, upper) exact bounds on a binomial rate at joint level 1 - 4*`piece`.
 
@@ -145,9 +168,14 @@ def _exact_two_sided(k: int, n: int, piece: float) -> tuple:
     `P(X <= n-k | p) = piece` on the other tail -- a second bisection of a different binomial, not
     a mirrored gap. Doubling one tail instead would put the lower end below zero for a small rate,
     where no rate can live; tests/test_contamination.py pins the two apart.
+
+    Both ends are quantised outwards here, at their one source, so everything the probe publishes from
+    them -- the Minkowski interval, its width, which end excludes zero -- is a correctly-rounded function
+    of grid values and not of a platform's libm. That is `canonicalise_bound`'s rule applied to the
+    bracket rather than to a single bound.
     """
-    upper = clopper_pearson_upper(k, n, piece)
-    lower = 1.0 - clopper_pearson_upper(n - k, n, piece)
+    upper = _quantise_outward(clopper_pearson_upper(k, n, piece), "upper")
+    lower = _quantise_outward(1.0 - clopper_pearson_upper(n - k, n, piece), "lower")
     return lower, upper
 
 

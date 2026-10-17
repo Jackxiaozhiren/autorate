@@ -6,8 +6,8 @@
     "delta_hat": -0.235208333333,
     "excludes_zero": true,
     "interval": [
-      -0.262646017928,
-      -0.20750167304
+      -0.26264601793,
+      -0.207501673039
     ],
     "sign": "held-out worse",
     "worse": "out_stratum"
@@ -55,18 +55,18 @@
     "excludes_zero": true,
     "interpretation": "the in-training stratum errs less than the held-out stratum by 0.235208, and the interval [-0.262646, -0.207502] excludes zero; this is a diagnostic with an interpretation rule, not a proof of leakage: the two strata are carried by different suites, so the gap is confounded with which tasks sit on which side of the flag",
     "interval": [
-      -0.2626460179287902,
-      -0.20750167304039122
+      -0.26264601793,
+      -0.207501673039
     ],
-    "interval_width": 0.055144344888399005,
+    "interval_width": 0.05514434489099998,
     "n_pieces": 4,
     "piece": 0.0125,
     "sign": "held-out worse",
     "strata": {
       "in_stratum": {
         "bounds": [
-          0.18038668466483143,
-          0.20332877748010716
+          0.180386684664,
+          0.203328777481
         ],
         "cases": 6000,
         "errors": 1150,
@@ -76,8 +76,8 @@
       },
       "out_stratum": {
         "bounds": [
-          0.4108304505204984,
-          0.44303270259362165
+          0.41083045052,
+          0.443032702594
         ],
         "cases": 4800,
         "errors": 2049,

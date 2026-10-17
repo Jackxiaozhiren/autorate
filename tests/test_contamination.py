@@ -606,3 +606,52 @@ class TestFromCounts:
         assert out["sign"] == "in-training worse", out
         assert "not a proof" in out["interpretation"], out
         assert out["claim"] is False
+
+
+# -----------------------------------------------------------------------------------------------
+# Cross-platform reproducibility of the published interval (CI, run 39013012554).
+# -----------------------------------------------------------------------------------------------
+
+def test_the_published_interval_is_a_function_of_grid_values_not_of_raw_libm_bits():
+    """`verify` compares these numbers with `==`, so they have to be on the published grid.
+
+    The first run of this row reddened on GitHub's Linux and passed on macOS: the artefact published
+    `interval_width` 0.05514434488839934 while the same counts recomputed to 0.055144344888399005 --
+    the last two bits of a double that came out of two binomial inversions. `certificate.py:145` already
+    answers that class for bounds: quantise the transcendental number once, onto `PUBLISHED_DECIMALS`,
+    and let everything derived from it be a correctly-rounded function of reproducible values. A value on
+    that grid rounds to itself, which is what this row reads.
+    """
+    from autorate.certificate import PUBLISHED_DECIMALS
+
+    doc = json.loads((REPO / "data" / "contamination_probe.json").read_text())
+    low, high = doc["probe"]["interval"]
+    for name, value in (("interval[0]", low), ("interval[1]", high)):
+        assert round(value, PUBLISHED_DECIMALS) == value, (name, repr(value))
+    # The width is NOT quantised of its own: `canonicalise_bound`'s rule is that once the transcendental
+    # inputs are canonical, what is derived from them is a correctly-rounded function of reproducible
+    # numbers and needs no rounding of its own. So the honest statement here is that the published width
+    # is exactly the published pair's difference -- which is what makes the two a single fact instead of
+    # three numbers that can each drift apart.
+    assert doc["probe"]["interval_width"] == high - low, (repr(doc["probe"]["interval_width"]), repr(high - low))
+
+
+def test_the_two_sided_exact_bounds_are_quantised_outwards_at_their_one_source():
+    """Outward only: a lower end snapped up would shrink the interval the probe calls conservative.
+
+    The direction is the whole content of the row. Both ends land on the same 1e-12 grid, so a check that
+    only asks "is it on the grid" passes for either direction; this one compares against the unquantised
+    inversion and requires the published bracket to contain it.
+    """
+    from autorate.certificate import PUBLISHED_DECIMALS
+    from autorate.contamination import N_PIECES, _exact_two_sided
+    from autorate.tails import clopper_pearson_upper
+
+    piece = PROBE_DELTA / N_PIECES
+    k, n = 1150, 6000
+    raw_high = clopper_pearson_upper(k, n, piece)
+    raw_low = 1.0 - clopper_pearson_upper(n - k, n, piece)
+    low, high = _exact_two_sided(k, n, piece)
+    assert low <= raw_low and high >= raw_high, (low, raw_low, high, raw_high)
+    assert round(low, PUBLISHED_DECIMALS) == low and round(high, PUBLISHED_DECIMALS) == high, (low, high)
+    assert low < high and raw_low < raw_high
