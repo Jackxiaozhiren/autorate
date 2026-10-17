@@ -107,11 +107,26 @@ def test_the_arm_re_pools_the_pin_and_compares_the_published_gap_field_by_field(
     assert [name for name, ok in field if not ok] == [], [n for n, ok in field if not ok]
     assert [name for name, ok in budget if not ok] == [], [n for n, ok in budget if not ok]
     assert len(field) == 29 and len(budget) == 4, (len(field), len(budget))
-    _arm_in_lane(monkeypatch, str(REPO.parent / "laya-0.3.20" / "research" / "benchmarks" / "feishu_zh"))
+
+
+def test_the_corpus_visible_lane_adds_exactly_the_published_corpus_only_checks(in_repo, monkeypatch):
+    """The two re-digest checks are the present lane's whole difference, and they are named in `report`.
+
+    Kept out of the counts row because it can only run where the vendored corpus is reachable; a row that
+    mixes the two would fail in the corpus-less export for a reason that is about the machine, which is the
+    mistake the resolver branch above exists to stop.
+    """
+    corpus = REPO.parent / "laya-0.3.20" / "research" / "benchmarks" / "feishu_zh"
+    if not (corpus / "data" / "manifest.json").is_file():
+        pytest.skip("no corpus at %s: the two re-digest checks exist only in the corpus-visible lane" % corpus)
+    _arm_in_lane(monkeypatch, "/nonexistent-corpus-dir")
+    field, _ = _arm_counts()
+    _arm_in_lane(monkeypatch, str(corpus))
     seen, _ = _arm_counts()
     labels = {name for name, ok in seen}
     extra = sorted(labels - {name for name, _ in field})
     assert extra == sorted(report.CONTAMINATION_CORPUS_ONLY_CHECKS), extra
+    assert [name for name, ok in seen if not ok] == [], [n for n, ok in seen if not ok]
 
 
 def test_the_note_digit_for_the_arm_is_the_number_of_comparisons_the_arm_makes(in_repo, monkeypatch):
@@ -199,6 +214,18 @@ def test_the_committed_artefact_publishes_no_claim(in_repo):
     assert doc["headline"]["excludes_zero"] is True, doc["headline"]
 
 
+def test_the_resolver_returns_nothing_rather_than_raising_where_no_corpus_exists(monkeypatch):
+    """No environment variable and no sibling corpus is the shape of a fresh clone, not an error.
+
+    `cli._default_corpus()` answers `None` when the glob finds nothing, so a resolver that wraps it in `Path`
+    unconditionally raises `TypeError` -- an rc 1 out of `verify` on the one machine the published gates never
+    see. This is the row the corpus-less export wrote: it reddened as a crash before the branch was added.
+    """
+    monkeypatch.delenv("AUTORATE_FEISHU_ROOT", raising=False)
+    monkeypatch.setattr("autorate.cli._default_corpus", lambda: None)
+    assert report._corpus_root_for_contamination() is None
+
+
 def test_the_present_lane_extras_do_not_depend_on_how_the_corpus_was_named(monkeypatch):
     """A denominator that changes with the *form* of the corpus argument would be a fact about the call.
 
@@ -210,10 +237,11 @@ def test_the_present_lane_extras_do_not_depend_on_how_the_corpus_was_named(monke
     from autorate.cli import _default_corpus
 
     monkeypatch.delenv("AUTORATE_FEISHU_ROOT", raising=False)
-    default = Path(_default_corpus())
-    if not (default / "data" / "manifest.json").is_file():
-        pytest.skip("no sibling corpus to resolve: %s; the env-var lane is covered by every other row"
-                    % default)
+    default = _default_corpus()
+    if default is None or not (Path(default) / "data" / "manifest.json").is_file():
+        pytest.skip("no sibling corpus to resolve: %r; the env-var lane is covered by every other row"
+                    % (default,))
+    default = Path(default)
     root = report._corpus_root_for_contamination()
     assert root is not None, "the sibling default resolved to nothing, so the lane would lose its two checks"
     assert (root / "research/results/app_benchmark_results.json").is_file(), root

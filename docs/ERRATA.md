@@ -2178,3 +2178,10 @@ on PATH to run the shipped entry point, and the run that reported them launched 
 `.venv/bin` on PATH, both pass. What is disclosed here is the class: every one of these rows was green in CI
 because CI cannot see them failing, and the round that published the arm reported its suite from an export of an
 earlier commit.
+
+The resolver that closed the lane difference was itself landed incomplete: it wrapped `cli._default_corpus()` in
+`Path` unconditionally, and that resolver answers `None` where no sibling corpus exists -- a fresh clone, the
+`git archive` export, CI without the variable set. The corpus-less export caught it as a `TypeError`, which is an
+rc 1 out of `verify`, and the branch that returns `None` for that case went in beside the row that now asserts it
+(`test_the_resolver_returns_nothing_rather_than_raising_where_no_corpus_exists`, red as a crash before the fix).
+Nothing published carried the defect: it was caught between two commits on the same round, before the push.

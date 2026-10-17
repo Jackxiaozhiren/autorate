@@ -2164,8 +2164,9 @@ def _corpus_root_for_contamination():
     from autorate.cli import _default_corpus
 
     env = os.environ.get("AUTORATE_FEISHU_ROOT")
-    root = Path(env) if env else Path(_default_corpus())
-    return root.parents[2] if (root / "data" / "manifest.json").is_file() else None
+    default = _default_corpus()
+    root = Path(env) if env else (Path(default) if default is not None else None)
+    return root.parents[2] if root is not None and (root / "data" / "manifest.json").is_file() else None
 
 
 class ContaminationRefusal(ValueError):
