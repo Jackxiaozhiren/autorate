@@ -41,12 +41,14 @@ re-derive. **3** when the run measured and a claim did NOT reproduce: the envelo
 functions no longer yield, or the sweep fired a violation without a clip. The artefact and the document are
 written and printed first -- the disagreement is the result, and it is published -- then 3. **2** for the
 refusals about an argument the operator typed: `--check` combined with a write flag, exactly one of
-`--out`/`--doc` when the run would publish, a pair off the paths this build declares, `--trials` below the
+`--out`/`--doc` when the run would publish, NEITHER of them (which would rewrite the declared artefact and
+leave the document that quotes it stale), a pair off the paths this build declares, `--trials` below the
 stated scale on a publishing run, an existing `--out` without `--force`, an unwritable destination, or a
-`--check --artefact` path that is missing, unusable, or does not reproduce. **4** for a defect in the state this build declares:
-`autorate.drift` absent or holding a malformed envelope, or a `--check` of the DECLARED artefact that is
-absent, wrong-shaped, truncated, re-provenanced, byte-different from its own document, or carrying a figure
-the arithmetic no longer yields. Nothing escapes at 1: every input problem is a `ValueError` subclass mapped to
+`--check --artefact` path that is missing, unusable, or does not reproduce. **4** for a defect in the state
+this build declares: `autorate.drift` absent or holding a malformed envelope, or a `--check` of the DECLARED
+artefact that is absent, wrong-shaped, truncated, re-provenanced, quoted from a sentence the module does not
+contain (`WITHDRAWAL PROSE`), byte-different from its own document, or carrying a figure the arithmetic no
+longer yields. Nothing escapes at 1: every input problem is a `ValueError` subclass mapped to
 2, every committed-state problem is a `RuntimeError` subclass mapped to 4, and `weighted_quantile`'s own
 `ArithmeticError` cross-check is named rather than allowed to reach the operator as a traceback. The checks
 also read stored rows *by key*, so both catch-alls carry `LookupError` and `AttributeError` as well: a
@@ -142,6 +144,27 @@ def _first_match(pattern: str, text: str, what: str):
             "ENVELOPE PROVENANCE: %s is not in drift.py's envelope text (pattern %r); this artefact states "
             "no figure the module does not" % (what, pattern))
     return match
+
+
+def _envelope_reason(lines: tuple, pattern: str, name: str) -> str:
+    """The one envelope line this artefact quotes as the module's reason, or a named refusal.
+
+    MAJOR-2 was a quotation the module did not contain: `build_artefact` typed a paraphrase into the
+    withdrawals block and `render_document` printed it after "the module states the reason as". A paraphrase
+    can outlive the sentence it claims to quote, so the reason is read out of the tuple the way every figure
+    is -- and the stored value is that line verbatim, which is what lets `check_envelope_copies` compare it
+    against the module again on a `--check` run.
+
+    Exactly one line must match. Zero matches is a `drift.py` edit that dropped or reworded the mechanism
+    sentence; two is an envelope that no longer says which line is the reason. Both are exit 4, because the
+    alternative -- publishing the tool's own words under the module's name -- is the defect this replaces.
+    """
+    hits = [line for line in lines if re.match(pattern, line)]
+    if len(hits) != 1:
+        raise DriftEnvelopeState(
+            "ENVELOPE PROVENANCE: drift.%s gives %d lines matching %r, and this artefact publishes exactly "
+            "the one the module states as its reason (found %d)" % (name, len(hits), pattern, len(hits)))
+    return hits[0]
 
 
 def read_module_provenance() -> dict:
@@ -411,10 +434,20 @@ def _mode2_row(item: dict, provenance: dict, cited: dict = None) -> dict:
     scores = materialise(item["construction"])
     realised, clipped = walk_mode2(scores, alpha, gamma)
     bound = drift.aci_regret_bound(len(scores), alpha, gamma)
+    # Canonicalised at the producer, on the grid the artefact declares for itself (ledger R-121, and the same
+    # rule that fixed the contamination interval after a second libc re-derived `0.7884344428029711` against
+    # the stored `...715`). Mode 1 already did this; mode 2 stored `0.02877777777777778` and
+    # `0.004499999999999997`, which publish a libm fact as evidence. The published figures are the rounded
+    # ones, so `violates_bound` is decided from them too -- a reader who re-adds the row's own numbers has to
+    # land on the same verdict the artefact states.
+    decimals = int(provenance["published_decimals"])
+    realised = round(realised, decimals)
+    bound = round(bound, decimals)
+    deviation = round(abs(realised - alpha), decimals)
     row = {"name": item["name"], "construction": dict(item["construction"]), "rounds": len(scores),
            "sequence_digest_sha256": sequence_digest(scores), "realised_long_run_rate": realised,
-           "deviation_from_alpha": abs(realised - alpha), "regret_bound": bound,
-           "violates_bound": bool(abs(realised - alpha) > bound), "clip_observable": clipped}
+           "deviation_from_alpha": deviation, "regret_bound": bound,
+           "violates_bound": bool(deviation > bound), "clip_observable": clipped}
     if cited is not None:
         row["envelope_cited_rate"] = cited.get(item["name"])
         row["envelope_cited_bound"] = cited.get("%s|bound" % item["name"])
@@ -453,7 +486,7 @@ def measure_mode2_sweep(provenance: dict) -> dict:
         raise DriftEnvelopeState("ENVELOPE PROVENANCE: the sweep's denominators (%s, %s) are not its sequence "
                                  "count %d" % (unclipped.group(2), held.group(2), sequences))
     alpha, gamma = float(provenance["alpha"]), float(provenance["gamma"])
-    bound = drift.aci_regret_bound(rounds, alpha, gamma)
+    bound = round(drift.aci_regret_bound(rounds, alpha, gamma), int(provenance["published_decimals"]))
     rng = random.Random(seed)
     violations = violated_unclipped = held_clipped = clipped_total = 0
     for k in range(sequences):
@@ -565,6 +598,8 @@ def build_artefact(trials: int) -> dict:
     mode2 = measure_mode2(provenance, mode2_constructions())
     mode2_controls = measure_mode2_controls(provenance, mode2_control_constructions())
     sweep = measure_mode2_sweep(provenance)
+    weighted = _checked_tuple(drift.WEIGHTED_ENVELOPE, "WEIGHTED_ENVELOPE")
+    aci = _checked_tuple(drift.ACI_ENVELOPE, "ACI_ENVELOPE")
     return {
         "producer": PRODUCER,
         "artefact_path": ARTEFACT_REL,
@@ -574,27 +609,25 @@ def build_artefact(trials: int) -> dict:
         "mode2": mode2,
         "mode2_controls": mode2_controls,
         "mode2_sweep": sweep,
-        "weighted_envelope": list(_checked_tuple(drift.WEIGHTED_ENVELOPE, "WEIGHTED_ENVELOPE")),
-        "aci_envelope": list(_checked_tuple(drift.ACI_ENVELOPE, "ACI_ENVELOPE")),
+        "weighted_envelope": list(weighted),
+        "aci_envelope": list(aci),
         "not_certifiable_under_drift": drift.NOT_CERTIFIABLE_UNDER_DRIFT,
         "withdrawals": {
             "mode1": {"statement_withdrawn": "the finite-sample coverage statement",
                       "status": "withdrawn",
                       "what_the_mode_buys": "a re-weighted estimate of the target-regime quantile, and no "
                                             "bound on it",
-                      "owner": "drift.WEIGHTED_ENVELOPE",
-                      "why": "the shipped correction is the exchangeable case's: the test point's own "
-                             "target-regime weight is supplied as the constant TEST_POINT_WEIGHT named in "
-                             "provenance.module_constants instead of being known at calibration time"},
+                      "reason_owner": "drift.WEIGHTED_ENVELOPE",
+                      "why": _envelope_reason(
+                          weighted, r"^the finite-sample correction is the EXCHANGEABLE case's",
+                          "WEIGHTED_ENVELOPE")},
             "mode2": {"statement_withdrawn": "the long-run regret statement |mean err - alpha| <= "
                                              "aci_regret_bound(T, alpha, gamma)",
                       "status": "withdrawn",
                       "what_the_mode_buys": "a threshold that tracks the target rate while its iterate stays "
                                             "inside (0,1)",
-                      "owner": "drift.ACI_ENVELOPE",
-                      "why": "the round's update is clipped to the score range and a clip discards it, so a "
-                             "target rate unreachable on the sequence's own atoms settles into a cycle "
-                             "instead of a fixed point"},
+                      "reason_owner": "drift.ACI_ENVELOPE",
+                      "why": _envelope_reason(aci, r"^the mechanism, stated because", "ACI_ENVELOPE")},
         },
         "reproduction": build_reproduction(mode1, mode2, mode2_controls, sweep),
     }
@@ -613,7 +646,13 @@ def _wrap(text: str, width: int = DOC_WIDTH) -> list:
 
 
 def render_document(doc: dict) -> str:
-    """`docs/DRIFT.md`, rendered from the artefact's bytes. Not one figure here is typed.
+    """`docs/DRIFT.md`, rendered from the artefact's bytes -- not one figure or count here is typed.
+
+    MINOR-4 was this docstring's own overclaim: the prose spelled "Four of them are below", "Two controls
+    beside them, so the four rows above" and a heading naming "the four constructions" while those counts came
+    from nothing but the run that wrote them. Each is now `len()` of the artefact's own list, so a construction
+    added to or dropped from the publication moves the sentence with the table instead of leaving the document
+    asserting a count the table contradicts.
 
     The header names the command that writes the file, states both withdrawals in plain words, prints the
     module's two envelope tuples line by line, and lists the provenance the measurement read. No timestamp and
@@ -644,7 +683,7 @@ def render_document(doc: dict) -> str:
     lines += _wrap("**Mode 1 (a declared density ratio): the finite-sample statement is %s.** What the mode "
                    "buys instead is %s. The shipped estimator adds the constant test-point weight named in the "
                    "provenance block below instead of the test point's own target-regime weight, which is not "
-                   "knowable at calibration time; the module states the reason as \"%s\". On an exactly "
+                   "knowable at calibration time; the module states the reason verbatim: \"%s\". On an exactly "
                    "declared "
                    "ratio it therefore under-covers, and the Mode 1 table is that under-coverage measured "
                    "against the figure the envelope states."
@@ -652,13 +691,14 @@ def render_document(doc: dict) -> str:
     lines += [""]
     lines += _wrap("**Mode 2 (an adaptive threshold): the regret statement is %s.** The inequality this module "
                    "used to publish as mode 2's guarantee -- `|mean err - alpha| <= aci_regret_bound(T, alpha, "
-                   "gamma)` -- is false on sequences the module's own validator accepts. Four of them are below, "
+                   "gamma)` -- is false on sequences the module's own validator accepts, and the %d below are "
+                   "among them, "
                    "each with its realised long-run rate, its deviation from the target, and the bound it "
                    "exceeds. The clip that keeps the iterate inside the score range discards the update whenever "
                    "it fires, and every violation below has a fired clip beside it; a clip is necessary for a "
                    "violation, not sufficient, which is what the sweep counts say. The module states the "
-                   "reason as \"%s\"."
-                   % (withdrawal2["status"], withdrawal2["why"]))
+                   "reason verbatim: \"%s\"."
+                   % (withdrawal2["status"], len(doc["mode2"]), withdrawal2["why"]))
     lines += ["", "## Mode 1: the declared ratio, measured", ""]
     lines += _wrap(
         "Calibration regime %s, declared target density %s, `E_F0[w] = %s`, nominal alpha %s, seed %s, %s "
@@ -686,7 +726,7 @@ def render_document(doc: dict) -> str:
     lines += _wrap("The point of these rows is the direction, not the width of the gap: the realised rate sits "
                    "*above* the nominal rate at every published size, and the 3SE column is what lets a reader "
                    "judge whether the envelope's figure and this measurement are the same measurement.")
-    lines += ["", "## Mode 2: the four constructions, and the bound each one exceeds", "",
+    lines += ["", "## Mode 2: the %d constructions, and the bound each one exceeds" % len(doc["mode2"]), "",
               "| sequence | rounds | realised long-run rate | deviation from alpha | regret bound | "
               "exceeds bound | clip observable | envelope states | agrees |",
               "|---|---|---|---|---|---|---|---|---|"]
@@ -698,8 +738,9 @@ def render_document(doc: dict) -> str:
             "%.6f" % cited if cited is not None else "not stated",
             cited is not None and abs(row["realised_long_run_rate"] - cited) < 5e-4))
     lines += [""]
-    lines += _wrap("Two controls beside them, so the four rows above read as a falsification and not as a "
-                   "blanket \"nothing holds\": there the inequality holds, and no clip fires.")
+    lines += _wrap("Beside them sit %d controls, so the %d rows above read as a falsification and not as a "
+                   "blanket \"nothing holds\": there the inequality holds, and no clip fires."
+                   % (len(doc["mode2_controls"]), len(doc["mode2"])))
     lines += ["", "| control | rounds | realised long-run rate | deviation from alpha | regret bound | "
               "exceeds bound | clip observable |", "|---|---|---|---|---|---|---|"]
     for row in doc["mode2_controls"]:
@@ -739,8 +780,14 @@ def render_document(doc: dict) -> str:
     lines += ["", "## What each withdrawal replaced", ""]
     for mode in sorted(doc["withdrawals"]):
         block = doc["withdrawals"][mode]
-        lines.append("- **%s** withdraws `%s`. Owner: `%s`. What it buys instead: %s." % (
-            mode, block["statement_withdrawn"], block["owner"], block["what_the_mode_buys"]))
+        # MAJOR-2's other line: this row used to print `Owner: drift.WEIGHTED_ENVELOPE` beside a summary the
+        # tool wrote, which read as though the module owned the whole bullet. The constant owns the reason --
+        # and only the reason, because `check_envelope_copies` refuses when that sentence is not one of its
+        # lines. The summary is this file's, and the document now says so.
+        lines.append("- **%s** withdraws `%s`. Reason owner: `%s`, quoted verbatim above; the summary in this "
+                     "line is %s's. What it buys instead: %s." % (
+                         mode, block["statement_withdrawn"], block["reason_owner"], PRODUCER,
+                         block["what_the_mode_buys"]))
     return "\n".join(lines) + "\n"
 
 
@@ -843,6 +890,18 @@ def check_envelope_copies(doc: dict, *, declared: bool) -> None:
     if doc["not_certifiable_under_drift"] != drift.NOT_CERTIFIABLE_UNDER_DRIFT:
         _refuse(declared, "ENVELOPE TRUNCATED", "the stored marginal-only flag is not "
                 "drift.NOT_CERTIFIABLE_UNDER_DRIFT")
+    for mode, name in (("mode1", "WEIGHTED_ENVELOPE"), ("mode2", "ACI_ENVELOPE")):
+        block = doc["withdrawals"][mode]
+        if block.get("reason_owner") != "drift.%s" % name:
+            _refuse(declared, "WITHDRAWAL PROSE", "the artefact's `withdrawals.%s` names %r as the owner of "
+                    "its reason while the renderer prints that reason as the module's own words; the owner "
+                    "must be `drift.%s`" % (mode, block.get("reason_owner"), name))
+        if block["why"] not in _checked_tuple(getattr(drift, name), name):
+            _refuse(declared, "WITHDRAWAL PROSE",
+                    "the artefact's `withdrawals.%s.why` is a sentence drift.%s does not contain, and %s "
+                    "quotes it verbatim after \"the module states the reason verbatim:\" -- a paraphrase stored "
+                    "here is the defect MAJOR-2 measured, so the reason has to be one of the module's lines"
+                    % (mode, name, DOC_REL))
 
 
 def check_provenance(doc: dict, *, declared: bool) -> None:
@@ -918,14 +977,18 @@ def rederive_and_compare(doc: dict, *, declared: bool) -> list:
             if sequence_digest(scores) != stored_row["sequence_digest_sha256"] or len(scores) != stored_row["rounds"]:
                 disagreements.append("%s %s: the stored recipe no longer materialises the sequence the "
                                      "artefact measured" % (section, stored_row["name"]))
+            # Exact, on the canonical grid both sides are produced at -- the same rule mode 1 uses above. The
+            # `1e-9` this replaces was a tolerance on raw doubles: it could not tell a re-run on another
+            # libm from a re-run that measured something else, and it went red the moment storage was
+            # canonicalised because the stored value is the rounded one.
             for field in ("realised_long_run_rate", "regret_bound", "deviation_from_alpha"):
-                if abs(float(stored_row[field]) - float(fresh_row[field])) > 1e-9:
+                if stored_row[field] != fresh_row[field]:
                     disagreements.append("%s %s %s: artefact %r, re-run %r"
                                          % (section, stored_row["name"], field, stored_row[field],
                                             fresh_row[field]))
     stored_sweep = doc["mode2_sweep"]
     for field in ("violations", "violated_without_clip", "clipped", "held_clipped", "sequences", "rounds",
-                  "seed"):
+                  "seed", "bound"):
         if stored_sweep[field] != sweep[field]:
             disagreements.append("mode2_sweep %s: artefact %r, re-run %r"
                                  % (field, stored_sweep[field], sweep[field]))
@@ -1052,6 +1115,16 @@ def main(argv=None) -> int:
                       "was written" % (PRODUCER, args.trials, stated, ARTEFACT_REL, DOC_REL),
                       file=sys.stderr)
                 return EXIT_USAGE
+        if args.out is None and args.doc is None:
+            # MINOR-6. The pair guard above keyed on the flags a reader typed, so naming `--out data/...`
+            # explicitly was refused while reaching the SAME declared destination by defaulting `--out` was
+            # not: `python3 tools/drift_envelope.py --force` rewrote the artefact and left the document that
+            # quotes it untouched. The identity that matters is the destination, not the spelling.
+            print("%s: PAIR: this run writes the published artefact %s (the default) and no document, which "
+                  "leaves %s quoting figures that are no longer the ones on disk -- exactly the drift this "
+                  "gate exists to catch. Pass --doc %s to write the pair, or point --out at a scratch path. "
+                  "Nothing was written" % (PRODUCER, ARTEFACT_REL, DOC_REL, DOC_REL), file=sys.stderr)
+            return EXIT_USAGE
 
         if out.exists() and not args.force:
             print("%s: %s already exists; pass --force to replace it" % (PRODUCER, out), file=sys.stderr)

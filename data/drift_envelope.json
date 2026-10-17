@@ -54,7 +54,7 @@
       "envelope_cited_rate": 0.50025,
       "name": "every score == SCORE_CEILING",
       "realised_long_run_rate": 0.50025,
-      "regret_bound": 0.02877777777777778,
+      "regret_bound": 0.028778,
       "rounds": 20000,
       "sequence_digest_sha256": "e0f31f1b7e6d2fc1b1bf973b2380425b4c9a076eb64cb0861bba8393b642a5fa",
       "violates_bound": true
@@ -74,7 +74,7 @@
       "envelope_cited_rate": 0.16674,
       "name": "adversarial period-2 0.99/0.01",
       "realised_long_run_rate": 0.16674,
-      "regret_bound": 0.02797777777777778,
+      "regret_bound": 0.027978,
       "rounds": 100000,
       "sequence_digest_sha256": "3f1407fd2baf829846e4469edff08e50622289386825f338be7e5a1ecd614a01",
       "violates_bound": true
@@ -91,7 +91,7 @@
       "envelope_cited_rate": 0.1671,
       "name": "constant 0.99, below the ceiling",
       "realised_long_run_rate": 0.1671,
-      "regret_bound": 0.02877777777777778,
+      "regret_bound": 0.028778,
       "rounds": 20000,
       "sequence_digest_sha256": "9125f6b77338aaa80c5f6aebff6e1b91c11cf75fc9df4237f4155420d20c530d",
       "violates_bound": true
@@ -108,7 +108,7 @@
       "envelope_cited_rate": 0.0,
       "name": "every score == the floor 0.0",
       "realised_long_run_rate": 0.0,
-      "regret_bound": 0.02877777777777778,
+      "regret_bound": 0.028778,
       "rounds": 20000,
       "sequence_digest_sha256": "9937a76d7dfdc2050f38f75ab3c8c146b34096776bb368bf9454dbb2fae7c9fc",
       "violates_bound": true
@@ -122,10 +122,10 @@
         "modulus": 100,
         "rounds": 2000
       },
-      "deviation_from_alpha": 0.004499999999999997,
+      "deviation_from_alpha": 0.0045,
       "name": "grid control",
       "realised_long_run_rate": 0.0545,
-      "regret_bound": 0.03777777777777778,
+      "regret_bound": 0.037778,
       "rounds": 2000,
       "sequence_digest_sha256": "0b786c6860064bc504307f87eaa98d6df4e7b8b16ff6c4815cdd55a30b05e1c7",
       "violates_bound": false
@@ -137,10 +137,10 @@
         "rounds": 2000,
         "value": 0.95
       },
-      "deviation_from_alpha": 0.004499999999999997,
+      "deviation_from_alpha": 0.0045,
       "name": "constant 0.95 control",
       "realised_long_run_rate": 0.0545,
-      "regret_bound": 0.03777777777777778,
+      "regret_bound": 0.037778,
       "rounds": 2000,
       "sequence_digest_sha256": "e1590ca884f16047d600b63ca0f8fa37295b4d36c32e3d847a9a58e74f3ad373",
       "violates_bound": false
@@ -148,7 +148,7 @@
   ],
   "mode2_sweep": {
     "alpha": 0.05,
-    "bound": 0.03777777777777778,
+    "bound": 0.037778,
     "classes": 8,
     "clipped": 312,
     "envelope_cited_held_clipped": 112,
@@ -245,7 +245,7 @@
       },
       {
         "agrees": true,
-        "envelope_states": 0.02877777777777778,
+        "envelope_states": 0.028778,
         "id": "mode2 regret inequality violated: every score == SCORE_CEILING",
         "measured": 0.45025,
         "tolerance": null,
@@ -269,7 +269,7 @@
       },
       {
         "agrees": true,
-        "envelope_states": 0.02797777777777778,
+        "envelope_states": 0.027978,
         "id": "mode2 regret inequality violated: adversarial period-2 0.99/0.01",
         "measured": 0.11674,
         "tolerance": null,
@@ -293,7 +293,7 @@
       },
       {
         "agrees": true,
-        "envelope_states": 0.02877777777777778,
+        "envelope_states": 0.028778,
         "id": "mode2 regret inequality violated: constant 0.99, below the ceiling",
         "measured": 0.1171,
         "tolerance": null,
@@ -317,7 +317,7 @@
       },
       {
         "agrees": true,
-        "envelope_states": 0.02877777777777778,
+        "envelope_states": 0.028778,
         "id": "mode2 regret inequality violated: every score == the floor 0.0",
         "measured": 0.05,
         "tolerance": null,
@@ -333,17 +333,17 @@
       },
       {
         "agrees": true,
-        "envelope_states": 0.03777777777777778,
+        "envelope_states": 0.037778,
         "id": "mode2 control holds: grid control",
-        "measured": 0.004499999999999997,
+        "measured": 0.0045,
         "tolerance": null,
         "tolerance_basis": "a direction, not a band: the control must sit INSIDE the bound"
       },
       {
         "agrees": true,
-        "envelope_states": 0.03777777777777778,
+        "envelope_states": 0.037778,
         "id": "mode2 control holds: constant 0.95 control",
-        "measured": 0.004499999999999997,
+        "measured": 0.0045,
         "tolerance": null,
         "tolerance_basis": "a direction, not a band: the control must sit INSIDE the bound"
       },
@@ -374,18 +374,18 @@
   ],
   "withdrawals": {
     "mode1": {
-      "owner": "drift.WEIGHTED_ENVELOPE",
+      "reason_owner": "drift.WEIGHTED_ENVELOPE",
       "statement_withdrawn": "the finite-sample coverage statement",
       "status": "withdrawn",
       "what_the_mode_buys": "a re-weighted estimate of the target-regime quantile, and no bound on it",
-      "why": "the shipped correction is the exchangeable case's: the test point's own target-regime weight is supplied as the constant TEST_POINT_WEIGHT named in provenance.module_constants instead of being known at calibration time"
+      "why": "the finite-sample correction is the EXCHANGEABLE case's: the denominator adds weight 1.0 for the test point, which is exact for unit weights -- where the answer reproduces split_quantile value for value and flag for flag -- and is not the weighted-conformal correction, whose denominator is sum(w) + w_{n+1} with w_{n+1} the test point's own target-regime weight"
     },
     "mode2": {
-      "owner": "drift.ACI_ENVELOPE",
+      "reason_owner": "drift.ACI_ENVELOPE",
       "statement_withdrawn": "the long-run regret statement |mean err - alpha| <= aci_regret_bound(T, alpha, gamma)",
       "status": "withdrawn",
       "what_the_mode_buys": "a threshold that tracks the target rate while its iterate stays inside (0,1)",
-      "why": "the round's update is clipped to the score range and a clip discards it, so a target rate unreachable on the sequence's own atoms settles into a cycle instead of a fixed point"
+      "why": "the mechanism, stated because a withdrawal without one is a retraction and not a fix: the step is clipped to [0,1] every round and a clip DISCARDS the update, so when the target rate is not reachable on the score sequence's own atoms the recursion settles into a cycle instead of a fixed point -- period 2 at the ceiling, which is exactly the 1/2 above. Over 400 constructed sequences (seed 20261008, T=2000) no violation fired without a clip (0 of 400), while 112 of 400 clipped sequences still held: the clip is necessary, not sufficient, and it is observable in the trace this function returns as step.lam in (0.0, 1.0)"
     }
   }
 }

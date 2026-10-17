@@ -22,21 +22,29 @@ be quietly summarised.
 mode buys instead is a re-weighted estimate of the target-regime quantile, and no bound on
 it. The shipped estimator adds the constant test-point weight named in the provenance block
 below instead of the test point's own target-regime weight, which is not knowable at
-calibration time; the module states the reason as "the shipped correction is the
-exchangeable case's: the test point's own target-regime weight is supplied as the constant
-TEST_POINT_WEIGHT named in provenance.module_constants instead of being known at calibration
-time". On an exactly declared ratio it therefore under-covers, and the Mode 1 table is that
-under-coverage measured against the figure the envelope states.
+calibration time; the module states the reason verbatim: "the finite-sample correction is
+the EXCHANGEABLE case's: the denominator adds weight 1.0 for the test point, which is exact
+for unit weights -- where the answer reproduces split_quantile value for value and flag for
+flag -- and is not the weighted-conformal correction, whose denominator is sum(w) + w_{n+1}
+with w_{n+1} the test point's own target-regime weight". On an exactly declared ratio it
+therefore under-covers, and the Mode 1 table is that under-coverage measured against the
+figure the envelope states.
 
 **Mode 2 (an adaptive threshold): the regret statement is withdrawn.** The inequality this
 module used to publish as mode 2's guarantee -- `|mean err - alpha| <= aci_regret_bound(T,
-alpha, gamma)` -- is false on sequences the module's own validator accepts. Four of them are
-below, each with its realised long-run rate, its deviation from the target, and the bound it
-exceeds. The clip that keeps the iterate inside the score range discards the update whenever
-it fires, and every violation below has a fired clip beside it; a clip is necessary for a
-violation, not sufficient, which is what the sweep counts say. The module states the reason
-as "the round's update is clipped to the score range and a clip discards it, so a target
-rate unreachable on the sequence's own atoms settles into a cycle instead of a fixed point".
+alpha, gamma)` -- is false on sequences the module's own validator accepts, and the 4 below
+are among them, each with its realised long-run rate, its deviation from the target, and the
+bound it exceeds. The clip that keeps the iterate inside the score range discards the update
+whenever it fires, and every violation below has a fired clip beside it; a clip is necessary
+for a violation, not sufficient, which is what the sweep counts say. The module states the
+reason verbatim: "the mechanism, stated because a withdrawal without one is a retraction and
+not a fix: the step is clipped to [0,1] every round and a clip DISCARDS the update, so when
+the target rate is not reachable on the score sequence's own atoms the recursion settles
+into a cycle instead of a fixed point -- period 2 at the ceiling, which is exactly the 1/2
+above. Over 400 constructed sequences (seed 20261008, T=2000) no violation fired without a
+clip (0 of 400), while 112 of 400 clipped sequences still held: the clip is necessary, not
+sufficient, and it is observable in the trace this function returns as step.lam in (0.0,
+1.0)".
 
 ## Mode 1: the declared ratio, measured
 
@@ -58,7 +66,7 @@ The point of these rows is the direction, not the width of the gap: the realised
 *above* the nominal rate at every published size, and the 3SE column is what lets a reader
 judge whether the envelope's figure and this measurement are the same measurement.
 
-## Mode 2: the four constructions, and the bound each one exceeds
+## Mode 2: the 4 constructions, and the bound each one exceeds
 
 | sequence | rounds | realised long-run rate | deviation from alpha | regret bound | exceeds bound | clip observable | envelope states | agrees |
 |---|---|---|---|---|---|---|---|---|
@@ -67,8 +75,8 @@ judge whether the envelope's figure and this measurement are the same measuremen
 | constant 0.99, below the ceiling | 20000 | 0.167100 | 0.117100 | 0.028778 | True | True | 0.167100 | True |
 | every score == the floor 0.0 | 20000 | 0.000000 | 0.050000 | 0.028778 | True | True | 0.000000 | True |
 
-Two controls beside them, so the four rows above read as a falsification and not as a
-blanket "nothing holds": there the inequality holds, and no clip fires.
+Beside them sit 2 controls, so the 4 rows above read as a falsification and not as a blanket
+"nothing holds": there the inequality holds, and no clip fires.
 
 | control | rounds | realised long-run rate | deviation from alpha | regret bound | exceeds bound | clip observable |
 |---|---|---|---|---|---|---|
@@ -155,5 +163,5 @@ The flag a marginal-only certificate carries, `drift.NOT_CERTIFIABLE_UNDER_DRIFT
 
 ## What each withdrawal replaced
 
-- **mode1** withdraws `the finite-sample coverage statement`. Owner: `drift.WEIGHTED_ENVELOPE`. What it buys instead: a re-weighted estimate of the target-regime quantile, and no bound on it.
-- **mode2** withdraws `the long-run regret statement |mean err - alpha| <= aci_regret_bound(T, alpha, gamma)`. Owner: `drift.ACI_ENVELOPE`. What it buys instead: a threshold that tracks the target rate while its iterate stays inside (0,1).
+- **mode1** withdraws `the finite-sample coverage statement`. Reason owner: `drift.WEIGHTED_ENVELOPE`, quoted verbatim above; the summary in this line is tools/drift_envelope.py's. What it buys instead: a re-weighted estimate of the target-regime quantile, and no bound on it.
+- **mode2** withdraws `the long-run regret statement |mean err - alpha| <= aci_regret_bound(T, alpha, gamma)`. Reason owner: `drift.ACI_ENVELOPE`, quoted verbatim above; the summary in this line is tools/drift_envelope.py's. What it buys instead: a threshold that tracks the target rate while its iterate stays inside (0,1).

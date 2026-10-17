@@ -6,18 +6,32 @@ published nothing. This file is the artefact's own guard: every envelope line in
 compared to the tuple in the module, every published figure is recomputed here from the shipped functions,
 and every refusal is planted through the producer's real entry point.
 
-What each row can catch, stated in the row that owns it:
+What each row can catch is stated in the row that owns it, and the rows are named rather than numbered:
+an ordinal here goes stale the moment a row is inserted, and a stale ordinal is worse than none because it
+sends a reader to the wrong function.
 
-* an envelope edit in `drift.py` that the artefact and the document do not carry (rows 2 and 3 -- they read
-  the module's tuple, not a remembered list, so a docstring edit reddens a row rather than going unread);
-* a published figure that no longer comes from the arithmetic it names (rows 5, 6, 7, 8: mode 2 is
-  re-derived at full scale from the recipes IN the artefact, mode 1 at the reduced trial count THIS FILE
-  NAMES, with the artefact's own provenance pinned to 4000 so the two scales cannot be confused);
+* an envelope edit in `drift.py` that the artefact and the document do not carry
+  (`test_every_envelope_line_in_the_artefact_is_the_tuple_in_drift_py_verbatim` and
+  `test_the_document_carries_every_envelope_line_byte_for_byte` -- they read the module's tuple and the
+  artefact's stored copy, not a remembered list of words, so a docstring edit reddens a row rather than
+  going unread);
+* a published figure that no longer comes from the arithmetic it names
+  (`test_the_mode2_realised_rates_and_the_bound_comparison_re_derive_from_the_artefacts_recipes`,
+  `test_the_mode1_coverage_measurement_re_derives_at_a_reduced_scale_and_says_so`, and the full-scale rows
+  beside them: mode 2 is re-derived at full scale from the recipes IN the artefact, mode 1 at the reduced
+  trial count THIS FILE NAMES, with the artefact's own provenance pinned to 4000 so the two scales cannot
+  be confused);
 * a document that states a number the artefact does not hold, or holds a machine path or a timestamp
-  (rows 4 and 9);
-* a broken publication -- absent, wrong-shaped, truncated, or re-provenanced -- reaching an operator as a
-  traceback instead of a named refusal at 0/2/3/4 (rows 10 to 15; no plant in this file may land on rc 1,
-  and row 15 asserts that over every plant).
+  (`test_the_document_states_both_withdrawals_in_plain_words_and_owns_every_figure_it_prints` and
+  `test_no_tracked_byte_of_the_publication_names_a_machine_path_or_a_timestamp`);
+* a stored float that carries more precision than the artefact declares for itself
+  (`test_every_float_literal_in_the_published_artefact_sits_on_the_declared_grid`);
+* a broken publication -- absent, wrong-shaped, truncated, re-provenanced, or quoted from a sentence the
+  module does not state -- reaching an operator as a traceback instead of a named refusal at 0/2/3/4 (the
+  rows from `test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4` through
+  `test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes`;
+  `test_no_plant_of_a_broken_publication_reaches_rc_1` then asserts the no-rc-1 property over every plant
+  in this file, so a plant that only this header knows about is still walked).
 
 Written BEFORE `tools/drift_envelope.py`, so every row here was red on arrival; the RED output is in the
 task report.
@@ -168,18 +182,50 @@ def test_every_envelope_line_in_the_artefact_is_the_tuple_in_drift_py_verbatim()
     assert len(doc["aci_envelope"]) == len(ACI_ENVELOPE)
 
 
+def _lines_missing_from(text: str, lines) -> list:
+    """The published lines whose folded text is not in `text`.
+
+    One owner for the comparison so the row that uses it and the plant that reddens it cannot disagree about
+    what "carried" means. A re-wrap is allowed (both sides are folded); a dropped or reworded clause is not.
+    """
+    folded = " ".join(text.split())
+    return [" ".join(line.split()) for line in lines if " ".join(line.split()) not in folded]
+
+
 def test_the_document_carries_every_envelope_line_byte_for_byte():
     """The rendered prose cannot soften the withdrawal it is supposed to publish.
 
-    Each tuple line is compared as the folded text, so a re-wrap in the renderer is allowed and a dropped or
-    reworded clause is not. Turned red by one plant: fold a forged extra line into the artefact's envelope
-    copy and the document no longer contains it.
+    The lines compared are the ARTEFACT's stored copies -- which `test_every_envelope_line_in_the_artefact_
+    is_the_tuple_in_drift_py_verbatim` has already pinned to the module's tuples -- so the document is
+    checked against the bytes the publication carries rather than against a second reading of the module.
+    That is what makes `test_the_document_row_fails_when_the_artefact_carries_a_line_it_does_not_print`
+    possible: the plant forges the artefact, and only a row that reads the artefact can notice.
     """
-    text = " ".join(_doc_text().split())
-    for line in WEIGHTED_ENVELOPE + ACI_ENVELOPE:
-        assert " ".join(line.split()) in text, line[:80]
+    doc = artefact()
+    stored = list(doc["weighted_envelope"]) + list(doc["aci_envelope"])
+    text = _doc_text()
+    assert _lines_missing_from(text, stored) == [], [line[:80] for line in _lines_missing_from(text, stored)]
     forged = " ".join("the regret statement holds for every accepted sequence".split())
-    assert forged not in text
+    assert forged not in " ".join(text.split())
+
+
+def test_the_document_row_fails_when_the_artefact_carries_a_line_it_does_not_print():
+    """The self-falsifier this file's header promised and row 3 did not deliver until it read the artefact.
+
+    Appending one line to the artefact's stored envelope copy -- the plant the docstring named -- cannot
+    redden a row that reads only the module and the document, because neither of those changes. Re-run
+    against the previous version of this row it stayed green, which is the defect this row now closes:
+    a guard that names a plant it cannot see is a comment, not a check.
+    """
+    import copy
+
+    forged = copy.deepcopy(artefact())
+    forged["weighted_envelope"].append("the finite-sample statement is restored under a declared ratio")
+    missing = _lines_missing_from(_doc_text(), forged["weighted_envelope"] + forged["aci_envelope"])
+    assert missing == [" ".join(forged["weighted_envelope"][-1].split())], missing
+    # and the unforged artefact agrees, so the row above is not passing on an empty comparison
+    assert _lines_missing_from(_doc_text(), artefact()["weighted_envelope"]
+                               + artefact()["aci_envelope"]) == []
 
 
 def test_the_document_states_both_withdrawals_in_plain_words_and_owns_every_figure_it_prints():
@@ -205,10 +251,17 @@ def test_the_mode2_realised_rates_and_the_bound_comparison_re_derive_from_the_ar
     stored figures -- with the violation direction (each deviation EXCEEDS the bound) as a separate assertion,
     because that inequality is the withdrawn sentence's falsification. The stored digest is recomputed too, so
     a recipe edited away from the sequence that was measured cannot pass.
+
+    The comparison is exact at the artefact's OWN declared grid (`provenance.published_decimals`, ledger
+    R-121), not a tolerance on the raw double. A stored 16-digit `0.02877777777777778` publishes a libm fact
+    as evidence, and `math` differs by one unit in the last place between Apple's and glibc's: the earlier
+    form of this row compared raw values with `abs=1e-9`, which is why rounding at store time needed this
+    change rather than being free. Exactness is kept -- it is the grid that is canonicalised, at the producer.
     """
     doc = artefact()
     alpha = float(doc["provenance"]["alpha"])
     gamma = float(doc["provenance"]["gamma"])
+    decimals = int(doc["provenance"]["published_decimals"])
     rows = doc["mode2"]
     assert len(rows) == 4, [r["name"] for r in rows]
     for row in rows:
@@ -217,10 +270,12 @@ def test_the_mode2_realised_rates_and_the_bound_comparison_re_derive_from_the_ar
         assert _digest(scores) == row["sequence_digest_sha256"], (
             "%s: the stored recipe no longer materialises the sequence that was measured" % row["name"])
         realised, clipped = _long_run_rate(scores, alpha, gamma)
-        assert realised == pytest.approx(row["realised_long_run_rate"], abs=1e-9), row["name"]
+        assert round(realised, decimals) == row["realised_long_run_rate"], (row["name"], realised)
         bound = aci_regret_bound(len(scores), alpha, gamma)
-        assert bound == pytest.approx(row["regret_bound"], abs=1e-9), row["name"]
-        assert abs(realised - alpha) == pytest.approx(row["deviation_from_alpha"], abs=1e-9)
+        assert round(bound, decimals) == row["regret_bound"], (row["name"], bound)
+        assert round(abs(realised - alpha), decimals) == row["deviation_from_alpha"], row["name"]
+        assert row["deviation_from_alpha"] > row["regret_bound"], (row["name"], row["deviation_from_alpha"],
+                                                                   row["regret_bound"])
         assert abs(realised - alpha) > bound, (row["name"], realised, bound)
         assert row["violates_bound"] is True, row
         assert row["clip_observable"] is clipped, row["name"]
@@ -230,7 +285,10 @@ def test_the_mode2_realised_rates_and_the_bound_comparison_re_derive_from_the_ar
     for row in doc["mode2_controls"]:
         scores = materialise(row["construction"])
         realised, clipped = _long_run_rate(scores, alpha, gamma)
-        assert realised == pytest.approx(row["realised_long_run_rate"], abs=1e-9), row["name"]
+        assert round(realised, decimals) == row["realised_long_run_rate"], (row["name"], realised)
+        assert round(abs(realised - alpha), decimals) == row["deviation_from_alpha"], row["name"]
+        assert round(aci_regret_bound(len(scores), alpha, gamma), decimals) == row["regret_bound"], row["name"]
+        assert row["deviation_from_alpha"] <= row["regret_bound"], row
         assert abs(realised - alpha) <= aci_regret_bound(len(scores), alpha, gamma), row["name"]
         assert row["violates_bound"] is False and row["clip_observable"] is clipped, row
 
@@ -249,8 +307,9 @@ def test_the_mode2_sweep_counts_and_the_clip_mechanism_re_derive_from_the_artefa
     gamma = float(doc["provenance"]["gamma"])
     assert sequences == 400 and rounds == 2000 and seed == int(doc["provenance"]["seed"]), sweep
     rng = random.Random(seed)
-    bound = aci_regret_bound(rounds, alpha, gamma)
-    assert bound == pytest.approx(sweep["bound"], abs=1e-9), (bound, sweep["bound"])
+    decimals = int(doc["provenance"]["published_decimals"])
+    bound = round(aci_regret_bound(rounds, alpha, gamma), decimals)
+    assert bound == sweep["bound"], (bound, sweep["bound"])
     violations = violated_unclipped = held_clipped = clipped_total = 0
     for k in range(sequences):
         kind = k % 8
@@ -401,11 +460,17 @@ def test_no_tracked_byte_of_the_publication_names_a_machine_path_or_a_timestamp(
 # operator as a bare `KeyError` traceback at rc 1 on BOTH naming axes (measured before this file grew
 # them), because the two catch-alls listed `ValueError, TypeError, ArithmeticError, OSError` and a `KeyError`
 # is none of those. They are in the sweep precisely so that guard walks the shape it used to miss.
+#
+# The two after them are the two prose-and-precision defects the same sweep could not see: a stored withdrawal
+# reason the module never states (`why-reworded`, MAJOR-2), and a figure stored at 16 digits instead of the
+# grid the artefact itself declares (`raw-double`, MINOR-3 -- the value is exactly what `data/` held before
+# the rounding, so the plant is the previous truth, not an invention).
 PLANTS = ("missing", "list", "scalar", "empty", "no-envelope-key", "truncated-weighted",
           "truncated-aci", "seed-moved", "trials-moved", "sizes-moved", "doc-drift",
           "figure-moved", "recipe-moved",
           "mode1-no-trials", "mode1-no-envelope-cited", "mode2-no-construction",
-          "mode2-recipe-no-value", "withdrawals-no-mode1", "check-no-agrees", "sweep-no-bound")
+          "mode2-recipe-no-value", "withdrawals-no-mode1", "check-no-agrees", "sweep-no-bound",
+          "why-reworded", "raw-double")
 
 PLANT_REASON = {
     "missing": "ARTEFACT UNAVAILABLE",
@@ -421,6 +486,8 @@ PLANT_REASON = {
     "doc-drift": "DOCUMENT",
     "figure-moved": "DRIFT",
     "recipe-moved": "DRIFT",
+    "why-reworded": "WITHDRAWAL PROSE",
+    "raw-double": "DRIFT",
     "mode1-no-trials": "ARTEFACT SHAPE",
     "mode1-no-envelope-cited": "ARTEFACT SHAPE",
     "mode2-no-construction": "ARTEFACT SHAPE",
@@ -481,6 +548,15 @@ def _forge_artefact(kind: str, tmp: Path) -> Path:
     elif kind == "doc-drift":
         # the artefact stays the committed truth; only the document is forged
         return REPO / ARTEFACT_REL
+    elif kind == "why-reworded":
+        # MAJOR-2's shape: a top-level-valid artefact whose quoted withdrawal reason is prose the module does
+        # not contain. `render_document` would happily print it inside quotation marks, so the artefact has to
+        # be checked against the tuple it claims to copy.
+        doc["withdrawals"]["mode1"]["why"] = ("the shipped correction is the exchangeable case's: the test "
+                                             "point's own target-regime weight is supplied as a constant")
+    elif kind == "raw-double":
+        # MINOR-3's shape, using the exact value `data/drift_envelope.json` stored before the rounding.
+        doc["mode2"][0]["regret_bound"] = 0.02877777777777778
     elif kind in PLANT_SUBKEY:
         _remove_subkey(doc, kind)
         # the whole point of this class is that the artefact still LOOKS like a publication: every
@@ -813,3 +889,123 @@ def test_no_plant_of_a_broken_publication_reaches_rc_1(tmp_path, monkeypatch, ca
                                                               if not err.strip())
     assert all("Traceback" not in err for _, _, err in refusals), sorted(
         label for label, _, err in refusals if "Traceback" in err)
+
+
+# ---------------------------------------------------- MAJOR-2 / MINOR-3 / MINOR-6 (freeze-13 review round)
+
+def _off_grid(value, decimals: int) -> bool:
+    """True when a stored float is NOT the decimal the artefact declares for itself.
+
+    The predicate is `value == round(value, decimals)` rather than a digit count of `repr`, because a float
+    whose repr is exponential (`2.5e-05`) has no digits to count and is still off the grid. `decimals` comes
+    from the artefact's OWN `provenance.published_decimals`, so the gate asks the publication what precision
+    it claims and holds it to that answer -- it does not import a second constant that can fall behind.
+    """
+    return isinstance(value, float) and value != round(value, decimals)
+
+
+def _off_grid_paths(node, decimals: int, prefix: str = "") -> list:
+    """Every path in the artefact whose float value is off the declared grid."""
+    offenders = []
+    if isinstance(node, dict):
+        for key in sorted(node):
+            offenders.extend(_off_grid_paths(node[key], decimals, "%s.%s" % (prefix, key)))
+    elif isinstance(node, list):
+        for index, item in enumerate(node):
+            offenders.extend(_off_grid_paths(item, decimals, "%s[%d]" % (prefix, index)))
+    elif _off_grid(node, decimals):
+        offenders.append("%s=%r" % (prefix or "$", node))
+    return offenders
+
+
+def test_every_float_literal_in_the_published_artefact_sits_on_the_declared_grid():
+    """No published byte may carry more precision than the artefact declares.
+
+    The tool's own comment has said six decimals since ledger R-121, and mode 1 honoured it while mode 2 and
+    the sweep did not: `regret_bound` was stored as `0.02877777777777778` and `deviation_from_alpha` as
+    `0.004499999999999997`. Those last bits are a libm fact, and this project has already been bitten once by
+    publishing one -- the contamination interval differed by one unit in the last place between Apple's math
+    library and glibc's, which is a platform fact masquerading as evidence.
+    """
+    doc = artefact()
+    decimals = int(doc["provenance"]["published_decimals"])
+    assert decimals > 0, decimals
+    offenders = _off_grid_paths(doc, decimals)
+    assert offenders == [], offenders
+
+
+def test_the_grid_row_fails_on_a_stored_double_from_before_the_rounding():
+    """The plant that proves the row above can fail: this is the byte `data/` actually held.
+
+    Asserted in both directions, because a residue row that never finds an offender is indistinguishable from
+    a residue row that cannot look.
+    """
+    import copy
+
+    doc = copy.deepcopy(artefact())
+    decimals = int(doc["provenance"]["published_decimals"])
+    assert _off_grid_paths(doc, decimals) == []
+    doc["mode2"][0]["regret_bound"] = 0.02877777777777778
+    offenders = _off_grid_paths(doc, decimals)
+    assert offenders == [".mode2[0].regret_bound=0.02877777777777778"], offenders
+    del doc["mode2"][0]["regret_bound"]
+    doc["mode2"][0]["deviation_from_alpha"] = 0.004499999999999997
+    assert _off_grid_paths(doc, decimals), "the row fires on one field and not on its twin"
+
+
+def test_every_stored_withdrawal_reason_is_a_line_the_module_itself_states():
+    """The document quotes the module's reason, so the quotation must BE one of the module's lines.
+
+    Before this row the artefact stored a paraphrase typed into `build_artefact` and `docs/DRIFT.md` printed
+    it inside quotation marks after "the module states the reason as" -- sentences that do not occur anywhere
+    in `src/autorate/drift.py` (MAJOR-2, measured by grepping the module for them). A quotation that is not a
+    copy can outlive the sentence it claims to quote, which is exactly the failure this artefact's whole
+    envelope-copy machinery exists to prevent for the tuple lines.
+    """
+    doc = artefact()
+    folded = " ".join(_doc_text().split())
+    for mode, name, lines in (("mode1", "WEIGHTED_ENVELOPE", WEIGHTED_ENVELOPE),
+                              ("mode2", "ACI_ENVELOPE", ACI_ENVELOPE)):
+        block = doc["withdrawals"][mode]
+        assert block["reason_owner"] == "drift.%s" % name, block
+        assert "owner" not in block, "the block is labelled as though the whole summary were the module's"
+        assert block["why"] in list(lines), (mode, block["why"][:80])
+        assert " ".join(block["why"].split()) in folded, (mode, block["why"][:80])
+        assert 'the module states the reason verbatim' in folded, folded[:200]
+
+
+def test_a_forced_run_at_the_default_out_that_writes_no_document_is_refused(tmp_path, monkeypatch, capsys):
+    """`--force` with no `--doc` rewrites the published artefact and deliberately not its document.
+
+    The pair guard keyed on the flags a reader typed, not on what the run writes: naming `--out data/...`
+    explicitly was refused, while the same declared destination reached by DEFAULTING `--out` was not, so
+    `python3 tools/drift_envelope.py --force` published new figures beside a document quoting the old ones --
+    the state the guard's own message calls "exactly the drift this gate exists to catch" (MINOR-6). The
+    refusal is exit 2 with both paths named; the paired form still writes both.
+    """
+    from tools import drift_envelope
+
+    art = tmp_path / "art.json"
+    doc = tmp_path / "doc.md"
+    art.write_text((REPO / ARTEFACT_REL).read_text())
+    doc.write_text((REPO / DOC_REL).read_text())
+    before = art.read_text(), doc.read_text()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", art)
+    monkeypatch.setattr(drift_envelope, "DOC_PATH", doc)
+    rc = drift_envelope.main(["--force"])
+    err = capsys.readouterr().err
+    assert rc == 2, (rc, err)
+    assert "PAIR" in err, err
+    assert str(ARTEFACT_REL) in err and str(DOC_REL) in err, err
+    assert (art.read_text(), doc.read_text()) == before, "a refused publication rewrote the artefact"
+    # the same destination, named as a pair, is accepted -- the refusal is the missing half, not the write
+    rc = drift_envelope.main(["--out", str(art), "--doc", str(doc), "--force"])
+    out_err = capsys.readouterr().err
+    assert rc in (0, 3), (rc, out_err)
+    assert json.loads(art.read_text())["producer"] == "tools/drift_envelope.py", art.read_text()[:200]
+    assert doc.read_text().startswith("# B3's drift envelope, published"), doc.read_text()[:120]
+    # and a scratch run with no document is still the honest exception
+    scratch = tmp_path / "scratch.json"
+    assert drift_envelope.main(["--out", str(scratch)]) in (0, 3), capsys.readouterr()
+    assert scratch.is_file() and not (tmp_path / "scratch.md").exists()
