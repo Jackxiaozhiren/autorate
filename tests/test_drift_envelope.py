@@ -395,9 +395,17 @@ def test_no_tracked_byte_of_the_publication_names_a_machine_path_or_a_timestamp(
 # Every broken-publication shape this file can forge, and the name the producer has to print for it. The
 # tuple is the subject of the rc-1 sweep and the dict is the expectation of the rc-4 row, so a plant added
 # here is driven through both and cannot become an untested fixture.
+#
+# The last seven are the missing-subkey class: a top-level-valid artefact with exactly ONE subkey removed.
+# Each of them read `tools/drift_envelope.py:49`'s "Nothing escapes at 1" as a promise and reached the
+# operator as a bare `KeyError` traceback at rc 1 on BOTH naming axes (measured before this file grew
+# them), because the two catch-alls listed `ValueError, TypeError, ArithmeticError, OSError` and a `KeyError`
+# is none of those. They are in the sweep precisely so that guard walks the shape it used to miss.
 PLANTS = ("missing", "list", "scalar", "empty", "no-envelope-key", "truncated-weighted",
           "truncated-aci", "seed-moved", "trials-moved", "sizes-moved", "doc-drift",
-          "figure-moved", "recipe-moved")
+          "figure-moved", "recipe-moved",
+          "mode1-no-trials", "mode1-no-envelope-cited", "mode2-no-construction",
+          "mode2-recipe-no-value", "withdrawals-no-mode1", "check-no-agrees", "sweep-no-bound")
 
 PLANT_REASON = {
     "missing": "ARTEFACT UNAVAILABLE",
@@ -413,13 +421,38 @@ PLANT_REASON = {
     "doc-drift": "DOCUMENT",
     "figure-moved": "DRIFT",
     "recipe-moved": "DRIFT",
+    "mode1-no-trials": "ARTEFACT SHAPE",
+    "mode1-no-envelope-cited": "ARTEFACT SHAPE",
+    "mode2-no-construction": "ARTEFACT SHAPE",
+    "mode2-recipe-no-value": "ARTEFACT SHAPE",
+    "withdrawals-no-mode1": "ARTEFACT SHAPE",
+    "check-no-agrees": "ARTEFACT SHAPE",
+    "sweep-no-bound": "ARTEFACT SHAPE",
 }
 assert set(PLANTS) == set(PLANT_REASON), "the plant sweep and the plant expectation have diverged"
+
+#: The subkey each missing-subkey plant deletes, and therefore the name the refusal has to print. Widening a
+#: catch-all without naming what was missing would trade a traceback for a shrug, so the rc-4 row and the
+#: rc-2 row both assert this string appears in the producer's own line, beside the path it was reading.
+PLANT_SUBKEY = {
+    "mode1-no-trials": "trials",
+    "mode1-no-envelope-cited": "envelope_cited",
+    "mode2-no-construction": "construction",
+    "mode2-recipe-no-value": "value",
+    "withdrawals-no-mode1": "mode1",
+    "check-no-agrees": "agrees",
+    "sweep-no-bound": "bound",
+}
+assert set(PLANT_SUBKEY) <= set(PLANTS), "a subkey plant that the rc-1 sweep would never walk"
+assert all(PLANT_REASON[kind] == "ARTEFACT SHAPE" for kind in PLANT_SUBKEY), (
+    "a missing subkey is a shape this build does not read, so it refuses under that name")
 
 
 def _forge_artefact(kind: str, tmp: Path) -> Path:
     """Write a broken artefact of the named shape at a temp path and return that path."""
     import copy
+
+    from tools import drift_envelope
 
     if kind == "missing":
         return tmp / "not_written.json"
@@ -448,11 +481,39 @@ def _forge_artefact(kind: str, tmp: Path) -> Path:
     elif kind == "doc-drift":
         # the artefact stays the committed truth; only the document is forged
         return REPO / ARTEFACT_REL
+    elif kind in PLANT_SUBKEY:
+        _remove_subkey(doc, kind)
+        # the whole point of this class is that the artefact still LOOKS like a publication: every
+        # top-level key is there, and only one subkey of one row is gone. Asserted against the tool's own
+        # REQUIRED_KEYS so a plant that deleted a top-level key cannot quietly become a different test.
+        leftover = [key for key in drift_envelope.REQUIRED_KEYS if key not in doc]
+        assert not leftover, "%s removed a top-level key: %s" % (kind, leftover)
     else:
         raise AssertionError("no such plant %r" % kind)
     path = tmp / ("%s.json" % kind)
     path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return path
+
+
+def _remove_subkey(doc: dict, kind: str) -> None:
+    """Delete the one subkey `kind` names, in place, from an artefact copy."""
+    if kind == "mode1-no-trials":
+        del doc["mode1"][0]["trials"]
+    elif kind == "mode1-no-envelope-cited":
+        del doc["mode1"][0]["envelope_cited"]
+    elif kind == "mode2-no-construction":
+        del doc["mode2"][0]["construction"]
+    elif kind == "mode2-recipe-no-value":
+        del doc["mode2"][0]["construction"]["value"]
+    elif kind == "withdrawals-no-mode1":
+        del doc["withdrawals"]["mode1"]
+    elif kind == "check-no-agrees":
+        del doc["reproduction"]["checks"][0]["agrees"]
+    elif kind == "sweep-no-bound":
+        del doc["mode2_sweep"]["bound"]
+    else:
+        raise AssertionError("not a missing-subkey plant: %r" % kind)
+    assert doc, "the plant emptied the artefact instead of removing one subkey"
 
 
 def _forge_doc(kind: str, tmp: Path) -> Path:
@@ -479,15 +540,18 @@ def test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4(kin
     Each plant is forged from the committed bytes, installed at the path the build DECLARES (the module
     constant is redirected -- the tracked file is never touched), and driven through `main`. The printed name
     is asserted, so "refused" is never a bare traceback, and the code is asserted, so a missing artefact and a
-    re-provenanced one are not conflated with a typo in a flag.
+    re-provenanced one are not conflated with a typo in a flag. A missing-subkey plant is asserted further:
+    the line has to name the subkey it wanted and the file it was reading.
     """
     from tools import drift_envelope
 
     if kind == "doc-drift":
         monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", REPO / ARTEFACT_REL)
         monkeypatch.setattr(drift_envelope, "DOC_PATH", _forge_doc(kind, tmp_path))
+        forged = REPO / ARTEFACT_REL
     else:
-        monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", _forge_artefact(kind, tmp_path))
+        forged = _forge_artefact(kind, tmp_path)
+        monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", forged)
         monkeypatch.setattr(drift_envelope, "DOC_PATH", REPO / DOC_REL)
     monkeypatch.chdir(REPO)
     rc = drift_envelope.main(["--check"])
@@ -495,6 +559,9 @@ def test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4(kin
     assert rc == 4, (kind, rc, err)
     assert PLANT_REASON[kind] in err, (kind, err)
     assert "Traceback" not in err, (kind, err)
+    if kind in PLANT_SUBKEY:
+        assert "'%s'" % PLANT_SUBKEY[kind] in err, (kind, err)
+        assert str(forged) in err, (kind, err)
 
 
 def test_an_operator_named_artefact_that_is_wrong_is_usage_rc_2_not_drift_rc_4(tmp_path, capsys):
@@ -503,7 +570,8 @@ def test_an_operator_named_artefact_that_is_wrong_is_usage_rc_2_not_drift_rc_4(t
     The same forged bytes as the row above; only the naming differs -- including the two plants whose defect is
     a figure that no longer re-derives, because the defect's class names WHAT is wrong and who named the path
     decides whose fault it is. This is the distinction the exit table in `cli.py` draws everywhere else, and the
-    reason a missing published artefact and a typo cannot share a code.
+    reason a missing published artefact and a typo cannot share a code. Every missing-subkey plant is walked
+    here too, since BLOCKER-1 was measured on this axis as well as the declared one.
     """
     from tools import drift_envelope
 
@@ -515,6 +583,93 @@ def test_an_operator_named_artefact_that_is_wrong_is_usage_rc_2_not_drift_rc_4(t
     missing = tmp_path / "no-such-file.json"
     assert drift_envelope.main(["--check", "--artefact", str(missing)]) == 2
     assert "does not exist" in capsys.readouterr().err
+    for kind in sorted(PLANT_SUBKEY):
+        forged = _forge_artefact(kind, tmp_path)
+        assert drift_envelope.main(["--check", "--artefact", str(forged)]) == 2, (kind,
+                                                                                 capsys.readouterr())
+        err = capsys.readouterr().err
+        assert PLANT_REASON[kind] in err, (kind, err)
+        assert "'%s'" % PLANT_SUBKEY[kind] in err, (kind, err)
+        assert str(forged) in err, (kind, err)
+        assert "Traceback" not in err, (kind, err)
+
+
+def test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes(tmp_path, monkeypatch, capsys):
+    """`AttributeError` is the other half of the escape: the envelope this artefact copies is not there.
+
+    The declared module is read to check the committed bytes, so a `drift.py` that no longer holds
+    `WEIGHTED_ENVELOPE` is the checkout's problem (4), and the identical defect while reading a path the
+    operator named is theirs (2). It used to reach both as `AttributeError: module 'autorate.drift' has no
+    attribute 'WEIGHTED_ENVELOPE'` at rc 1 -- the module docstring promises that code does not exist.
+    """
+    from tools import drift_envelope
+    from autorate import drift
+
+    monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", REPO / ARTEFACT_REL)
+    monkeypatch.delattr(drift, "WEIGHTED_ENVELOPE")
+    monkeypatch.chdir(REPO)
+    assert drift_envelope.main(["--check"]) == 4, capsys.readouterr()
+    err = capsys.readouterr().err
+    assert "PUBLISHED SOURCE UNAVAILABLE" in err, err
+    assert "WEIGHTED_ENVELOPE" in err, err
+    assert "Traceback" not in err, err
+    named = tmp_path / "named.json"
+    named.write_text((REPO / ARTEFACT_REL).read_text())
+    assert drift_envelope.main(["--check", "--artefact", str(named)]) == 2, capsys.readouterr()
+    err = capsys.readouterr().err
+    assert "PUBLISHED SOURCE UNAVAILABLE" in err and "WEIGHTED_ENVELOPE" in err, err
+    assert str(named) in err, err
+    assert "Traceback" not in err, err
+
+
+def test_a_producer_that_builds_what_its_own_renderer_cannot_read_refuses_at_the_declared_pair(
+        tmp_path, monkeypatch, capsys):
+    """The publish path has the same contract: no unplanned exception may reach 1, and the destination picks.
+
+    Two shapes are driven here. The first is a builder that returns an artefact missing the subkey the
+    renderer subscripts -- `render_document`'s `doc["withdrawals"]["mode1"]` -- which is the same defect class
+    BLOCKER-1 measured on the read path, at the site that WRITES. The second is a trial count the arithmetic
+    cannot divide by, which the `--trials` scale guard only refuses on a publishing run. Both must be refused
+    with the code the destination decides: 4 when the run would publish this build's own pair, 2 when the
+    operator named somewhere else. Neither may write a byte.
+    """
+    import copy
+
+    from tools import drift_envelope
+
+    committed = artefact()
+
+    monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", tmp_path / "art.json")
+    monkeypatch.setattr(drift_envelope, "DOC_PATH", tmp_path / "doc.md")
+    monkeypatch.chdir(tmp_path)
+    # an arithmetic error no site named, on the route that bypasses the SCALE guard: the reduced-scale
+    # `--trials` refusal only fires for a publishing run, and zero trials divide the mean by zero.
+    rc = drift_envelope.main(["--out", str(tmp_path / "zero.json"), "--trials", "0"])
+    err = capsys.readouterr().err
+    assert rc == 2, (rc, err)
+    assert "Traceback" not in err, err
+    assert not (tmp_path / "zero.json").exists()
+
+    def build_without_a_withdrawal_reason(trials):
+        del trials
+        doc = copy.deepcopy(committed)
+        del doc["withdrawals"]["mode1"]
+        return doc
+
+    monkeypatch.setattr(drift_envelope, "build_artefact", build_without_a_withdrawal_reason)
+    rc = drift_envelope.main(["--out", str(tmp_path / "art.json"), "--doc", str(tmp_path / "doc.md")])
+    err = capsys.readouterr().err
+    assert rc == 4, (rc, err)
+    assert "'mode1'" in err and "Traceback" not in err, err
+    assert not (tmp_path / "art.json").exists() and not (tmp_path / "doc.md").exists(), (
+        "a refused publication wrote its artefact anyway")
+    # the same defect aimed at a scratch path is the operator's: 2, still no traceback, still nothing written
+    scratch = tmp_path / "scratch.json"
+    rc = drift_envelope.main(["--out", str(scratch)])
+    err = capsys.readouterr().err
+    assert rc == 2, (rc, err)
+    assert "'mode1'" in err and "Traceback" not in err, err
+    assert not scratch.exists()
 
 
 def test_the_producer_refuses_to_publish_the_document_without_the_artefact_or_vice_versa(tmp_path,
@@ -610,31 +765,51 @@ def test_the_producer_writes_the_committed_bytes_and_check_re_derives_them_at_rc
     assert "re-derived" in capsys.readouterr().out
 
 
-def test_no_plant_of_a_broken_publication_reaches_rc_1(tmp_path, monkeypatch):
+def test_no_plant_of_a_broken_publication_reaches_rc_1(tmp_path, monkeypatch, capsys):
     """rc 1 is outside this project's contract, so every plant is re-run looking for it.
 
     A bare `ValueError` reaching the CLI is a defect, and the class of defect the exit-code table in
     `drift.py`'s docstring promises does not exist. Both naming axes are walked -- the declared path (each
-    plant must be 4) and the operator-named path (each must be 2) -- plus every publish refusal.
+    plant must be 4) and the operator-named path (each must be 2) -- plus every publish refusal. Read in
+    process, an unplanned exception does not print a traceback: it propagates out of `main` and this row
+    errors with that exception, which is the same defect the subprocess run showed as rc 1. Because these
+    plants are here, the sweep walks a top-level-valid artefact with one subkey missing -- the shape whose
+    absence let BLOCKER-1 through while this row stayed green.
+
+    The subset check is the code assertion; the two lines after it are the ones that can fail on their own,
+    so a refusal that lands on a documented code while printing nothing (or a traceback) is caught here and
+    not only by the rows that name each plant. This replaces the `1 not in codes` line that the subset check
+    already implied.
     """
     from tools import drift_envelope
 
-    codes = set()
+    outcomes = []
+
+    def run(label: str, argv: list) -> int:
+        code = drift_envelope.main(argv)
+        outcomes.append((label, code, capsys.readouterr().err))
+        return code
+
     monkeypatch.chdir(tmp_path)
     for kind in PLANTS:
         if kind == "doc-drift":
             monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", REPO / ARTEFACT_REL)
             monkeypatch.setattr(drift_envelope, "DOC_PATH", _forge_doc(kind, tmp_path))
-            codes.add(drift_envelope.main(["--check"]))
+            run("%s declared" % kind, ["--check"])
             monkeypatch.setattr(drift_envelope, "DOC_PATH", REPO / DOC_REL)
         forged = _forge_artefact(kind, tmp_path)
         monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", forged)
-        codes.add(drift_envelope.main(["--check"]))
-        codes.add(drift_envelope.main(["--check", "--artefact", str(forged)]))
-    codes.add(drift_envelope.main(["--out", str(tmp_path / "art.json")]))
-    codes.add(drift_envelope.main(["--doc", str(tmp_path / "one.md")]))
-    codes.add(drift_envelope.main(["--trials", "7"]))
-    codes.add(drift_envelope.main(["--out", str(tmp_path / "a.json"), "--doc",
-                                   str(tmp_path / "a.md"), "--trials", "7"]))
+        run("%s declared" % kind, ["--check"])
+        run("%s named" % kind, ["--check", "--artefact", str(forged)])
+    run("pair-out named", ["--out", str(tmp_path / "art.json")])
+    run("pair-doc named", ["--doc", str(tmp_path / "one.md")])
+    run("scale named", ["--trials", "7"])
+    run("scale-pair named", ["--out", str(tmp_path / "a.json"), "--doc",
+                             str(tmp_path / "a.md"), "--trials", "7"])
+    codes = {code for _, code, _ in outcomes}
     assert codes <= {0, 2, 3, 4}, sorted(codes)
-    assert 1 not in codes, sorted(codes)
+    refusals = [(label, code, err) for label, code, err in outcomes if code != 0]
+    assert all(err.strip() for _, _, err in refusals), sorted(label for label, _, err in refusals
+                                                              if not err.strip())
+    assert all("Traceback" not in err for _, _, err in refusals), sorted(
+        label for label, _, err in refusals if "Traceback" in err)

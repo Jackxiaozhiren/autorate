@@ -48,7 +48,12 @@ stated scale on a publishing run, an existing `--out` without `--force`, an unwr
 absent, wrong-shaped, truncated, re-provenanced, byte-different from its own document, or carrying a figure
 the arithmetic no longer yields. Nothing escapes at 1: every input problem is a `ValueError` subclass mapped to
 2, every committed-state problem is a `RuntimeError` subclass mapped to 4, and `weighted_quantile`'s own
-`ArithmeticError` cross-check is named rather than allowed to reach the operator as a traceback.
+`ArithmeticError` cross-check is named rather than allowed to reach the operator as a traceback. The checks
+also read stored rows *by key*, so both catch-alls carry `LookupError` and `AttributeError` as well: a
+top-level-valid artefact missing one subkey, or a `drift` that no longer holds an envelope constant, is refused
+under the class of defect with the wanted name and the path printed, at 4 when the declared path is what was
+being read and 2 when the operator named it. Widening that tuple decides nothing about whose fault it is --
+the naming axis still picks the code, so an unplanned error becomes a refusal rather than a pass.
 """
 from __future__ import annotations
 
@@ -772,6 +777,32 @@ def _refuse(declared: bool, kind_name: str, message: str):
     raise (DriftEnvelopeState if declared else DriftEnvelopeUsage)("%s: %s" % (kind_name, message))
 
 
+def _unplanned_read(exc: BaseException, *, stored: bool) -> tuple:
+    """(the name, the clause saying what was wanted) for an exception no check site raised on purpose.
+
+    BLOCKER-1 measured the alternative: a top-level-valid artefact with ONE subkey removed made
+    `check_provenance`, `rederive_and_compare` and `render_document` subscript a key that was not there, and
+    because a `KeyError` is neither a `ValueError` nor a `TypeError` both catch-alls let it through -- so the
+    operator got a traceback at exit 1, the one code this tool's contract says does not exist. The tuples at
+    `_run_check` and `main` now carry `LookupError` and `AttributeError` (`main`'s also carries
+    `ArithmeticError` and `OSError`), and this says what they caught: the kind of defect and the name that was
+    wanted. It does not choose an exit code -- the caller still decides that from who named the path, which is
+    the difference between a net under the contract and a swallow over it. `stored` says which side of the
+    read the defect is on: bytes this build published, or bytes this run is trying to publish.
+    """
+    if isinstance(exc, LookupError):
+        if stored:
+            return ("ARTEFACT SHAPE", "%s: %s -- the subkey this build reads is not in the stored artefact"
+                    % (type(exc).__name__, exc))
+        return ("INVARIANT", "%s: %s -- this run built an artefact that does not carry the key its own "
+                            "renderer reads" % (type(exc).__name__, exc))
+    if isinstance(exc, AttributeError):
+        return ("PUBLISHED SOURCE UNAVAILABLE",
+                "%s: %s -- the module this artefact copies no longer holds that name"
+                % (type(exc).__name__, exc))
+    return type(exc).__name__, "%s: %s" % (type(exc).__name__, exc)
+
+
 def read_artefact(path: Path, *, declared: bool) -> dict:
     """The artefact's bytes, or the named refusal that says why they are not an artefact."""
     if not path.is_file():
@@ -924,8 +955,11 @@ def _run_check(args) -> int:
         doc = read_artefact(path, declared=declared)
         check_envelope_copies(doc, declared=declared)
         check_provenance(doc, declared=declared)
-        disagreements = rederive_and_compare(doc, declared=declared)
+        # Everything the stored bytes alone can answer is read BEFORE the re-derivation is paid for: an
+        # artefact this build cannot render is a shape problem, and discovering it after 4000 trials only
+        # says the same sentence 0.7s later.
         rendered = render_document(doc)
+        disagreements = rederive_and_compare(doc, declared=declared)
         if not DOC_PATH.is_file():
             disagreements.append("DOCUMENT: %s is missing, so the published prose cannot be compared"
                                  % DOC_PATH)
@@ -937,8 +971,17 @@ def _run_check(args) -> int:
     except DriftEnvelopeUsage as exc:
         print("%s: %s" % (PRODUCER, exc), file=sys.stderr)
         return EXIT_USAGE
-    except (ValueError, TypeError, ArithmeticError, OSError) as exc:
-        print("%s: %s: %s" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
+    except (ValueError, TypeError, ArithmeticError, OSError, LookupError, AttributeError) as exc:
+        # The net BLOCKER-1 needed: a stored row subscripts its own keys, so a shaped artefact missing one
+        # subkey used to leave this function as a traceback at exit 1. It is a refusal here, named by the
+        # class of defect and the key that was wanted, and the code is still decided by who named the path.
+        kind_name, detail = _unplanned_read(exc, stored=True)
+        whose = ("this is the artefact this build declares, so re-run "
+                 "`python3 %s --out %s --doc %s --force` to rewrite it"
+                 % (PRODUCER, ARTEFACT_REL, DOC_REL)) if declared else (
+                "you named this path, so naming the published artefact is the next action")
+        print("%s: %s: %s cannot be read as a published drift envelope (%s) -- %s"
+              % (PRODUCER, kind_name, path, detail, whose), file=sys.stderr)
         return EXIT_DRIFT if declared else EXIT_USAGE
     if disagreements:
         # The same axis as every other check refusal: the defect's class names WHAT is wrong, and who named the
@@ -980,6 +1023,9 @@ def main(argv=None) -> int:
     declared_artefact = _is_declared(args.out, ARTEFACT_PATH) if args.out is not None else True
     declared_document = _is_declared(args.doc, DOC_PATH) if args.doc is not None else True
     publishing = args.doc is not None or args.out is None
+    # Bound before the try: the net below has to name the destination it refused to write, and a refusal
+    # raised by `read_module_provenance()` earlier would otherwise reach its own handler unbound.
+    out = ARTEFACT_PATH if args.out is None else Path(args.out)
     try:
         if args.doc is not None and args.out is None:
             print("%s: PAIR: --doc publishes %s, which is rendered from the artefact this run writes, so it "
@@ -1007,7 +1053,6 @@ def main(argv=None) -> int:
                       file=sys.stderr)
                 return EXIT_USAGE
 
-        out = ARTEFACT_PATH if args.out is None else Path(args.out)
         if out.exists() and not args.force:
             print("%s: %s already exists; pass --force to replace it" % (PRODUCER, out), file=sys.stderr)
             return EXIT_USAGE
@@ -1028,9 +1073,18 @@ def main(argv=None) -> int:
     except DriftEnvelopeUsage as exc:
         print("%s: %s -- nothing was written" % (PRODUCER, exc), file=sys.stderr)
         return EXIT_USAGE
-    except (ValueError, TypeError) as exc:
-        print("%s: %s: %s -- nothing was written" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
-        return EXIT_USAGE
+    except (ValueError, TypeError, ArithmeticError, OSError, LookupError, AttributeError) as exc:
+        # BLOCKER-1's other half. This run had not reached its write yet, so nothing is on disk and the
+        # operator needs the destination, the class, and the name that was wanted -- not a traceback. The
+        # code is the destination's, not the exception's: a producer that cannot build the pair THIS build
+        # declares is the checkout's defect (4); a run aimed at a path the operator typed is theirs (2).
+        kind_name, detail = _unplanned_read(exc, stored=False)
+        whose = ("this run would have written the artefact this build declares, so the producer is what "
+                 "needs fixing") if declared_artefact else (
+                "this run was aimed at a path you named, so its arguments are what to check")
+        print("%s: %s: %s could not be published (%s) -- %s. Nothing was written"
+              % (PRODUCER, kind_name, out, detail, whose), file=sys.stderr)
+        return EXIT_DRIFT if declared_artefact else EXIT_USAGE
 
     disagreements = doc["reproduction"]["disagreements"]
     print("wrote %s%s" % (out, " and %s" % args.doc if args.doc is not None else ""))
