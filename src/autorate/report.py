@@ -407,6 +407,16 @@ def rederive_severity(expect, expect_rubric, fields, rubric_fields, rubric=None,
         expect("cert %s.summary" % label, fresh.summary(), stored.summary())
 
 
+def _verdict_cell(cert) -> str:
+    """The one rendering of a certificate's verdict, shared by every document that states one.
+
+    #38: `docs/RESULTS.md` narrates each refusal twice -- in its summary table and again in the verbatim
+    `summary()` block printed directly beneath -- and a byte-compare against a renderer that formats the
+    verdict in two places re-derives a drifted wording instead of refusing it. One function, both sites.
+    """
+    return "**certified**" if cert.feasible else "**NOT_CERTIFIABLE** (%s)" % cert.reason
+
+
 def render_severity(label: str, cert: SeverityCertificate) -> str:
     """G3's published document, written entirely out of one artefact.
 
@@ -419,7 +429,7 @@ def render_severity(label: str, cert: SeverityCertificate) -> str:
     """
     records_path, cert_path, direction = SEVERITY_CERTS[label]
     meta = cert.meta
-    verdict = ("**certified**" if cert.feasible else "**NOT_CERTIFIABLE** (%s)" % cert.reason)
+    verdict = _verdict_cell(cert)
     lines = [
         "# Published ordinal guarantee (G3)",
         "",
@@ -1907,9 +1917,9 @@ def build_report(inv: dict, certs: dict, counts: dict) -> str:
                             # figure the certificate does not carry.
                             _case_cell(c, "n_cal_cases"), _case_cell(c, "n_eval_cases")))
         else:
-            lines.append("| %s | **NOT_CERTIFIABLE** (%s) | - | - | - | - | - | - | %d/%d "
+            lines.append("| %s | %s | - | - | - | - | - | - | %d/%d "
                          "| %s/%s |"
-                         % (b, c.reason, c.n_cal, c.n_eval,
+                         % (b, _verdict_cell(c), c.n_cal, c.n_eval,
                             _case_cell(c, "n_cal_cases"), _case_cell(c, "n_eval_cases")))
     lines += ["", "### Verbatim summaries", ""]
     for b in BACKENDS:

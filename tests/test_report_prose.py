@@ -720,3 +720,42 @@ def test_the_translation_claim_needs_two_figures_that_can_disagree():
     # multiple of nothing, and the pre-fix guard could not see it either: the two options still matched.
     text = _denominator_note(inv(pooled_drop=("n_shards",)))
     assert "translations" not in text, text
+
+
+# -----------------------------------------------------------------------------------------------
+# #38: one fact, two narrations. `docs/RESULTS.md` states each certificate's verdict twice -- in the
+# summary table's cell and again inside its "Verbatim summaries" block -- and a byte-compare against a
+# renderer that formats the verdict twice cannot notice the two wordings drifting apart, because it
+# re-derives the disagreement on every run. So the shape is policed, not the moment.
+# -----------------------------------------------------------------------------------------------
+
+def test_the_verdict_is_rendered_by_exactly_one_function():
+    """Two format strings for one fact is the defect; the row counts them in the source, not the doc."""
+    import inspect
+
+    import autorate.report as module
+    src = inspect.getsource(module)
+    sites = [line.strip()[:70] for line in src.splitlines() if "**NOT_CERTIFIABLE**" in line
+             and not line.strip().startswith("#")]
+    assert len(sites) == 1, (
+        "the verdict token is formatted in %d places (%s); one fact needs one renderer, or the table and the "
+        "summary block can disagree and `verify` will re-derive the disagreement instead of refusing it"
+        % (len(sites), sites))
+    assert "def _verdict_cell" in src, "the one renderer has no owner function to name"
+
+
+def test_every_verdict_cell_in_the_document_agrees_with_the_summary_it_sits_beside():
+    """Every occurrence, both channels: the cell and the verbatim line must state the same verdict."""
+    records = load_records(Path("data/records_feishu.jsonl"))
+    certs = {b: read_certificate(Path("data/cert_%s.json" % b)) for b in ("laya", "jev")}
+    assert all(not c.feasible for c in certs.values()), {b: c.feasible for b, c in certs.items()}
+    inv = json.loads(Path("data/inventory.md.json").read_text())
+    text = build_report(inv, certs, {b: len(rs) for b, rs in records.items()})
+    doc_lines = [l for l in text.splitlines() if l.startswith("| ") and "NOT_CERTIFIABLE" in l]
+    reasons = {m.group(1) for line in doc_lines for m in [re.search(r"\((\w+)\)", line)] if m}
+    assert reasons, "the table stopped narrating a refusal, so this row has no subject: %r" % text[:200]
+    summary = text.split("### Verbatim summaries")[-1]
+    for reason in reasons:
+        assert ("reason=%s" % reason) in summary, (
+            "the table narrates %r while the verbatim summaries name none of it" % reason)
+    assert len(doc_lines) == 2, [l[:40] for l in doc_lines]
