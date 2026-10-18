@@ -1,16 +1,18 @@
 """Task #91/R-263: the G5 note rests on CI running the frozen form, and nothing policed the workflow.
 
 `docs/G5.md` and the G5 claim sentence say `verify --protocol protocol.json` is platform-witnessed. That is
-true today because `.github/workflows/ci.yml` was edited to invoke the frozen form on every job; the witness
-comes from reading the runner's own log for run `38400305544`, and again for run `38674203783` (both at head
-`9e6363a`, whose lanes printed `re-derived 249 /249 values`: `offline`, `cross-libc-verify (ubuntu-latest)`
-and `cross-libc-verify (macos-latest)` each printed that line there -- read with
-`gh run view <id> --log --job <jid> | grep re-derived`, so the claim is a log line and not a job status. The
-denominators are named as that revision's, not as today's: the transcript now names the commit it was
-re-exported from, and a log witness for a workflow shape does not expire when a lane grows). The first run,
-three jobs, each printing `re-derived 248 /248 values` at exit 0), not from this file. What this file does is
-refuse the quiet regression that would make those sentences false again: a workflow step edited back to the
-plain `verify`, which re-derives the numbers but never asks the freeze to agree with them.
+true today because `.github/workflows/ci.yml` was edited to invoke the frozen form on every job; the witness is
+read out of the runner's own log, never from a job status. Measured on the tip this round pushed: run
+`39119773205` at head `c2cff3a`, three job instances -- `offline`, `cross-libc-verify (ubuntu-latest)` and
+`cross-libc-verify (macos-latest)` -- and the log yields exactly three occurrences of
+`re-derived 734 /734 values`, which is the corpus-absent denominator the transcript now carries. Read it with
+`gh run view 39119773205 --log | grep -o 're-derived [0-9]* /[0-9]* values' | sort | uniq -c`. The older cited
+runs, `38400305544` and `38674203783` at head `9e6363a`, printed `249 /249` there (and an earlier run printed
+`248 /248` at exit 0); they stay the witness for the workflow-shape edit itself, and their denominators are
+named as that revision's, because a run belongs to the commit that was pushed -- which is exactly why
+`docs/G5.md` quotes no run id at all. What this file does is refuse the quiet regression that would make those
+sentences false again: a workflow step edited back to the plain `verify`, which re-derives the numbers but
+never asks the freeze to agree with them.
 
 Both rows are needed. The first can go vacuous -- a regex that matches nothing makes "every match has the
 flag" true by default -- so the second applies the same predicate to a synthetic workflow carrying the bare
