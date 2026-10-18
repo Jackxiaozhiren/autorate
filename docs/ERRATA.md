@@ -2458,3 +2458,15 @@ run, so its envelope is the same bytes the thirteenth round froze; `docs/REPORT.
 moved because they carry the stamped digest and the note verbatim. The G5 transcript is unchanged by the
 emission: it names `d62337b` and reports that commit's own protocol digest, which is what the staleness row
 reads out of the object database rather than from the reader's tree.
+
+**The third owner of the same digits, caught by its own guard.** Both lanes of the full suite on the frozen
+tree came back with one failing row -- the same one in each:
+`test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inventory_owns`, refusing the note's
+`734`, `771` and `37` because its own table of owned G5 digits was the literal set `{"249", "284", "35"}`. The
+row exists to refuse a note that states a quantity nobody re-derives, and it had become the thing it polices:
+digits remembered from an earlier transcript, true of the commit the export unpacked and stale the moment the
+transcript moved. It now runs the absent lane, reads the count off that run's own print, and takes the present
+lane as that count plus `cli.corpus_only_comparisons`, so the three digits it owns are re-derived rather than
+recited. The row went red before the change with residue `['37', '734', '771']` and passes after, in both the
+corpus-absent and corpus-visible environments; the sibling quoter row is what ties those derived digits to the
+note, the README and the transcript.

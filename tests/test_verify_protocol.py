@@ -12,7 +12,9 @@ all of them -- spec 2 D-12. A digest frozen before the numbers cannot be answere
 
 Nothing here imports a model, a corpus or a network: these are the same committed files `verify` reads.
 """
+import contextlib
 import copy
+import io
 import json
 import re
 import shutil
@@ -857,13 +859,30 @@ def test_no_frozen_note_states_a_quantity_digit_that_neither_a_row_nor_the_inven
                             "%d" % len(pin["rows"]), "%d" % len(pin["excluded"])}
                 | {t for key in ("delta_hat", "R_in", "R_out") for t in _g1_num(abs(gap[key]))}
                 | {t for end in gap["interval"] for t in _g1_num(abs(end))})
+    # G5's three quantity digits are the two lane denominators and the gap between them. They used to be
+    # written here as `{"249", "284", "35"}` -- literals that were true of the frozen transcript's commit and
+    # went stale the moment the transcript was re-exported, which is the same defect this row hunts in the
+    # notes. Run the absent lane and read the count off its own print; add the gate's corpus-only comparison
+    # count for the present lane. `test_the_g5_transcript_is_the_only_owner_of_its_digits_and_every_quoter_transcribes_it`
+    # then requires the note, README and the transcript to carry exactly what this derived.
+    g5_buf = io.StringIO()
+    with contextlib.redirect_stdout(g5_buf):
+        g5_rc = cli.main(["verify", "--protocol", "protocol.json"])
+    assert g5_rc == 0, g5_rc
+    g5_printed = re.search(r"re-derived (\d+) /(\d+) values", g5_buf.getvalue())
+    assert g5_printed, g5_buf.getvalue()[-400:]
+    assert g5_printed.group(1) == g5_printed.group(2), g5_printed.groups()
+    g5_absent = int(g5_printed.group(1))
+    g5_inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
+    g5_gap = cli.corpus_only_comparisons(g5_inv)
+
     owned = {
         "G1": {"%d" % resplit_doc["resplits"],
                "%d" % len(seen_resplit), "%d" % len(seen_resplit_rubric), "0"} | rates,
         "G2": g2_audit,
         "G3": {"19", "%d" % len(seen_sev), "%d" % len(seen_sev_rubric)} | g3_contrast,
         "G4": g4_owned,
-        "G5": {"249", "284", "35", "0"},
+        "G5": {str(g5_absent), str(g5_absent + g5_gap), str(g5_gap), "0"},
     }
     # G1's note quotes spec section 14's kill threshold, so the spec is its only honest source: read the
     # number there and require the note to carry that spelling. A threshold that moves in the spec reddens
