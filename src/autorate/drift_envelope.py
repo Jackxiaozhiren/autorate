@@ -117,18 +117,38 @@ DOC_WIDTH = 92
 # `tests/test_drift_envelope.py::test_the_arm_and_the_producer_name_the_same_quantity_for_the_same_plant`.
 # Extracting these changed nothing about what is compared: the published artefact and document regenerate
 # byte-identically and every refusal plant still names the same class at the same code.
-#: The two fields of a `reproduction` claim the guard compares: the figure the run measured, and the verdict.
-RECHECK_CLAIM_FIELDS = ("agrees", "measured")
-#: The mode-1 fields, per published size row.
-RECHECK_MODE1_FIELDS = ("realised_miscoverage", "standard_error", "three_se", "vacuous_share")
-#: The mode-2 figure fields, per published construction and per control.
-RECHECK_MODE2_FIELDS = ("realised_long_run_rate", "regret_bound", "deviation_from_alpha")
+#: The three fields of a `reproduction` claim the guard compares: the figure the run measured, the figure the
+#: envelope states, and the verdict. `envelope_states` is on the list because the first version of this tuple
+#: compared only `agrees` and `measured`, and a forged cited figure -- `envelope_states` moved from 0.0933 to
+#: 0.0999, its document re-rendered from the forged bytes -- passed the whole `--check` at rc 0 (measured on
+#: `2acf379` before this change). A published figure the module no longer states must not be able to do that.
+RECHECK_CLAIM_FIELDS = ("agrees", "measured", "envelope_states")
+#: The mode-1 fields, per published size row, INCLUDING the two figures the module is cited for: comparing
+#: only what this run measured would let the cited half of a row say anything at all.
+RECHECK_MODE1_FIELDS = ("realised_miscoverage", "standard_error", "three_se", "vacuous_share",
+                        "envelope_cited", "vacuous_share_cited_in_envelope")
+#: The mode-2 figure fields, per published construction and per control. The two cited halves are optional --
+#: a control publishes no envelope figure -- so they are compared through `_both`, which keeps "absent" and
+#: "null" two different states instead of letting a deleted key read as a null the producer also emits.
+RECHECK_MODE2_FIELDS = ("realised_long_run_rate", "regret_bound", "deviation_from_alpha",
+                        "envelope_cited_rate", "envelope_cited_bound")
 #: The two quantities that say a published recipe still names the sequence that was measured. The guard below
 #: covers both in one sentence; the gate's arm compares them field by field, so a refusal names which one.
 RECHECK_MODE2_RECIPE_FIELDS = ("sequence_digest_sha256", "rounds")
 #: The sweep's counts and scale, compared as published.
 RECHECK_SWEEP_FIELDS = ("violations", "violated_without_clip", "clipped", "held_clipped", "sequences",
-                        "rounds", "seed", "bound")
+                        "rounds", "seed", "bound", "envelope_cited_violated_without_clip",
+                        "envelope_cited_held_clipped")
+
+#: Sentinel for a field an artefact does not carry at all. `_both` compares through it so that a deleted
+#: optional key is a disagreement with a producer that still writes it, and a stored `null` is not silently
+#: the same state as no state.
+_MISSING = object()
+
+
+def _both(stored, fresh, field):
+    """(stored value, fresh value) for a field that may be absent from one side, as published."""
+    return stored.get(field, _MISSING), fresh.get(field, _MISSING)
 
 
 class DriftEnvelopeUsage(ValueError):
@@ -167,6 +187,14 @@ def _first_match(pattern: str, text: str, what: str):
             "ENVELOPE PROVENANCE: %s is not in drift.py's envelope text (pattern %r); this artefact states "
             "no figure the module does not" % (what, pattern))
     return match
+
+
+#: The one envelope line each withdrawal quotes as the module's reason. Named here because BOTH the producer
+#: that builds the artefact and the check that re-reads it use the same pattern: a stored reason that is some
+#: other line of the same tuple is still prose the module states, and the review measured that such a swap
+#: passed `--check` at rc 0 when the guard only asked for membership.
+MODE1_REASON_PATTERN = r"^the finite-sample correction is the EXCHANGEABLE case's"
+MODE2_REASON_PATTERN = r"^the mechanism, stated because"
 
 
 def _envelope_reason(lines: tuple, pattern: str, name: str) -> str:
@@ -642,15 +670,14 @@ def build_artefact(trials: int) -> dict:
                                             "bound on it",
                       "reason_owner": "drift.WEIGHTED_ENVELOPE",
                       "why": _envelope_reason(
-                          weighted, r"^the finite-sample correction is the EXCHANGEABLE case's",
-                          "WEIGHTED_ENVELOPE")},
+                          weighted, MODE1_REASON_PATTERN, "WEIGHTED_ENVELOPE")},
             "mode2": {"statement_withdrawn": "the long-run regret statement |mean err - alpha| <= "
                                              "aci_regret_bound(T, alpha, gamma)",
                       "status": "withdrawn",
                       "what_the_mode_buys": "a threshold that tracks the target rate while its iterate stays "
                                             "inside (0,1)",
                       "reason_owner": "drift.ACI_ENVELOPE",
-                      "why": _envelope_reason(aci, r"^the mechanism, stated because", "ACI_ENVELOPE")},
+                      "why": _envelope_reason(aci, MODE2_REASON_PATTERN, "ACI_ENVELOPE")},
         },
         "reproduction": build_reproduction(mode1, mode2, mode2_controls, sweep),
     }
@@ -892,39 +919,52 @@ def read_artefact(path: Path, *, declared: bool) -> dict:
     return loaded
 
 
-def check_envelope_copies(doc: dict, *, declared: bool) -> None:
-    """The stored envelope lines against the module's tuples, line for line."""
+def check_envelope_copies(doc: dict, *, declared: bool, path=None) -> None:
+    """The stored envelope lines against the module's tuples, line for line.
+
+    `path` names the artefact being read, and every refusal this guard raises carries it. The figure route
+    already prints the path (`ARTEFACT DRIFT: <path> cannot reproduce...`) and the missing-subkey net prints
+    it, so a prose refusal that named only the key was the last one a reader could not locate -- measured when
+    the `why-other-line` plant refused with `WITHDRAWAL PROSE` and no file, which is the whole reason the rc-4
+    and rc-2 rows assert the path for every forged figure or reason, not only for the subkey class.
+    """
+    where = "" if path is None else " in %s" % path
     for key, name in (("weighted_envelope", "WEIGHTED_ENVELOPE"), ("aci_envelope", "ACI_ENVELOPE")):
         stored = doc[key]
         if not isinstance(stored, list) or not all(isinstance(line, str) for line in stored):
             _refuse(declared, "ARTEFACT SHAPE", "the artefact's %s is a %s, not a list of lines"
-                    % (key, type(stored).__name__))
+                    % (key, type(stored).__name__) + where)
         module_value = _checked_tuple(getattr(drift, name), name)
         if len(stored) != len(module_value):
             _refuse(declared, "ENVELOPE TRUNCATED",
                     "the artefact carries %d lines of drift.%s while the module states %d, so a withdrawal "
                     "sentence is missing from what this artefact publishes (or one was added that the module "
-                    "does not make)" % (len(stored), name, len(module_value)))
+                    "does not make)" % (len(stored), name, len(module_value)) + where)
         for index, (stored_line, module_line) in enumerate(zip(stored, module_value)):
             if stored_line != module_line:
                 _refuse(declared, "ENVELOPE TRUNCATED",
                         "the artefact's line %d of drift.%s is not the module's line %d, so the published "
-                        "withdrawal is not the one the module makes" % (index, name, index))
+                        "withdrawal is not the one the module makes" % (index, name, index) + where)
     if doc["not_certifiable_under_drift"] != drift.NOT_CERTIFIABLE_UNDER_DRIFT:
         _refuse(declared, "ENVELOPE TRUNCATED", "the stored marginal-only flag is not "
-                "drift.NOT_CERTIFIABLE_UNDER_DRIFT")
+                "drift.NOT_CERTIFIABLE_UNDER_DRIFT" + where)
     for mode, name in (("mode1", "WEIGHTED_ENVELOPE"), ("mode2", "ACI_ENVELOPE")):
         block = doc["withdrawals"][mode]
         if block.get("reason_owner") != "drift.%s" % name:
             _refuse(declared, "WITHDRAWAL PROSE", "the artefact's `withdrawals.%s` names %r as the owner of "
                     "its reason while the renderer prints that reason as the module's own words; the owner "
-                    "must be `drift.%s`" % (mode, block.get("reason_owner"), name))
-        if block["why"] not in _checked_tuple(getattr(drift, name), name):
+                    "must be `drift.%s`" % (mode, block.get("reason_owner"), name) + where)
+        if block["why"] != _envelope_reason(_checked_tuple(getattr(drift, name), name),
+                                            MODE1_REASON_PATTERN if name == "WEIGHTED_ENVELOPE"
+                                            else MODE2_REASON_PATTERN, name):
             _refuse(declared, "WITHDRAWAL PROSE",
-                    "the artefact's `withdrawals.%s.why` is a sentence drift.%s does not contain, and %s "
-                    "quotes it verbatim after \"the module states the reason verbatim:\" -- a paraphrase stored "
-                    "here is the defect MAJOR-2 measured, so the reason has to be one of the module's lines"
-                    % (mode, name, DOC_REL))
+                    "the artefact's `withdrawals.%s.why` is not the sentence drift.%s states as its reason, "
+                    "and %s quotes it verbatim after \"the module states the reason verbatim:\" -- membership "
+                    "in the tuple is not enough, because a reason copied from another line of the same "
+                    "envelope is still prose the module does not offer as THIS withdrawal's reason (measured: "
+                    "swapping mode 1's line for line 0 of `WEIGHTED_ENVELOPE` passed a check that only asked "
+                    "whether the sentence occurred)"
+                    % (mode, name, DOC_REL) + where)
 
 
 def check_provenance(doc: dict, *, declared: bool) -> None:
@@ -985,9 +1025,10 @@ def rederive_and_compare(doc: dict, *, declared: bool) -> list:
                          for label in sorted(set(by_id) - set(fresh_by_id)))
     for stored_row, fresh_row in zip(doc["mode1"], mode1):
         for field in RECHECK_MODE1_FIELDS:
-            if stored_row[field] != fresh_row[field]:
+            old, new = _both(stored_row, fresh_row, field)
+            if old != new:
                 disagreements.append("mode1 n=%d %s: artefact %r, re-run %r" % (
-                    fresh_row["n"], field, stored_row[field], fresh_row[field]))
+                    fresh_row["n"], field, old, new))
     for section, fresh_rows in (("mode2", mode2), ("mode2_controls", mode2_controls)):
         for stored_row in doc[section]:
             match = [row for row in fresh_rows if row["name"] == stored_row["name"]]
@@ -1005,10 +1046,10 @@ def rederive_and_compare(doc: dict, *, declared: bool) -> list:
             # libm from a re-run that measured something else, and it went red the moment storage was
             # canonicalised because the stored value is the rounded one.
             for field in RECHECK_MODE2_FIELDS:
-                if stored_row[field] != fresh_row[field]:
+                old, new = _both(stored_row, fresh_row, field)
+                if old != new:
                     disagreements.append("%s %s %s: artefact %r, re-run %r"
-                                         % (section, stored_row["name"], field, stored_row[field],
-                                            fresh_row[field]))
+                                         % (section, stored_row["name"], field, old, new))
     stored_sweep = doc["mode2_sweep"]
     for field in RECHECK_SWEEP_FIELDS:
         if stored_sweep[field] != sweep[field]:
@@ -1038,7 +1079,7 @@ def _run_check(args) -> int:
     path = ARTEFACT_PATH if declared else Path(args.artefact)
     try:
         doc = read_artefact(path, declared=declared)
-        check_envelope_copies(doc, declared=declared)
+        check_envelope_copies(doc, declared=declared, path=path)
         check_provenance(doc, declared=declared)
         # Everything the stored bytes alone can answer is read BEFORE the re-derivation is paid for: an
         # artefact this build cannot render is a shape problem, and discovering it after 4000 trials only

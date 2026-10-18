@@ -119,15 +119,15 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 697 /697 values` where the corpus is absent, `re-derived 734 /734
+prints say so: `re-derived 734 /734 values` where the corpus is absent, `re-derived 771 /771
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 734: every CI run is a 697 run, on both of its arms. Green CI is
+alone can never reach the 771: every CI run is a 734 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 697 run proves a lot inside that lane. Every published number that is a function of a
+A 734 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all seven published certificates, each from the committed
 records it was actually made from, G4's slice run from the four committed MASSIVE record files
 it names inside itself, the whole
@@ -135,13 +135,13 @@ of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUD
 for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
 for byte, `docs/CONTAMINATION.md` byte for byte, `docs/FEASIBILITY.md` byte for byte, `docs/DRIFT.md` byte
 for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows
-from their committed pin. What a 697 run
+from their committed pin. What a 734 run
 cannot prove is what its own disclosure says in so many words --
 `this run cannot see whether that snapshot went stale`. The gap is exactly 37
 checks: the 9 upstream `SOURCE.json` digests, the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 697 /697.
+had drifted from the corpus would agree with itself and report 734 /734.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,

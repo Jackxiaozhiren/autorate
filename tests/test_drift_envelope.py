@@ -68,8 +68,14 @@ PUBLISHED_CITED_DECIMALS = 4
 
 # ------------------------------------------------------------------ the artefact's own shape
 
+#: The command that republishes the pair, spelled once. `read_json`'s hint and
+#: `test_the_hint_a_missing_artefact_prints_is_a_command_the_producer_accepts` both read it, so a hint that
+#: drifts into a form the pair guard refuses is caught here rather than shipped.
+PAIR_COMMAND = "python3 tools/drift_envelope.py --out %s --doc %s --force" % (ARTEFACT_REL, DOC_REL)
+
+
 def read_json(path: Path) -> dict:
-    assert path.is_file(), "%s is missing -- run `python3 tools/drift_envelope.py --force`" % path
+    assert path.is_file(), "%s is missing -- run `%s`" % (path, PAIR_COMMAND)
     loaded = json.loads(path.read_text())
     assert isinstance(loaded, dict), "%s is a JSON %s, not an artefact object" % (
         path, type(loaded).__name__)
@@ -182,8 +188,6 @@ def test_every_envelope_line_in_the_artefact_is_the_tuple_in_drift_py_verbatim()
     assert doc["aci_envelope"] == list(ACI_ENVELOPE), (
         "data/drift_envelope.json's ACI envelope is not drift.ACI_ENVELOPE")
     assert doc["not_certifiable_under_drift"] == NOT_CERTIFIABLE_UNDER_DRIFT
-    assert len(doc["weighted_envelope"]) == len(WEIGHTED_ENVELOPE)
-    assert len(doc["aci_envelope"]) == len(ACI_ENVELOPE)
 
 
 def _lines_missing_from(text: str, lines) -> list:
@@ -214,7 +218,8 @@ def test_the_document_carries_every_envelope_line_byte_for_byte():
 
 
 def test_the_document_row_fails_when_the_artefact_carries_a_line_it_does_not_print():
-    """The self-falsifier this file's header promised and row 3 did not deliver until it read the artefact.
+    """The self-falsifier the header promised and
+    `test_the_document_carries_every_envelope_line_byte_for_byte` did not deliver until it read the artefact.
 
     Appending one line to the artefact's stored envelope copy -- the plant the docstring named -- cannot
     redden a row that reads only the module and the document, because neither of those changes. Re-run
@@ -476,7 +481,7 @@ PLANTS = ("missing", "list", "scalar", "empty", "no-envelope-key", "truncated-we
           "figure-moved", "recipe-moved",
           "mode1-no-trials", "mode1-no-envelope-cited", "mode2-no-construction",
           "mode2-recipe-no-value", "withdrawals-no-mode1", "check-no-agrees", "sweep-no-bound",
-          "why-reworded", "raw-double")
+          "why-reworded", "raw-double", "why-other-line", "cited-figure-moved")
 
 PLANT_REASON = {
     "missing": "ARTEFACT UNAVAILABLE",
@@ -494,6 +499,8 @@ PLANT_REASON = {
     "recipe-moved": "DRIFT",
     "why-reworded": "WITHDRAWAL PROSE",
     "raw-double": "DRIFT",
+    "why-other-line": "WITHDRAWAL PROSE",
+    "cited-figure-moved": "DRIFT",
     "mode1-no-trials": "ARTEFACT SHAPE",
     "mode1-no-envelope-cited": "ARTEFACT SHAPE",
     "mode2-no-construction": "ARTEFACT SHAPE",
@@ -501,6 +508,16 @@ PLANT_REASON = {
     "withdrawals-no-mode1": "ARTEFACT SHAPE",
     "check-no-agrees": "ARTEFACT SHAPE",
     "sweep-no-bound": "ARTEFACT SHAPE",
+}
+
+#: The half of the refusal line that says WHICH quantity the guard is complaining about. `PLANT_REASON` names
+#: the class of defect, and every disagreement line starts with the same `DRIFT:` prefix, so a figure plant
+#: that only asserted its class could not tell "the gate caught my forged field" from "the gate printed a
+#: generic disagreement about something else" -- the review's finding on the first `raw-double`.
+PLANT_DETAIL = {
+    "raw-double": "regret_bound",
+    "cited-figure-moved": "envelope_cited",
+    "why-other-line": "withdrawals.mode1.why",
 }
 assert set(PLANTS) == set(PLANT_REASON), "the plant sweep and the plant expectation have diverged"
 
@@ -563,6 +580,21 @@ def _forge_artefact(kind: str, tmp: Path) -> Path:
     elif kind == "raw-double":
         # MINOR-3's shape, using the exact value `data/drift_envelope.json` stored before the rounding.
         doc["mode2"][0]["regret_bound"] = 0.02877777777777778
+    elif kind == "why-other-line":
+        # Membership is not identity: line 0 of the SAME tuple is prose the module states, and a guard that
+        # only asked "is this one of the lines?" let another withdrawal's reason be published as this one's.
+        # Measured on `2acf379`: that artefact plus its own rendered document answered rc 0 and
+        # "re-derived 19 claims", because the module offers that line as the assumption, not the reason.
+        doc["withdrawals"]["mode1"]["why"] = list(WEIGHTED_ENVELOPE)[0]
+    elif kind == "cited-figure-moved":
+        # The cited half of a published row, which nothing compared until `RECHECK_MODE1_FIELDS` grew the
+        # cited fields. Forged as the review forged it -- `0.0933` -> `0.0999` -- together with its
+        # reproduction claim, so the document stays a faithful render of the forged bytes and cannot fire:
+        # the only thing left that can catch it is the comparison against the module's own text.
+        doc["mode1"][1]["envelope_cited"] = 0.0999
+        for check in doc["reproduction"]["checks"]:
+            if check["id"].endswith("n=%d" % doc["mode1"][1]["n"]):
+                check["envelope_states"] = 0.0999
     elif kind in PLANT_SUBKEY:
         _remove_subkey(doc, kind)
         # the whole point of this class is that the artefact still LOOKS like a publication: every
@@ -623,7 +655,9 @@ def test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4(kin
     constant is redirected -- the tracked file is never touched), and driven through `main`. The printed name
     is asserted, so "refused" is never a bare traceback, and the code is asserted, so a missing artefact and a
     re-provenanced one are not conflated with a typo in a flag. A missing-subkey plant is asserted further:
-    the line has to name the subkey it wanted and the file it was reading.
+    the line has to name the subkey it wanted and the file it was reading; a figure-or-prose plant has to name
+    the quantity (`PLANT_DETAIL`), because the class prefix every disagreement line carries is not evidence
+    that THIS defect was the one caught.
     """
     from autorate import drift_envelope
 
@@ -643,6 +677,9 @@ def test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4(kin
     assert "Traceback" not in err, (kind, err)
     if kind in PLANT_SUBKEY:
         assert "'%s'" % PLANT_SUBKEY[kind] in err, (kind, err)
+    if kind in PLANT_DETAIL:
+        assert PLANT_DETAIL[kind] in err, (kind, err)
+    if kind in PLANT_SUBKEY or kind in PLANT_DETAIL:
         assert str(forged) in err, (kind, err)
 
 
@@ -665,15 +702,55 @@ def test_an_operator_named_artefact_that_is_wrong_is_usage_rc_2_not_drift_rc_4(t
     missing = tmp_path / "no-such-file.json"
     assert drift_envelope.main(["--check", "--artefact", str(missing)]) == 2
     assert "does not exist" in capsys.readouterr().err
-    for kind in sorted(PLANT_SUBKEY):
+    for kind in sorted(set(PLANT_SUBKEY) | set(PLANT_DETAIL)):
         forged = _forge_artefact(kind, tmp_path)
         assert drift_envelope.main(["--check", "--artefact", str(forged)]) == 2, (kind,
                                                                                  capsys.readouterr())
         err = capsys.readouterr().err
         assert PLANT_REASON[kind] in err, (kind, err)
-        assert "'%s'" % PLANT_SUBKEY[kind] in err, (kind, err)
+        if kind in PLANT_SUBKEY:
+            assert "'%s'" % PLANT_SUBKEY[kind] in err, (kind, err)
+        else:
+            assert PLANT_DETAIL[kind] in err, (kind, err)
         assert str(forged) in err, (kind, err)
         assert "Traceback" not in err, (kind, err)
+
+
+def test_the_hint_a_missing_artefact_prints_is_a_command_the_producer_accepts(tmp_path, monkeypatch,
+                                                                              capsys):
+    """MINOR-6 left a residue: the guard was fixed, the advice was not.
+
+    The pair guard now refuses a run that writes the declared artefact without its document, and the hint this
+    file prints for a missing artefact said `python3 tools/drift_envelope.py --force` -- the exact command the
+    guard refuses at 2. An operator following the tool's own advice would be told their repair was a usage
+    error. The row parses the command out of the message and drives it, so a hint that drifts from the guard
+    reddens here instead of shipping.
+    """
+    from autorate import drift_envelope
+
+    missing = tmp_path / "no-artefact.json"
+    with pytest.raises(AssertionError) as caught:
+        read_json(missing)
+    message = str(caught.value)
+    assert PAIR_COMMAND in message, message
+    assert PAIR_COMMAND.split() == ["python3", "tools/drift_envelope.py", "--out", str(ARTEFACT_REL),
+                                    "--doc", str(DOC_REL), "--force"], PAIR_COMMAND
+    art = tmp_path / "art.json"
+    doc = tmp_path / "doc.md"
+    # The hint names the DECLARED paths, so running it verbatim here would rewrite the publication. What this
+    # row can prove without doing that is that the command's SHAPE is accepted: the same flags, with the two
+    # declared destinations mapped onto scratch files. A guard that started refusing this form would turn the
+    # tool's own advice into a usage error, which is the drift this row exists to catch.
+    argv = [str(art) if flag == str(ARTEFACT_REL) else str(doc) if flag == str(DOC_REL) else flag
+            for flag in PAIR_COMMAND.split()[2:]]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", art)
+    monkeypatch.setattr(drift_envelope, "DOC_PATH", doc)
+    rc = drift_envelope.main(argv)
+    err = capsys.readouterr().err
+    assert "PAIR" not in err, (argv, err)
+    assert rc in (0, 3), (argv, rc, err)
+    assert art.is_file() and doc.is_file(), (argv, err)
 
 
 def test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes(tmp_path, monkeypatch, capsys):
@@ -903,7 +980,9 @@ def _off_grid(value, decimals: int) -> bool:
     """True when a stored float is NOT the decimal the artefact declares for itself.
 
     The predicate is `value == round(value, decimals)` rather than a digit count of `repr`, because a float
-    whose repr is exponential (`2.5e-05`) has no digits to count and is still off the grid. `decimals` comes
+    whose repr is exponential (`4.499999999999997e-05`) has no digits to count and is off the grid at six
+    decimals, while `2.5e-05` is ON it -- which is why this is a comparison and not a digit count.
+    `decimals` comes
     from the artefact's OWN `provenance.published_decimals`, so the gate asks the publication what precision
     it claims and holds it to that answer -- it does not import a second constant that can fall behind.
     """
@@ -1231,9 +1310,10 @@ def test_a_claim_the_arm_cannot_match_is_named_by_its_id_and_field(monkeypatch):
                                                  "tolerance_basis": "planted"})
         return forged
 
+    from autorate.drift_envelope import RECHECK_CLAIM_FIELDS
     expected = {"drift claim %s.%s" % (name, field)
                 for name in (dropped, phantom)
-                for field in ("agrees", "measured")}
+                for field in RECHECK_CLAIM_FIELDS}
     _labels, drift, _m = _drive_arm(monkeypatch, mutate)
     assert set(drift) == expected, (sorted(set(drift) ^ expected)[:4], drift)
     assert len(drift) == len(expected), drift
