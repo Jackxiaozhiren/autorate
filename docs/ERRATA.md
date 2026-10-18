@@ -2350,3 +2350,33 @@ what a reader can open today.
 
 No published number moved. The three citations are prose pointers, and `verify` still answers with the same
 two denominators it answered with before this entry.
+
+
+## 2026-10-18 — the thirteenth freeze: B3's drift envelope joins the gate, and the gate grew wider than it was
+
+**What this emission carries.** `data/drift_envelope.json` and `docs/DRIFT.md` are now re-derived by
+`autorate verify` rather than only by `pytest`: the engine moved from `tools/drift_envelope.py` into
+`src/autorate/drift_envelope.py`, `report.read_drift` guards its shape on the producer's own required-key
+list, `report.rederive_drift` re-runs the measurement from `autorate.drift`, and `docs/DRIFT.md` became the
+tenth row of `cli.PUBLISHED_DOCS`, ordered ahead of this file because that table's order decides which
+missing-artefact refusal a reader is told about. `autorate.drift` is no longer on the unpublished list, so
+every figure of B3's drift story is published evidence: `report.UNPUBLISHED_SURFACES` now names one producer
+surface.
+
+**The two denominators moved together with the arm, and they moved more than the wiring predicted.** The
+criterion's own print: `re-derived 734 /734 values` with the corpus absent and `771 /771` with it present, a gap of 37 rows
+unchanged because nothing in the envelope reads the corpus. The arm compares the **cited** half of every
+published figure -- what `drift.py` states, not just what this run measured -- and that half entered the
+comparison only after a review measured a forged `mode1.n=100.envelope_cited` (0.0933 to 0.0999, with its
+reproduction claim moved to match and the document re-rendered from the forged bytes) answering the
+producer's own `--check` at rc 0. Forge that field by hand now and the same command refuses at rc 4 naming it and printing both values
+(measured); this is one more quantity compared by the same gate, not a stricter standard applied to the
+same bytes.
+
+**What did not move.** No certificate's bound, no slice, no contamination interval, no published digit of G1,
+G2, G4 or G5. The drift artefact's own stored mode-2 figures were canonicalised onto the six-decimal grid it
+declares for itself in this round's earlier commit, and every affected value prints at `%.6f`, so the
+document text that carries them is unchanged.
+
+
+The emission moved ten files and not one bound: the seventh certificate stamp `66db624059852be0cc5af217950388e5a8444cf8a558781b0471c580b9fbe0b9` (frozen 2026-10-18) is the only change in the seven certificates, and the two documents that differ -- this one and `docs/SEVERITY.md` -- differ in the digest line alone. `data/drift_envelope.json` and `docs/DRIFT.md` were re-emitted by their producer before the protocol was written and came back byte-identical, which is what lets one emission be the fixed point of the round instead of a chase.

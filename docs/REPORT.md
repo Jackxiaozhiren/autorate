@@ -7,7 +7,7 @@ date here was computed by this run -- every date is a transcription of a committ
 date, the freeze's `frozen_at` and the claim ledger's `opened` column -- and no absolute machine
 path appears, so a machine that never saw the corpus produces exactly these bytes.
 
-- protocol described: version 1, frozen 2026-10-17, digest `ce43f8e29cc1f2ddeeec0132d3d2392225c95bb844c27f964eeeb01d43062d69` (the file is `cli.PROTOCOL_JSON`)
+- protocol described: version 1, frozen 2026-10-18, digest `66db624059852be0cc5af217950388e5a8444cf8a558781b0471c580b9fbe0b9` (the file is `cli.PROTOCOL_JSON`)
 - record contract: shape 2, primitives `choice`, `score`, `noul`
 - rubric: `alpha`=0.05, `beta`=0.05, `delta`=0.05, `seed`=7, `method`=aps, `unit`=case, `n_claims`=3, `min_cal`=60, `min_eval`=60
 - diagnostic grid: 29 points, 0.01 to 0.29 -- evidence only, nothing on it was certified
