@@ -450,6 +450,11 @@ def render_severity(label: str, cert: SeverityCertificate) -> str:
         "- records calibration/evaluation: %d/%d, cases calibration/evaluation: %s/%s"
         % (cert.n_cal, cert.n_eval, meta.get("n_cal_cases"), meta.get("n_eval_cases")),
     ]
+    if meta.get("unit_note"):
+        # #113: the note is the artefact's own sentence about which denominator each figure divides by, and the
+        # two case counts are equal in this population, so the document that publishes the figures has to carry
+        # the attribution too -- verbatim, because a re-wording here would be a second owner of the claim.
+        lines.append("- denominators: %s" % meta["unit_note"])
     if meta.get("protocol_digest"):
         lines.append("- produced under the frozen protocol: `meta.protocol_digest` = `%s`"
                      % meta["protocol_digest"])

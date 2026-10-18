@@ -2470,3 +2470,25 @@ lane as that count plus `cli.corpus_only_comparisons`, so the three digits it ow
 recited. The row went red before the change with residue `['37', '734', '771']` and passes after, in both the
 corpus-absent and corpus-visible environments; the sibling quoter row is what ties those derived digits to the
 note, the README and the transcript.
+
+## 2026-10-18 — the ordinal certificate now says which of its two equal counts each figure divides by
+
+`data/cert_severity_ordinal.json` publishes three bounds and one empirical rate, and its `meta` carries
+`n_cal_cases` and `n_eval_cases` -- both 200 in the published population. That equality made the denominator
+unreadable from the artefact: `bound`, `price_bound` and `override_bound` divide by the calibration case count
+(`severity.py`'s `n_case`, reached both inline and through `_bounds`), while `measured_violation` divides by the
+evaluation case count, and a check written against the artefact's own bytes passes for either reading. The old
+`meta.unit_note` said "the bounds use the case denominator", which is true of both splits and so answered
+nothing.
+
+The note now names the published key per figure group and says why the attribution is carried by the note:
+the two counts agree here, so the numbers cannot be the evidence. `docs/SEVERITY.md` renders that note verbatim
+instead of owning a paraphrase of it, and the row that polices it --
+`test_the_published_note_names_the_denominator_each_figure_actually_used` -- reads `certify_severity`'s AST for
+the operand every `clopper_pearson_upper` call divides by and the right-hand side of the `measured` division,
+maps each local to the meta key it is stored under, and requires the note to match. It is asserted in both
+directions: the published note passes, and a copy with the two keys swapped is rejected. Measured: red before
+the producer change with `no clause of the note names n_cal_cases`, green after; the artefact was re-emitted by
+`autorate severity ... --protocol protocol.json` under the fourteenth digest, and `verify` re-derives at
+`734 /734`, rc 0. No published figure moved -- only the sentence that describes which denominator each one
+used -- so this is not a re-freeze.

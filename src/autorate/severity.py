@@ -532,6 +532,18 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
         envelope = envelope + (
             "this is the naive two-sided loss of spec 6.1, published as a comparison only: it bounds "
             "P(Y != ahat(X)), which is not a one-sided severity guarantee in either direction",)
+    # #113: `n_cal_cases` and `n_eval_cases` are the two denominators this certificate divides by, and in the
+    # published population they are EQUAL -- so a reader (or a guard) that only has the numbers cannot tell
+    # which one a given figure used, and an assertion written on the bytes passes for either reading. The note
+    # therefore names the key per figure group, and says outright that the equality is why the note, not the
+    # numbers, carries it. `tests/test_severity_surface.py` reads `certify_severity`'s own operands to check
+    # the names match the arithmetic.
+    unit_note = ("%d calibration records over %d distinct cases: `bound`, `price_bound` and `override_bound` "
+                 "divide by `n_cal_cases` (the calibration split's case count); `measured_violation` divides "
+                 "by `n_eval_cases` (the evaluation split's case count)" % (len(run["cal"]), n_case))
+    if n_case == n_ev_case:
+        unit_note += ("; both are %d in this population, so which denominator a figure uses is stated here "
+                      "rather than left to be inferred from two counts that happen to agree" % n_case)
     return SeverityCertificate(
         feasible=True, reason=None, direction=direction, alpha=alpha, delta=delta,
         backend=run["backend"], ahat=ahat, bound=bound, price_bound=price_bound,
@@ -542,9 +554,7 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
               "price_cases": price_cases, "override_cases": override_cases,
               "eval_violating_cases": measured_cases, "degenerate_end": degenerate,
               "rule": JOINT_LEVEL_RULE,
-              "unit_note": "%d calibration records over %d distinct cases: the bounds use the case "
-                           "denominator, because repeats of one case are one observation" % (
-                               len(run["cal"]), n_case)},
+              "unit_note": unit_note},
     )
 
 

@@ -22,6 +22,7 @@ What is pinned here, in order:
 Item 3 -- the falsification control for G3 -- is deliberately NOT here. It is the controller's, and a
 control that has to be able to answer "no" is not this file's subject.
 """
+import ast
 import dataclasses
 import json
 import re
@@ -789,3 +790,112 @@ def test_the_severity_command_rubric_flags_default_to_the_owner_names_not_litera
     flags = {a.dest: a.default for a in sub._actions if a.dest in owners}
     assert flags == owners, flags
     assert flags["alpha"] is ALPHA and flags["delta"] is DELTA and flags["seed"] is SEED
+
+
+
+def _producer_denominators():
+    """Which local each published figure divides by, and which meta key each local is stored under.
+
+    Read out of `severity.py`'s AST rather than its text: the bounds are produced by `_bounds(counts, n_case,
+    delta)` and inline by `clopper_pearson_upper(price_cases, n_case, delta)`, and `measured` is a division, so
+    a substring search for `n_case` would match all three and answer nothing. The helper resolves one level of
+    helper call, because the candidate bounds -- the figure the certificate is published for -- are computed
+    inside `_bounds`.
+    """
+    tree = ast.parse(Path(severity.__file__).read_text())
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    producer = funcs["certify_severity"]
+
+    def divides_by(func, call_node):
+        """The local name `clopper_pearson_upper` divides by inside `func`, resolved against this call site."""
+        for node in ast.walk(func):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "clopper_pearson_upper":
+                arg = node.args[1]
+                if isinstance(arg, ast.Name):
+                    if arg.id not in {a.arg for a in func.args.args}:
+                        return arg.id
+                    index = [a.arg for a in func.args.args].index(arg.id)
+                    if len(call_node.args) > index and isinstance(call_node.args[index], ast.Name):
+                        return call_node.args[index].id
+        return None
+
+    bound = set()
+    for node in ast.walk(producer):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "id", None)
+        if name == "clopper_pearson_upper" and len(node.args) > 1 and isinstance(node.args[1], ast.Name):
+            bound.add(node.args[1].id)
+        elif name in funcs and name != "certify_severity":
+            got = divides_by(funcs[name], node)
+            if got:
+                bound.add(got)
+    measured = None
+    for node in producer.body:
+        if (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "measured" and isinstance(node.value, ast.BinOp)
+                and isinstance(node.value.op, ast.Div) and isinstance(node.value.right, ast.Name)):
+            measured = node.value.right.id
+    stored = {}
+    for node in ast.walk(producer):
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                if (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                        and key.value.startswith("n_") and key.value.endswith("_cases")
+                        and isinstance(value, ast.Name)):
+                    stored[key.value] = value.id
+    assert bound and measured and stored, (sorted(bound), measured, stored)
+    assert set(bound) <= set(stored.values()), (sorted(bound), stored)
+    by_local = {v: k for k, v in stored.items()}
+    assert measured in by_local, (measured, stored)
+    return sorted({by_local[o] for o in bound}), by_local[measured], stored
+
+
+def _check_denominator_note(note, bound_keys, measured_key):
+    """Raise unless the note says which key the bounds divide by and which the empirical rate divides by.
+
+    Clause-scoped (split on `.` and `;`), because the note is prose: a key merely present somewhere in the
+    sentence would let a note that attributes the bounds to the evaluation split pass by mentioning both keys.
+    """
+    clauses = [c for c in re.split(r"[.;]", note) if c.strip()]
+    for key in sorted(set(bound_keys) | {measured_key}):
+        named = [c for c in clauses if key in c]
+        if not named:
+            raise AssertionError("no clause of the note names %s" % key)
+        for clause in named:
+            if key in bound_keys and "measured_violation" in clause:
+                raise AssertionError("the note attributes %s to the measured rate" % key)
+            if key == measured_key and "bound" in clause:
+                raise AssertionError("the note attributes %s to a bound" % key)
+    if not any(measured_key in c and "measured_violation" in c for c in clauses):
+        raise AssertionError("the note never tells a reader which key the measured rate divides by")
+
+
+def test_the_published_note_names_the_denominator_each_figure_actually_used(in_repo):
+    """#113: the artefact's two case counts are equal, so only the producer can say which one spoke.
+
+    `bound`, `price_bound` and `override_bound` divide by one split's case count and `measured_violation` by
+    the other's, and the published file carries `meta.n_cal_cases == meta.n_eval_cases` -- asserted below,
+    because that equality IS the premise: no comparison of the artefact's own bytes distinguishes the two
+    readings, so a guard written on the numbers would pass whichever denominator the code used. This row reads
+    `severity.py` instead, maps each operand to the meta key it is stored under, and requires `meta.unit_note`
+    to name that key for those figures.
+
+    Plant: swap the two keys in a copy of the note and the same predicate must reject it.
+    """
+    bound_keys, measured_key, _stored = _producer_denominators()
+    _records, cert_rel, _direction = report.SEVERITY_CERTS["ordinal"]
+    doc = json.loads((REPO / cert_rel).read_text())
+    meta = doc["meta"]
+    assert meta["n_cal_cases"] == meta["n_eval_cases"], (
+        "the two counts now differ, so the artefact's own numbers distinguish the denominators and this row is"
+        " no longer the only thing that does -- re-check #113 against the new shape")
+
+    note = meta["unit_note"]
+    _check_denominator_note(note, bound_keys, measured_key)
+
+    swapped = note.replace(bound_keys[0], "@@B@@").replace(measured_key, bound_keys[0]).replace("@@B@@",
+                                                                                                  measured_key)
+    assert swapped != note, "swapping the keys changed nothing, so the plant tests nothing"
+    with pytest.raises(AssertionError, match="attributes|never tells|names"):
+        _check_denominator_note(swapped, bound_keys, measured_key)
