@@ -404,7 +404,7 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
 
     The corpus-present lane is *derived* rather than run, because the archive is not a committed file and a
     row that only passes on one machine is a row CI cannot see (the same reasoning that keeps the transcript
-    guard deriving its 35-check gap). It is checked directly as well whenever this machine can see the
+    guard on `cli.corpus_only_comparisons`). It is checked directly as well whenever this machine can see the
     corpus, so a derivation that drifts from the real second lane is caught here, not in prose.
 
     Red if: a quoted output line disagrees with the run, its two halves disagree with each other, a
@@ -413,7 +413,7 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
     """
     import re
 
-    from autorate.cli import SNAPSHOT_MACHINE_KEYS
+    from autorate.cli import corpus_only_comparisons
 
     monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus_here"))
     text = re.sub(r"\s+", " ", (REPO / "README.md").read_text())
@@ -427,11 +427,10 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
     n_absent = int(measured.group(1))
 
     inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
-    non_machine = [k for k in inv if k not in SNAPSHOT_MACHINE_KEYS]
-    # The present lane is the absent lane plus the snapshot's corpus-only comparisons and the contamination
-    # arm's two re-digest checks. Both parts are counts of published structure, so a check added to either arm
-    # moves the derivation instead of making this row disagree with the run.
-    gap = len(inv["digests"]) + len(non_machine) + len(report.CONTAMINATION_CORPUS_ONLY_CHECKS)
+    # The count comes from the gate's own function, which is also what `tools/g5_transcript.py` refuses on:
+    # the present lane is the absent lane plus the snapshot's corpus-only comparisons and the contamination
+    # arm's two re-digest checks, and this row used to spell that sum out a second time.
+    gap = corpus_only_comparisons(inv)
     n_present = n_absent + gap
 
     corpus_root = REPO.parent / "laya-0.3.20" / "research" / "benchmarks" / "feishu_zh"
@@ -443,11 +442,10 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
         direct = re.search(r"re-derived (\d+) /(\d+) values", present_out)
         assert direct and direct.group(1) == direct.group(2), present_out[-400:]
         assert int(direct.group(1)) == n_present, (
-            "the corpus-present lane prints %s but the published structure says it should be %s = %s + %d "
-            "digests + %d non-machine snapshot keys + %d corpus-only contamination checks -- the derivation "
-            "this row falls back to on other machines is the thing that just disagreed with the real run"
-            % (direct.group(1), n_present, n_absent, len(inv["digests"]), len(non_machine),
-               len(report.CONTAMINATION_CORPUS_ONLY_CHECKS)))
+            "the corpus-present lane prints %s but `cli.corpus_only_comparisons` says it should be %s = %s "
+            "+ %d (digests + non-machine snapshot keys + the contamination arm's corpus-only checks) -- the "
+            "derivation this row falls back to on other machines is the thing that just disagreed with the "
+            "real run" % (direct.group(1), n_present, n_absent, gap))
         checked = "measured directly"
     else:
         checked = "derived from the committed snapshot (corpus not visible here)"

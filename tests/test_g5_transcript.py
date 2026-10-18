@@ -106,8 +106,8 @@ def test_each_lane_counts_the_same_number_of_values_it_checked(text):
     """`re-derived N /M` with N != M is drift, and a transcript of drift must not read as green.
 
     Plant: change one lane's numerator. Both lanes' halves have to agree, and the row also asserts the two
-    denominators are the two DIFFERENT numbers the lanes are known for -- the 35-check gap is the reason
-    running both is the measurement at all.
+    denominators are the two DIFFERENT numbers the lanes are known for, differing by exactly the comparisons
+    only a corpus can make.
     """
     pairs = LANE_RX.findall(_lane_section(text))
     assert pairs, "no `re-derived N /N values` line in the transcript"
@@ -115,25 +115,53 @@ def test_each_lane_counts_the_same_number_of_values_it_checked(text):
         assert checked == total, (checked, total)
     denominators = sorted({int(total) for _c, total in pairs})
     assert len(denominators) == 2, denominators
-    # The gap is derived, not remembered, the way `tests/test_cli.py:183-200` derives its own denominator.
-    # `cmd_verify`'s corpus-present branch adds exactly two kinds of comparison that the absent lane cannot
-    # make: one per `SOURCE.json` digest in the inventory (`cli.py`: `for d in inv["digests"]`), and one per
-    # snapshot key that is not in `cli.SNAPSHOT_MACHINE_KEYS` (`expect_snapshot_is_current`, which walks the
-    # key set of the committed snapshot). Both live in committed bytes, so a snapshot that gains a key or a
-    # corpus that gains a digest moves this formula with it -- and a transcript whose lanes no longer differ
-    # by that amount is stale rather than narrow. Measured on the committed `data/inventory.md.json`: 9
-    # digests, and 26 of its 30 keys are not machine keys.
+    # The gap comes from `cli.corpus_only_comparisons`, the gate's own count, and NOT from a formula written
+    # here. This row used to derive it inline as digests + non-machine snapshot keys and comment the result as
+    # "35 digests + non-machine keys"; `tests/test_verify_protocol.py` derived the same quantity a second time
+    # and added `report.CONTAMINATION_CORPUS_ONLY_CHECKS`, because the contamination arm re-digests the
+    # upstream file where the corpus is visible. Two owners, two answers, and the measured lanes (734 absent /
+    # 771 present) agreed with the second: this row was licensing a 35-gap transcript that no longer described
+    # the gate, and it would have refused an honest re-export of one that did.
     import json
 
-    from autorate.cli import SNAPSHOT_MACHINE_KEYS
+    from autorate.cli import SNAPSHOT_MACHINE_KEYS, corpus_only_comparisons
 
     inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
-    non_machine = [k for k in inv if k not in SNAPSHOT_MACHINE_KEYS]
-    derived = len(inv["digests"]) + len(non_machine)
+    derived = corpus_only_comparisons(inv)
     assert denominators[1] - denominators[0] == derived, (
-        "the transcript's lanes differ by %d, the committed snapshot says the corpus owns %d comparisons "
-        "(%d digests + %d non-machine snapshot keys)"
-        % (denominators[1] - denominators[0], derived, len(inv["digests"]), len(non_machine)))
+        "the transcript's lanes differ by %d, this tree's gate adds %d corpus-only comparisons "
+        "(%d `SOURCE.json` digests + %d non-machine snapshot keys + %d corpus-only contamination checks) -- "
+        "run `bash tools/g5_export.sh` to re-transcribe the lanes the gate actually has"
+        % (denominators[1] - denominators[0], derived, len(inv["digests"]),
+           len([k for k in inv if k not in SNAPSHOT_MACHINE_KEYS]),
+           derived - len(inv["digests"]) - len([k for k in inv if k not in SNAPSHOT_MACHINE_KEYS])))
+
+
+def test_a_record_whose_lane_gap_is_not_the_corpus_only_count_refuses_the_document(tmp_path):
+    """The check above runs on a file that already exists; the writer is where a stale gap stops.
+
+    Plant: take the fixture's record and move the present lane back to the undercounted 35-gap. The emitter
+    must refuse -- and `main` must leave no document behind, because the whole reason the exit-code contract
+    lives in the renderer is that a red test downstream of an overwrite is a transcript that got committed.
+
+    The plant is the exact historical defect, so this row is the reason a second owner of the formula cannot
+    come back: the number the transcript carries has to be the number the gate adds.
+    """
+    import json
+
+    from tools import g5_transcript
+    from autorate.cli import corpus_only_comparisons
+
+    inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
+    derived = corpus_only_comparisons(inv)
+    under = _minimal_record(**{"lane_present.output": "re-derived %d /%d values" % (242 + 35, 242 + 35)})
+    record = _write(tmp_path, under)
+    out = tmp_path / "G5.md"
+    rc = g5_transcript.main(["--record", str(record), "--out", str(out)])
+    assert derived != 35, "this tree adds 35 corpus-only comparisons, so the plant falsifies nothing"
+    assert rc == 2, (rc, "a record whose lanes differ by the OLD undercount rendered anyway")
+    assert not out.exists(), "the emitter wrote a transcript whose lanes are not the gate's"
+
 
 
 def _history_available() -> bool:
@@ -374,9 +402,19 @@ def test_the_four_plant_blocks_carry_four_distinct_outcomes(text):
 # transcript rows above were written first and watched to fail with `docs/G5.md` absent.
 
 def _minimal_record(**over) -> str:
-    """A complete record with one field replaced, so each row's failure is the one it names."""
+    """A complete record with one field replaced, so each row's failure is the one it names.
+
+    The present lane's total is DERIVED from `cli.corpus_only_comparisons`, not typed: this fixture is the
+    emitter's input, and a fixture that remembered a gap would go silently stale the same way the committed
+    transcript did -- it would then be refusing to render for a reason that has nothing to do with the plant
+    a row is asking about.
+    """
+    import json
+
+    from autorate.cli import corpus_only_comparisons
     from autorate.protocol import load_protocol, protocol_digest
 
+    gap = corpus_only_comparisons(json.loads((REPO / "data" / "inventory.md.json").read_text()))
     base = {
         "commit": "deadbeef",
         "env.git_dir": "ABSENT", "env.torch": "False", "env.transformers": "False",
@@ -386,7 +424,7 @@ def _minimal_record(**over) -> str:
         "lane_absent.command": "verify --protocol protocol.json (corpus absent)",
         "lane_absent.rc": "0", "lane_absent.output": "re-derived 242 /242 values",
         "lane_present.command": "verify --protocol protocol.json (corpus present)",
-        "lane_present.rc": "0", "lane_present.output": "re-derived 277 /277 values",
+        "lane_present.rc": "0", "lane_present.output": "re-derived %d /%d values" % (242 + gap, 242 + gap),
         "tamper_protocol.command": "alpha moved", "tamper_protocol.rc": "4",
         "tamper_protocol.output": "RUBRIC MISMATCH",
         "tamper_protocol.target": "protocol.json",

@@ -18,7 +18,8 @@ from .inventory import corpus_label, inventory, write_inventory
 from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_MD, DRIFT_JSON, DRIFT_MD,
+from .report import (CERTS, CONTAMINATION_CORPUS_ONLY_CHECKS, CONTAMINATION_JSON, CONTAMINATION_MD,
+                     DRIFT_JSON, DRIFT_MD,
                      G1_FEASIBILITY_JSON,
                      G1_FEASIBILITY_MD, INVENTORY_JSON,
                      PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
@@ -114,6 +115,26 @@ def expect_snapshot_is_current(expect, inv: dict) -> None:
         if key in SNAPSHOT_MACHINE_KEYS:
             continue
         expect("snapshot %s" % key, inv.get(key), committed.get(key))
+
+
+def corpus_only_comparisons(inv: dict | None = None) -> int:
+    """How many comparisons the corpus-present lane adds to the corpus-absent one.
+
+    ONE owner for a number two guards used to compute separately, and they disagreed: `cmd_verify` adds the
+    `SOURCE.json` digests and the snapshot keys, and `rederive_contamination` re-digests and re-sizes the
+    upstream results file when the corpus is visible. The second term was missing from the transcript guard,
+    which therefore accepted a 35-comparison transcript and would have refused the honest 37-comparison one
+    the frozen gate actually prints (measured: `re-derived 734 /734` absent against `771 /771` present).
+
+    Every term is a count of published structure, so an arm that gains a corpus-only comparison moves this
+    number instead of making a transcript's lanes disagree with the gate. `inv` is the snapshot the caller
+    already holds; with nothing passed, the committed file is read, which is what a writer that has not been
+    handed the inventory needs.
+    """
+    if inv is None:
+        inv = load_published(Path(INVENTORY_JSON), "report.INVENTORY_JSON", read_inventory_snapshot)
+    non_machine = [k for k in sorted(set(inv)) if k not in SNAPSHOT_MACHINE_KEYS]
+    return len(inv["digests"]) + len(non_machine) + len(CONTAMINATION_CORPUS_ONLY_CHECKS)
 
 
 def _records_from(path: Path, backend=None, mode=None) -> list:

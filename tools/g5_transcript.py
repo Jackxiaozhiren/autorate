@@ -32,9 +32,12 @@ import re
 import sys
 from pathlib import Path
 
+from autorate.cli import corpus_only_comparisons
+
 LEAK_RX = re.compile(r"/(?:Users|home|var/folders|private/tmp|private/var|tmp)/\S*")
 MASK = "<export-dir>"
 STEPS = ("lane_absent", "lane_present")
+LANE_COUNT_RX = re.compile(r"re-derived (\d+) /(\d+) values")
 FALSIFICATIONS = ("tamper_protocol", "swap_records", "wrong_shape_snapshot", "tamper_artefact_digest")
 HEX64 = re.compile(r"[0-9a-f]{64}")
 
@@ -167,9 +170,14 @@ def render(flat: dict) -> str:
         "  emitter itself, before a file exists, because a document that published an escape and then went",
         "  red downstream is still a document that was committed.",
         "- a lane whose two counts disagree, or two lanes whose denominators do not differ by exactly the",
-        "  comparisons only a corpus can make -- one per `SOURCE.json` digest in `data/inventory.md.json`",
-        "  plus one per snapshot key outside `cli.SNAPSHOT_MACHINE_KEYS`. The row derives that number from",
-        "  the committed snapshot; it is not allowed to remember it.",
+        "  comparisons only a corpus can make: one per `SOURCE.json` digest in `data/inventory.md.json`, one",
+        "  per snapshot key outside `cli.SNAPSHOT_MACHINE_KEYS`, and one per name in",
+        "  `report.CONTAMINATION_CORPUS_ONLY_CHECKS` -- the upstream file's re-digest and re-sized read, which",
+        "  the corpus-absent lane cannot make and which the contamination arm therefore counts. The emitter",
+        "  refuses on `cli.corpus_only_comparisons`, the gate's own count, and",
+        "  `test_each_lane_counts_the_same_number_of_values_it_checked` reads that same function: one owner,",
+        "  because two of them once disagreed by exactly those two checks and the transcript carried the",
+        "  smaller number.",
         "- plant blocks that do not carry four distinct outcomes, a plant whose restore receipt is missing,",
         "  reports failure, or names a file other than its own, and a plant recorded as not having landed.",
         "- a single line naming a real path, in either of the shapes the guards hunt. `tools/g5_export.sh`",
@@ -212,7 +220,8 @@ def render(flat: dict) -> str:
         "Both run inside the export and both answer 0 -- the emitter refuses a transcript whose lane did not,",
         "because a refusal is not a reproduction -- and each has its own denominator. They are not two speeds",
         "of one gate: the corpus-present lane recomputes the upstream `SOURCE.json` digests and the inventory",
-        "snapshot that the corpus-absent lane can only transcribe, and no runner can close that gap, because",
+        "snapshot that the corpus-absent lane can only transcribe, and re-reads the upstream results file the",
+        "contamination pin was drawn from; no runner can close that gap, because",
         "the corpus is not a committed file. CI runs this same command at every push, in both of its jobs:",
         "`offline` and `cross-libc-verify` -- the second a matrix over ubuntu and macOS, so three job",
         "instances on two libc families each print the corpus-absent line below. No run id is quoted here:",
@@ -222,6 +231,31 @@ def render(flat: dict) -> str:
         "",
     ]
     lane_steps = [_step(flat, prefix, LANE_RC) for prefix in STEPS]
+    # The two counts and the gap between them are refused HERE, not only in the test that reads the finished
+    # file: this emitter is the last point at which a stale transcript can still be stopped from being
+    # written, and `docs/G5.md` shipped for a whole round with lanes that differed by 35 while the gate added
+    # 37 corpus-only comparisons -- because the test that derived the gap remembered two of the three terms.
+    counts = []
+    for step in lane_steps:
+        match = LANE_COUNT_RX.search(step["output"])
+        if not match:
+            raise TranscriptRefusal(
+                "the lane %r printed no `re-derived N /N values` line (%r), so there is no number to"
+                " publish" % (step["command"], step["output"]))
+        if match.group(1) != match.group(2):
+            raise TranscriptRefusal(
+                "the lane %r re-derived %s of %s values: a run that disagrees with the freeze is drift, and a"
+                " transcript of drift must not render as a reproduction"
+                % (step["command"], match.group(1), match.group(2)))
+        counts.append(int(match.group(2)))
+    derived = corpus_only_comparisons()
+    if counts[1] - counts[0] != derived:
+        raise TranscriptRefusal(
+            "the two lanes differ by %d comparisons, but this tree's gate adds %d when the corpus is visible"
+            " (`cli.corpus_only_comparisons`: the `SOURCE.json` digests, the non-machine snapshot keys, and"
+            " the contamination arm's re-digest of the upstream file). The record is a transcript of a"
+            " different gate, and re-running `tools/g5_export.sh` is the fix -- not editing the numbers here"
+            % (counts[1] - counts[0], derived))
     for step in lane_steps:
         lines += ["```", "$ %s" % step["command"], "rc=%d  %s" % (step["rc"], step["output"]), "```", ""]
 
