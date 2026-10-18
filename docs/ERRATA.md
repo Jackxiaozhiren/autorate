@@ -2309,3 +2309,44 @@ this is a correction inside the twelfth freeze rather than a thirteenth emission
 denominator" (see the entry above: the severity artefact's copy of that sentence is true), and it did not touch
 the ordinal certificate's denominator question, which stays open because its two case counts are equal and no
 assertion on that artefact can tell them apart.
+
+## 2026-10-18 — three documents cited tests that no longer exist, and nothing was watching test-name pointers
+
+`tests/test_verification_table.py::test_every_test_citation_in_the_current_docs_names_a_function_that_exists`
+was written first and left red, so the list of stale pointers is its own output rather than a recollection:
+
+```
+3 test citation(s) in the current-truth documents point at nothing in this tree:
+  docs/VERIFICATION.md -> test_a_near_uniform_task_is_refused_not_certified (bare);
+  docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md
+      -> tests/test_verification_table.py::test_every_field_named_by_the_spec_api_block_lives_on_that_object;
+  docs/superpowers/specs/2026-09-29-certified-decision-gate-design.md
+      -> test_a_near_uniform_task_is_refused_not_certified (bare)
+```
+
+What they point at today, read from the suite rather than remembered:
+
+* `test_a_near_uniform_task_is_refused_not_certified` (Plan A Task 7's anchor, cited in the `guard-preset-overlap`
+  row and in spec §5.5) became
+  `tests/test_certify_choice.py::test_an_uninformative_task_with_real_errors_is_refused_not_certified` in the
+  I-10 round, which also changed the fixture: the shipped call is `_records(1200, sharpness=1.0, error_rate=0.5)`
+  — flat masses AND a wrong argmax about half the time — because the old generator could not express a wrong
+  argmax at all. §5.5's sentence describing "gold drawn uniformly, every option's mass within 5% of its
+  neighbours" was therefore not just mis-named but wrong about the mechanism, so it now states the shipped call
+  and R-21's `closest_attempt` obligations.
+* `test_every_field_named_by_the_spec_api_block_lives_on_that_object` (cited by spec §10's own correction note)
+  is `test_every_field_section_10_attributes_lives_on_that_object`.
+
+Two dated rows name tests that were real on their date and cannot be rewritten without destroying the record:
+`docs/ERRATA.md` cites `test_a_stored_certificate_that_violates_its_shape_is_a_usage_error`, which became
+`tests/test_cli.py::test_a_stored_certificate_that_violates_its_shape_is_drift_on_a_published_path` when the
+rc-2-vs-rc-4 axis settled, and Plan A's plan file asks for two test names that the landed suite carries under
+other names. `docs/ERRATA.md` and `docs/superpowers/plans/*.md` are therefore the two declared exclusions of the
+new row, and the reason is the project's own rule 7 — a dated entry is evidence about its date, and the channel
+for correcting one is a new dated entry, which is this paragraph. The convention the row enforces is stated in
+its docstring: a test name in backticks is a live pointer and must resolve; a historical name is prose and goes
+unquoted, which is how the two corrected documents keep saying "this used to be called X" without lying about
+what a reader can open today.
+
+No published number moved. The three citations are prose pointers, and `verify` still answers with the same
+two denominators it answered with before this entry.

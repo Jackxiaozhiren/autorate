@@ -1,4 +1,5 @@
 """Every citation is either opened at its primary source or deleted. No third state."""
+import ast
 import re
 from pathlib import Path
 
@@ -303,3 +304,117 @@ def test_every_field_section_10_attributes_lives_on_that_object():
     missing = sorted({(obj, field) for obj, field in cited if field not in objects[obj]})
     assert not missing, (
         "spec section 10 attributes fields to objects that do not carry them: %s" % (missing,))
+
+
+# --------------------------------------------------------------- citations point at things that exist
+
+REPO = Path(__file__).resolve().parents[1]
+
+#: The documents that describe the tree AS IT IS NOW. `docs/ERRATA.md` is excluded on purpose, and the
+#: exclusion is a ruling rather than an oversight: every ERRATA entry is a dated observation about the tree
+#: of its own date, and rule 7 forbids overwriting one to make it read well now. So a pointer inside an
+#: ERRATA row names the test as it was named that day -- `test_a_stored_certificate_that_violates_its_shape_
+#: is_a_usage_error` was the real name when it was written and later became
+#: `..._is_drift_on_a_published_path` when the rc-2-vs-rc-4 axis settled -- and the correction channel for a
+#: dated row is a NEW dated row, which is what the 2026-10-18 ERRATA entry does for both renames below.
+#: `docs/superpowers/plans/*.md` is excluded for the mirror reason: a plan is an instruction written before
+#: the code existed, and its test names are the names it asked for, not a claim about the suite.
+CURRENT_TRUTH_DOCS = ("README.md", "docs/superpowers/specs")
+
+BARE_TEST_CITE = re.compile(r"`(test_[a-z0-9_]{8,})`")
+QUALIFIED_CITE = re.compile(r"tests/([A-Za-z_0-9]+\.py)::([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def _current_truth_documents() -> list:
+    """Every document that speaks in the present tense about this tree, discovered rather than remembered."""
+    docs = [REPO / "README.md"]
+    docs.extend(sorted((REPO / "docs").glob("*.md")))
+    docs.extend(sorted((REPO / "docs" / "superpowers" / "specs").glob("*.md")))
+    docs = [d for d in docs if d.is_file() and d.relative_to(REPO).as_posix() != "docs/ERRATA.md"]
+    assert docs, "no current-truth documents found at all, so this row has nothing to check"
+    excluded = [d.relative_to(REPO).as_posix() for d in sorted((REPO / "docs").glob("*.md"))
+                if d.relative_to(REPO).as_posix() == "docs/ERRATA.md"]
+    assert excluded == ["docs/ERRATA.md"], (
+        "the one declared exclusion vanished, which means the shape of the docs directory moved and this "
+        "row is now checking a different corpus than it claims: %s" % excluded)
+    return docs
+
+
+def _module_level_names(path: Path) -> set:
+    """Top-level defs, classes and bindings of one test module, read with `ast` rather than scanned."""
+    names = set()
+    for node in ast.parse(path.read_text()).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def _unresolved_citations(texts) -> list:
+    """Every `(document, citation)` pair whose target does not exist in this tree."""
+    suite = {}
+    for path in sorted((REPO / "tests").glob("*.py")):
+        suite[path.name] = _module_level_names(path)
+    any_test = {name for path, names in suite.items() if path.startswith("test_") for name in names}
+    unresolved = []
+    for label, text in texts:
+        for match in QUALIFIED_CITE.finditer(text):
+            module, name = match.group(1), match.group(2)
+            if module not in suite:
+                unresolved.append((label, "%s (no such test module)" % module))
+            elif name not in suite[module]:
+                unresolved.append((label, "tests/%s::%s" % (module, name)))
+        for name in sorted(set(BARE_TEST_CITE.findall(text))):
+            if name not in any_test:
+                unresolved.append((label, name + " (bare)"))
+    return unresolved
+
+
+def test_every_test_citation_in_the_current_docs_names_a_function_that_exists():
+    """A sentence that tells a reader to go look at a test is a citation, and a stale one is a defect.
+
+    Found by writing this row: `docs/VERIFICATION.md` and spec §5.5 both point §5.5's flagship
+    `NOT_CERTIFIABLE` anchor at `test_a_near_uniform_task_is_refused_not_certified`, a name that left the
+    suite when the I-10 round made the generator able to produce a wrong argmax -- the shipped row is
+    `tests/test_certify_choice.py::test_an_uninformative_task_with_real_errors_is_refused_not_certified`.
+    Nothing in the repository checked test-name pointers, so the ledger kept certifying a reproducible
+    refusal by citing a test nobody can open, which is exactly the failure the §17 ledger exists to prevent
+    for URLs.
+
+    Red if: a `tests/<file>.py::name` citation names a module or a module-level object that is not there, or
+    a bare `` `test_...` `` citation names a function no test module defines.
+
+    The convention this row enforces, stated because it decides how a rename is written down: a test name in
+    backticks is a LIVE pointer -- the reader is being told to go open it -- so it must resolve. A historical
+    name is prose, and prose about a name that no longer exists goes without backticks (see the two 2026-10-18
+    notes in `docs/VERIFICATION.md` and spec section 5.5, which cite the current name live and mention the old
+    one unquoted). That keeps the gate strict without forcing anyone to rewrite a dated sentence.
+    """
+    texts = [(path.relative_to(REPO).as_posix(), path.read_text()) for path in _current_truth_documents()]
+    unresolved = _unresolved_citations(texts)
+    assert unresolved == [], (
+        "%d test citation(s) in the current-truth documents point at nothing in this tree: %s -- the reader "
+        "is told to re-run a test that does not exist, which is the same defect class as a URL that 404s"
+        % (len(unresolved), "; ".join("%s -> %s" % pair for pair in unresolved)))
+
+
+def test_the_citation_row_fires_on_a_renamed_target():
+    """The plant this row needs, because a citation guard that finds nothing is indistinguishable from one
+    that cannot look: the two stale names it actually caught are replayed as forged text, and one live name
+    is asserted to pass so the check is not simply always-red.
+    """
+    live = sorted((REPO / "tests").glob("test_certify_choice.py"))[0].name
+    assert _unresolved_citations([("forged", "see `test_a_near_uniform_task_is_refused_not_certified`")]) == [
+        ("forged", "test_a_near_uniform_task_is_refused_not_certified (bare)")], "the bare shape does not fire"
+    assert _unresolved_citations([("forged", "tests/%s::test_a_stored_certificate_that_violates_its_shape_"
+                                            "is_a_usage_error" % live)]) == [
+        ("forged", "tests/%s::test_a_stored_certificate_that_violates_its_shape_is_a_usage_error" % live)], (
+        "the qualified shape does not fire")
+    assert _unresolved_citations([("forged", "tests/test_certify_choice.py::"
+                                    "test_an_uninformative_task_with_real_errors_is_refused_not_certified")]) == [], (
+        "a live qualified citation is being reported, so the row cannot be trusted to be quiet")
+    assert _unresolved_citations([("forged", "`test_an_uninformative_task_with_real_errors_is_refused_not_"
+                                    "certified`")]) == [], "a live bare citation is being reported"
