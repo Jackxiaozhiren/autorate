@@ -509,6 +509,21 @@ def test_an_unmasked_machine_path_in_the_record_refuses_the_whole_document(tmp_p
     assert not out.exists(), "the emitter wrote a document that names a machine path"
 
 
+def test_a_record_value_with_a_doubled_space_renders_with_one(tmp_path):
+    """The runner joins a wrapped `put` argument with a space, so a value can arrive with two.
+
+    Plant: record the network sentence the way the export's own continuation strings build it -- first half
+    ending in a space, joined by `"$*"` -- and require the rendered line to carry one. The measured defect is
+    in the transcript this round re-exported: `NOT a name-resolution  failure`, which is the sentence that
+    #108 exists to correct, published with its own join still showing.
+    """
+    planted = "failed (curl rc=35), which is NOT a name-resolution  failure"
+    text = _render(tmp_path, _minimal_record(**{"env.network": planted}))
+    line = [ln for ln in text.splitlines() if ln.startswith("- network:")]
+    assert len(line) == 1, line
+    assert "  " not in line[0].split(": ", 1)[1], line[0]
+
+
 def test_a_value_the_record_does_not_carries_no_line_rather_than_the_word_none(tmp_path):
     """`offline flags: None` would read as a recorded fact; a missing fact has no sentence."""
     text = _render(tmp_path, _minimal_record(**{"env.offline_flags": None, "env.toolchain": None}))

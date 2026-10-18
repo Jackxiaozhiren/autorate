@@ -136,9 +136,15 @@ def _falsification(flat: dict, prefix: str) -> dict:
 
 
 def _add(lines: list, label: str, value) -> None:
-    """Append `- label: value`, or append nothing: a missing value deletes the sentence, not prints None."""
+    """Append `- label: value`, or append nothing: a missing value deletes the sentence, not prints None.
+
+    Internal runs of whitespace are collapsed HERE rather than left to the runner: `tools/g5_export.sh` builds
+    a long value from several quoted continuation arguments joined by `"$*"`, and an argument that ends with a
+    space then reaches the record with two. Measured on the transcript this round re-exported -- the network
+    sentence, `NOT a name-resolution  failure`, in the one line the round exists to correct.
+    """
     if value not in (None, ""):
-        lines.append("- %s: %s" % (label, value))
+        lines.append("- %s: %s" % (label, re.sub(r"\s+", " ", str(value)).strip()))
 
 
 def render(flat: dict) -> str:

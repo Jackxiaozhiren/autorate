@@ -1003,9 +1003,9 @@ def cmd_verify(args) -> int:
     rederive_contamination(expect, expect_rubric, rubric)
     # B3's drift envelope, from the module the producer is a thin CLI over. Nothing in the artefact reads the
     # corpus either -- the measurement is `drift.py`'s own Monte-Carlo and its own ACI walks -- so both lanes
-    # re-derive the same figures and the same count, which is the disclosure the README's 612/649 paragraph
-    # has to carry. This is the arm MAJOR-1 asked for: the published withdrawals stop being evidence policed
-    # only by whoever runs pytest.
+    # re-derive the same figures and the same count, which is the disclosure the README's lane-denominator
+    # paragraph has to carry (the numbers are the print's, never this comment's). This is the arm MAJOR-1
+    # asked for: the published withdrawals stop being evidence policed only by whoever runs pytest.
     rederive_drift(expect, expect_rubric, rubric)
 
     inv, source = _inventory()

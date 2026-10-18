@@ -267,9 +267,11 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 # values compared whole (`pin.rows`, `pin.sha256`, `pin.bytes`, `pin.excluded` and `claim`),
                 # the nine the probe block carries (`R_in`, `R_out`, `delta_hat`, `interval`, `interval_width`,
                 # `worse`, `sign`, `excludes_zero`, `interpretation`), one per headline field, and one rubric
-                # row per field the freeze owns. Measured on the committed bytes: the absent lane printed 612
-                # and the present 649, and the two corpus-only re-digest checks are the reason the gap is 37
-                # rather than the 35 every earlier round carried.
+                # row per field the freeze owns. Which denominators those two lanes print is the print's
+                # business (`cli.corpus_only_comparisons` owns the gap between them); what this formula owns is
+                # that the arm's comparisons are counted from the lists the producer reads, and the two
+                # corpus-only re-digest checks are why the gap stopped being the 35 that rounds before the
+                # contamination arm derived from the snapshot alone.
                 + len(CONTAMINATION_STRATA_KEYS) * 4
                 + 5
                 + 9
