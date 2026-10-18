@@ -2380,3 +2380,81 @@ document text that carries them is unchanged.
 
 
 The emission moved ten files and not one bound: the seventh certificate stamp `66db624059852be0cc5af217950388e5a8444cf8a558781b0471c580b9fbe0b9` (frozen 2026-10-18) is the only change in the seven certificates, and the two documents that differ -- this one and `docs/SEVERITY.md` -- differ in the digest line alone. `data/drift_envelope.json` and `docs/DRIFT.md` were re-emitted by their producer before the protocol was written and came back byte-identical, which is what lets one emission be the fixed point of the round instead of a chase.
+
+## 2026-10-18 — the transcript's lanes described a gate with two corpus-only arms, and the guard said one
+
+The open item was filed as: *`docs/G5.md` transcribes stale denominators, and its network line contradicts
+the exit code it records.* Half of that was wrong, and the wrong half is the interesting one.
+
+**Voided: the "stale denominators" charge.** The transcript printed `249 /249` and `284 /284` while
+`autorate verify` on this tree prints `734 /734` and `771 /771`, and that difference is not an error. The
+document's first bullet says why: a transcript is a record of the commit it names, and
+`test_the_transcript_describes_a_commit_this_branch_can_reach` requires only that the named commit be
+reachable from the reader's tip, precisely so that a re-freeze cannot turn an honest record into a red test.
+Comparing a record against a tree it never claimed to describe is how an audit manufactures its own findings.
+
+**Confirmed: the network line.** `docs/G5.md` said `attempted a DNS-failing HTTPS fetch, and it failed as
+required (curl rc=35)`. `curl` returns 6 for "could not resolve host"; 35 is a TLS handshake failure, which is
+a different and weaker statement. `tools/g5_export.sh` was corrected in the tenth-freeze review round (M3) to
+refuse the DNS wording on any code but 6 -- and the transcript was never re-run, so the fix lived only in the
+script while the published document went on claiming the host does not resolve.
+
+**Found while checking whether a re-export would be accepted at all: the lane gap has two owners, and they
+disagreed.** `tests/test_g5_transcript.py` derived "the comparisons only a corpus can make" as the
+`SOURCE.json` digests plus the snapshot keys outside `cli.SNAPSHOT_MACHINE_KEYS`, and its comment stated the
+sum as a complete enumeration. `tests/test_verify_protocol.py` derived the same quantity a second time and
+added `report.CONTAMINATION_CORPUS_ONLY_CHECKS` -- the contamination arm re-digests and re-sizes the upstream
+results file, which the corpus-absent lane cannot do. The gate itself settles which owner is right: its two
+lanes differ by 37 comparisons, not 35. So the guard that polices the published transcript was enforcing the
+smaller number, which means two things at once -- it accepted a transcript whose lanes describe a gate with
+fewer corpus-only comparisons than this one, and it would have refused a correct re-export of the current
+gate. That is the shape of a gate that cannot go red for the reason it exists.
+
+**The correction.** `cli.corpus_only_comparisons` is now the single owner of that count, its docstring names
+all three terms and the measured lane pair that decides between the two old answers, and both guards call it.
+The enforcement moved into `tools/g5_transcript.py`: a record whose lane halves disagree, or whose two lanes
+differ by anything other than the derived count, is now un-writable rather than merely red in a test that runs
+after the file has been overwritten. The row that proves the guard bites plants the defect exactly as it
+occurred -- the present lane moved back to the 35-comparison gap -- and requires exit 2 with no document
+written. The rendered bullet and the lanes prose, both of which described the two-term version, now name the
+third arm.
+
+**The re-export.** `bash tools/g5_export.sh`, corpus supplied by the environment, run at the commit that
+carries the emitter fix below -- a record has to be produced by the code it describes, and the emitter is part
+of that code, so the transcript names that commit in its first line. Its lanes are `734 /734` and `771 /771`,
+the stamped-digest plant answers `rc=4 re-derived 733 /734`, the protocol digest is the one the fourteenth
+freeze inherits, and the network line is worded as the
+script words it -- which is to say it now states that rc 35 does **not** establish that the host fails to
+resolve. The claim the transcript makes is about the gate steps, not about the account's DNS or TLS behaviour,
+and the weaker code is disclosed rather than smoothed over. `tests/test_ci_workflow.py`'s log witness is
+restated as belonging to head `9e6363a`, the revision those runs printed `249 /249` at, rather than as a
+property of the commit the transcript now names; the workflow-shape guard it feeds is unaffected.
+
+**Why the correction is a freeze round and not a document edit.** `protocol.json`'s G5 note and README both
+transcribe the transcript's two denominators, its lane gap, and the commit whose archive was unpacked, and
+`test_the_g5_transcript_is_the_only_owner_of_its_digits_and_every_quoter_transcribes_it` requires the three
+owners to agree. Re-exporting therefore moves the note's digits from `249/284` to `734/771` and its gap from
+"35-check" to "37-check" -- and any edit to `protocol.json` moves its digest, so the stamped certificates and
+the published documents have to be re-emitted with it. Corrections only; no new evidence rides along.
+
+**The join the first re-export exposed.** That network sentence reached the document as
+`NOT a name-resolution  failure`. `tools/g5_export.sh` builds a long value from quoted continuation arguments
+and joins them with `"$*"`, so an argument ending in a space reaches the record with two, and the emitter
+rendered whatever it was handed. `_add` now collapses internal whitespace runs, with a row that plants the
+doubled space and requires the rendered line to carry one -- the defect being that the sentence this round
+exists to correct was published still showing its own join.
+
+**One disclosure about this round's own measurements.** The corpus-present full-suite lane was running when
+these edits landed, so its failures are all `ImportError: cannot import name 'corpus_only_comparisons'` plus
+one `F821` from the same half-written state -- a gate reading a tree mid-edit, not a defect in the frozen
+commit. Both lanes are re-run on the final tree, and only that run is cited.
+
+**The fourteenth emission.** `freeze14.sh` (derived from the thirteenth round's driver, with the transcript
+and the note's source owner added to its write surface) emitted the protocol at 2026-10-18 and proved the
+emission a fixed point: digest `c91f96752ab34d6623e88f0f251c7064b4d14162a18e33066704492d690db2d5`. Seven
+stamped artefacts re-emitted, and in each one the only leaf that moved is `meta.protocol_digest` -- no
+measurement in this round changed a published figure. The drift pair re-emitted byte-identically on a second
+run, so its envelope is the same bytes the thirteenth round froze; `docs/REPORT.md` and `docs/SEVERITY.md`
+moved because they carry the stamped digest and the note verbatim. The G5 transcript is unchanged by the
+emission: it names `d62337b` and reports that commit's own protocol digest, which is what the staleness row
+reads out of the object database rather than from the reader's tree.
