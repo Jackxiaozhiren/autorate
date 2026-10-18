@@ -31,7 +31,11 @@ sends a reader to the wrong function.
   rows from `test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4` through
   `test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes`;
   `test_no_plant_of_a_broken_publication_reaches_rc_1` then asserts the no-rc-1 property over every plant
-  in this file, so a plant that only this header knows about is still walked).
+  in this file, so a plant that only this header knows about is still walked);
+* the publication escaping the repository's own gate -- logic parked in a script the gate cannot import, an
+  artefact figure the arm does not re-derive, a document not in the published table (the rows under
+  `# the wiring:` below, starting at
+  `test_the_drift_logic_lives_in_the_package_and_the_tool_is_a_thin_cli_over_it`).
 
 Written BEFORE `tools/drift_envelope.py`, so every row here was red on arrival; the RED output is in the
 task report.
@@ -447,16 +451,18 @@ def test_no_tracked_byte_of_the_publication_names_a_machine_path_or_a_timestamp(
 
 # ----------------------------------------------------------------- refusals through the entry point
 #
-# Every row below plants a broken publication and drives `tools/drift_envelope.main` -- the real entry point,
-# not a helper -- asserting the name it prints and the code it returns. Codes are 0/2/3/4 and nothing here
-# may reach 1; `test_no_plant_of_a_broken_publication_reaches_rc_1` walks the whole matrix again for that.
+# Every row below plants a broken publication and drives `autorate.drift_envelope.main` -- the real entry
+# point, which `tools/drift_envelope.py` is a thin CLI over -- asserting the name it prints and the code it
+# returns. Codes are 0/2/3/4 and nothing here may reach 1;
+# `test_no_plant_of_a_broken_publication_reaches_rc_1` walks the whole matrix again for that.
 
 # Every broken-publication shape this file can forge, and the name the producer has to print for it. The
 # tuple is the subject of the rc-1 sweep and the dict is the expectation of the rc-4 row, so a plant added
 # here is driven through both and cannot become an untested fixture.
 #
 # The last seven are the missing-subkey class: a top-level-valid artefact with exactly ONE subkey removed.
-# Each of them read `tools/drift_envelope.py:49`'s "Nothing escapes at 1" as a promise and reached the
+# Each of them read the module docstring's "Nothing escapes at 1" (`src/autorate/drift_envelope.py`, the text
+# this file was written against as `tools/drift_envelope.py:49`) as a promise and reached the
 # operator as a bare `KeyError` traceback at rc 1 on BOTH naming axes (measured before this file grew
 # them), because the two catch-alls listed `ValueError, TypeError, ArithmeticError, OSError` and a `KeyError`
 # is none of those. They are in the sweep precisely so that guard walks the shape it used to miss.
@@ -519,7 +525,7 @@ def _forge_artefact(kind: str, tmp: Path) -> Path:
     """Write a broken artefact of the named shape at a temp path and return that path."""
     import copy
 
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     if kind == "missing":
         return tmp / "not_written.json"
@@ -619,7 +625,7 @@ def test_a_broken_publication_refuses_by_name_at_the_declared_path_with_rc_4(kin
     re-provenanced one are not conflated with a typo in a flag. A missing-subkey plant is asserted further:
     the line has to name the subkey it wanted and the file it was reading.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     if kind == "doc-drift":
         monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", REPO / ARTEFACT_REL)
@@ -649,7 +655,7 @@ def test_an_operator_named_artefact_that_is_wrong_is_usage_rc_2_not_drift_rc_4(t
     reason a missing published artefact and a typo cannot share a code. Every missing-subkey plant is walked
     here too, since BLOCKER-1 was measured on this axis as well as the declared one.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     for kind in ("truncated-weighted", "seed-moved", "empty", "figure-moved", "recipe-moved"):
         forged = _forge_artefact(kind, tmp_path)
@@ -678,7 +684,7 @@ def test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes(tmp_pa
     operator named is theirs (2). It used to reach both as `AttributeError: module 'autorate.drift' has no
     attribute 'WEIGHTED_ENVELOPE'` at rc 1 -- the module docstring promises that code does not exist.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
     from autorate import drift
 
     monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", REPO / ARTEFACT_REL)
@@ -711,7 +717,7 @@ def test_a_producer_that_builds_what_its_own_renderer_cannot_read_refuses_at_the
     """
     import copy
 
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     committed = artefact()
 
@@ -759,7 +765,7 @@ def test_the_producer_refuses_to_publish_the_document_without_the_artefact_or_vi
     the committed document stale), the pair off its declared paths, and the accepted forms -- a scratch
     artefact alone, and the declared pair together -- so the guard cannot be a dead condition.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", tmp_path / "art.json")
@@ -798,7 +804,7 @@ def test_a_reduced_trial_count_may_never_be_published_beside_the_envelopes_figur
     Both directions are asserted: the refusal, and the accepted scratch run with its own provenance, so the
     guard is about the scale reaching publication and not about the flag's existence.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(drift_envelope, "ARTEFACT_PATH", tmp_path / "art.json")
@@ -829,7 +835,7 @@ def test_the_producer_writes_the_committed_bytes_and_check_re_derives_them_at_rc
     prints it, and the report quotes it). A producer that emits a different artefact each run is not a
     re-derivation, and the byte comparison is what catches it.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     monkeypatch.chdir(REPO)
     out = tmp_path / "again.json"
@@ -857,7 +863,7 @@ def test_no_plant_of_a_broken_publication_reaches_rc_1(tmp_path, monkeypatch, ca
     not only by the rows that name each plant. This replaces the `1 not in codes` line that the subset check
     already implied.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     outcomes = []
 
@@ -983,7 +989,7 @@ def test_a_forced_run_at_the_default_out_that_writes_no_document_is_refused(tmp_
     the state the guard's own message calls "exactly the drift this gate exists to catch" (MINOR-6). The
     refusal is exit 2 with both paths named; the paired form still writes both.
     """
-    from tools import drift_envelope
+    from autorate import drift_envelope
 
     art = tmp_path / "art.json"
     doc = tmp_path / "doc.md"
@@ -1009,3 +1015,47 @@ def test_a_forced_run_at_the_default_out_that_writes_no_document_is_refused(tmp_
     scratch = tmp_path / "scratch.json"
     assert drift_envelope.main(["--out", str(scratch)]) in (0, 3), capsys.readouterr()
     assert scratch.is_file() and not (tmp_path / "scratch.md").exists()
+
+
+# ------------------------------------------------------ the wiring: one owner for the logic, and the gate arm
+#
+# MAJOR-1 has an architectural root cause (§7): `tools/drift_envelope.py` owned the measurement drivers, the
+# builder, the renderer AND the gate logic, so `autorate verify` had no library entry point to call and the
+# published envelope could only be policed by this file. The rows below pin the two halves of the fix -- the
+# logic living in the package so the gate can import it, and the gate's own arm re-deriving every quantity the
+# producer re-derives -- and each names the plant that turns it red.
+
+def test_the_drift_logic_lives_in_the_package_and_the_tool_is_a_thin_cli_over_it():
+    """`tools/drift_envelope.py` must import the logic, not own it (MAJOR-1's root cause, §7).
+
+    Asserted through `inspect.getsource` on the two REAL module objects and parsed as a tree, not by scanning
+    the tool's text for a substring: a substring scan cannot tell a file that MENTIONS `build_artefact` from a
+    file that DEFINES it, and the claim being pinned is about definitions. The strongest form is object
+    identity -- the entry point the tool runs has to BE the package's function, so a second copy of the logic
+    in the tool is impossible while this row is green, and a monkeypatch aimed at the package cannot miss.
+
+    Red on arrival for this change: `autorate.drift_envelope` did not exist, so the import is the failure.
+    """
+    import ast
+    import inspect
+    from pathlib import Path
+
+    from autorate import drift_envelope as logic
+
+    from tools import drift_envelope as tool
+
+    # The module the gate imports is this checkout's, not another tree's installed copy.
+    assert Path(inspect.getfile(logic)).relative_to(REPO) == Path("src") / "autorate" / "drift_envelope.py"
+    tool_tree = ast.parse(inspect.getsource(tool))
+    owned = sorted(node.name for node in tool_tree.body
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+    assert owned == [], "%s defines %s; the logic belongs to autorate.drift_envelope" % (tool.__file__, owned)
+    sources = sorted(node.module for node in ast.walk(tool_tree) if isinstance(node, ast.ImportFrom))
+    assert "autorate.drift_envelope" in sources, sources
+    assert tool.main is logic.main, "the tool runs a different `main` than the module the gate calls"
+    for name in ("build_artefact", "render_document", "read_artefact", "check_envelope_copies",
+                 "check_provenance", "rederive_and_compare", "measure_mode1", "measure_mode2",
+                 "walk_mode2", "measure_mode2_sweep", "REQUIRED_KEYS", "PUBLISHED_DECIMALS",
+                 "DriftEnvelopeUsage", "DriftEnvelopeState"):
+        assert hasattr(logic, name), "the module the gate calls does not own %s" % name
+        assert not hasattr(tool, name), "the thin tool still owns %s" % name
