@@ -83,17 +83,25 @@ at a pinned commit of a third-party repository, or at a paper's own PDF, rather 
 
 ## What is still owed
 
-* `guard-preset-overlap` no longer carries §5.5's anchor case (R-8, 2026-09-30): the refusal mechanism
-  now rests on Plan A Task 7's deterministic synthetic refusal, which the repository will be able to
-  re-run once Task 7 lands, while the guardrail numbers remain the author's unreproduced observation and
-  are quoted in §5.5 only as motivation with the reproduction condition attached. Two things are still
-  owed here: the three-part reproduction (patch on a clean `v0.3.20` checkout, 39 prompts + labels
-  committed as per-case records, both ranges re-derived by `autorate verify`) before any of those numbers
-  appears in public text — a Task 3 deliverable — and the note that §5.5's new anchor citation points at
-  **Plan A's own text**, which is a plan rather than a shipped test until Task 7 exists. If Task 7's
-  implementation cannot produce `reason=empty_feasible_set` on the near-uniform generator as specified,
-  the anchor has to be re-chosen and §5.5 rewritten again; §13's week 7–8 gate ("guard preset returns a
-  refusal") inherits the same dependency.
+* `guard-preset-overlap` no longer carries §5.5's anchor case (R-8, 2026-09-30), and the anchor that replaced it
+  is now shipped rather than promised: Plan A Task 7's deterministic synthetic refusal is
+  `tests/test_certify_choice.py::test_an_uninformative_task_with_real_errors_is_refused_not_certified`, which
+  builds `_records(1200, sharpness=1.0, error_rate=0.5)` from seed 7 and asserts `feasible is False` with
+  `reason == "empty_feasible_set"` at `(0.05, 0.05)`, plus R-21's `closest_attempt` observation. Both of the
+  conditions this bullet used to carry are therefore closed — the repository can re-run the mechanism today,
+  and the fear that "Task 7's implementation cannot produce `reason=empty_feasible_set` on the near-uniform
+  generator" would force a new anchor resolved in the anchor's favour, so §13's week 7–8 gate ("guard preset
+  returns a refusal") inherits a mechanism that exists. The generator it cites is not the one the plan
+  described: `error_rate` was added in the I-10 round precisely because the flat generator could not express a
+  wrong argmax, which is why §5.5 no longer says "gold drawn uniformly, every option's mass within 5% of its
+  neighbours". One thing is still owed here, not two: the three-part reproduction of the guardrail numbers (the
+  fix patch on a clean `v0.3.20` checkout, the 39 prompts and their labels committed as per-case records, both
+  ranges re-derived by `autorate verify`) before any of those numbers appears in public text. That work is
+  tracked by `docs/upstream/SUBMISSION.md`, which states the same three conditions; this bullet used to call it
+  "a Task 3 deliverable", and no task that ever ran it exists, so the attribution went. Finally, the pointer
+  itself is no longer trusted: `tests/test_verification_table.py::test_every_test_citation_in_the_current_docs_names_a_function_that_exists`
+  walks every current-truth document and fails the build when a backticked test name has no target, which is the
+  row that found the rename this paragraph records.
 * §12's three "none found" rows are tasks, not facts: the systematic searches are pre-registered
   before they run, and `ordinal-cp-literature-size` is the warning that a single arXiv query already
   produced six papers where the design remembered four.
