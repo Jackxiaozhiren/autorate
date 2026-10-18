@@ -516,7 +516,7 @@ PLANT_REASON = {
 #: generic disagreement about something else" -- the review's finding on the first `raw-double`.
 PLANT_DETAIL = {
     "raw-double": "regret_bound",
-    "cited-figure-moved": "envelope_cited",
+    "cited-figure-moved": "envelope_cited_bound",
     "why-other-line": "withdrawals.mode1.why",
 }
 assert set(PLANTS) == set(PLANT_REASON), "the plant sweep and the plant expectation have diverged"
@@ -587,14 +587,14 @@ def _forge_artefact(kind: str, tmp: Path) -> Path:
         # "re-derived 19 claims", because the module offers that line as the assumption, not the reason.
         doc["withdrawals"]["mode1"]["why"] = list(WEIGHTED_ENVELOPE)[0]
     elif kind == "cited-figure-moved":
-        # The cited half of a published row, which nothing compared until `RECHECK_MODE1_FIELDS` grew the
-        # cited fields. Forged as the review forged it -- `0.0933` -> `0.0999` -- together with its
-        # reproduction claim, so the document stays a faithful render of the forged bytes and cannot fire:
-        # the only thing left that can catch it is the comparison against the module's own text.
-        doc["mode1"][1]["envelope_cited"] = 0.0999
-        for check in doc["reproduction"]["checks"]:
-            if check["id"].endswith("n=%d" % doc["mode1"][1]["n"]):
-                check["envelope_states"] = 0.0999
+        # The cited half of a published figure, which nothing compared until the `RECHECK_*` lists grew
+        # the cited fields. This field is chosen so that ONLY that comparison can catch it:
+        # `mode2[].envelope_cited_bound` is stored but never rendered, so the forged artefact's document
+        # stays a byte-faithful render and the prose check cannot fire. The first version of this plant
+        # forged `mode1[1].envelope_cited`, which the mode-1 table prints -- that artefact was refused
+        # before the fix as well, by the DOCUMENT comparison, so the row proved nothing about the guard
+        # it was written for. Measured on `66b5847`: rc 0 for this plant.
+        doc["mode2"][0]["envelope_cited_bound"] = 0.9
     elif kind in PLANT_SUBKEY:
         _remove_subkey(doc, kind)
         # the whole point of this class is that the artefact still LOOKS like a publication: every

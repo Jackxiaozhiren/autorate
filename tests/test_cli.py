@@ -281,9 +281,12 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 # per figure for every construction and every control, and one per sweep count. Nothing joins
                 # for a rubric -- the artefact publishes no freeze budget, so `rederive_drift` never calls
                 # `expect_rubric` -- and the `docs/DRIFT.md` byte row arrives through `len(PUBLISHED_DOCS)`
-                # below, not as a term here. Measured on the committed bytes: the absent lane printed 612
-                # before the arm and 697 after, the present 649 before and 734 after, and the 37-row
-                # inter-lane gap is unchanged because nothing in the envelope reads the corpus.
+                # below, not as a term here. The denominators this formula is checked against are measured by
+                # `tests/test_verify_protocol.py`, which runs the command and reads its print -- the numbers it
+                # prints at this revision are 734 with the corpus absent and 771 with it present, and the
+                # 37-row inter-lane gap is unchanged because nothing in the envelope reads the corpus. These
+                # figures are a restatement of that run, kept because the arithmetic below is unreadable
+                # without knowing what it is supposed to sum to; they cannot be the evidence for it.
                 + len(drift_doc["reproduction"]["checks"]) * len(RECHECK_CLAIM_FIELDS)
                 + len(drift_doc["mode1"]) * len(RECHECK_MODE1_FIELDS)
                 + (len(drift_doc["mode2"]) + len(drift_doc["mode2_controls"]))

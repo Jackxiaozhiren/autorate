@@ -353,12 +353,42 @@ def _module_level_names(path: Path) -> set:
     return names
 
 
+def _source_declared_names() -> set:
+    """Every identifier the shipped code itself declares: dict keys, attribute names, bindings.
+
+    This is the exemption list for a bare backticked ``test_...``, and it is derived rather than curated
+    because the alternative is a hand-kept whitelist that silently grows. A name like
+    `test_points_stated_by_envelope` is a provenance KEY the artefact publishes -- an ast walk over `src/`
+    shows `drift_envelope.py` writing it as a dict key -- and a reader who sees it in a document is being
+    pointed at a field, not told to re-run a test. A renamed or deleted TEST appears nowhere in that set, so
+    the exemption cannot shelter the defect the row exists to find.
+    """
+    names = set()
+    for path in sorted((REPO / "src").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Dict):
+                names.update(key.value for key in node.keys
+                             if isinstance(key, ast.Constant) and isinstance(key.value, str))
+            elif isinstance(node, ast.keyword) and node.arg:
+                names.add(node.arg)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(node.name)
+            elif isinstance(node, ast.Assign):
+                names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+            elif isinstance(node, ast.arg):
+                names.add(node.arg)
+    return names
+
+
 def _unresolved_citations(texts) -> list:
     """Every `(document, citation)` pair whose target does not exist in this tree."""
     suite = {}
     for path in sorted((REPO / "tests").glob("*.py")):
         suite[path.name] = _module_level_names(path)
     any_test = {name for path, names in suite.items() if path.startswith("test_") for name in names}
+    declared = _source_declared_names()
     unresolved = []
     for label, text in texts:
         for match in QUALIFIED_CITE.finditer(text):
@@ -368,7 +398,7 @@ def _unresolved_citations(texts) -> list:
             elif name not in suite[module]:
                 unresolved.append((label, "tests/%s::%s" % (module, name)))
         for name in sorted(set(BARE_TEST_CITE.findall(text))):
-            if name not in any_test:
+            if name not in any_test and name not in declared:
                 unresolved.append((label, name + " (bare)"))
     return unresolved
 
@@ -385,7 +415,10 @@ def test_every_test_citation_in_the_current_docs_names_a_function_that_exists():
     for URLs.
 
     Red if: a `tests/<file>.py::name` citation names a module or a module-level object that is not there, or
-    a bare `` `test_...` `` citation names a function no test module defines.
+    a bare `` `test_...` `` citation names neither a test function nor something the shipped code declares (the
+    second clause is what the row's first run in the round-13 tree needed: `docs/DRIFT.md` prints
+    `` `test_points_stated_by_envelope` ``, a provenance key the producer writes, and an exemption list that
+    was not derived from the code would have called that a missing test).
 
     The convention this row enforces, stated because it decides how a rename is written down: a test name in
     backticks is a LIVE pointer -- the reader is being told to go open it -- so it must resolve. A historical
@@ -418,3 +451,11 @@ def test_the_citation_row_fires_on_a_renamed_target():
         "a live qualified citation is being reported, so the row cannot be trusted to be quiet")
     assert _unresolved_citations([("forged", "`test_an_uninformative_task_with_real_errors_is_refused_not_"
                                     "certified`")]) == [], "a live bare citation is being reported"
+    # the exemption: a field the code declares is not a test citation, and it is proved to be declared rather
+    # than waved through -- otherwise "exempt" and "invisible" are the same state.
+    field = "test_points_stated_by_envelope"
+    assert field in _source_declared_names(), "the exemption rests on nothing: no source declares that key"
+    assert _unresolved_citations([("forged", "`%s`" % field)]) == [], "a published field name reads as a test"
+    assert _unresolved_citations([("forged", "`test_a_field_name_nobody_declares_at_all`")]) == [
+        ("forged", "test_a_field_name_nobody_declares_at_all (bare)")], (
+        "a name that is neither a test nor declared slips through")
