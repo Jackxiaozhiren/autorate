@@ -1987,7 +1987,10 @@ CONTAMINATION_PRODUCER = "tools/contamination_probe.py"
 # about. A surface joins this tuple when it has unit tests and leaves it when `verify` re-derives an artefact
 # for it -- and `test_readme_s_unpublished_list_agrees_with_the_artefacts_producers` refuses either lie, by
 # reading the committed artefacts' own `producer` fields rather than trusting this list.
-UNPUBLISHED_SURFACES = ("certify_threshold.py", "drift.py")
+# `drift.py` leaves it here: B3's envelope now has `data/drift_envelope.json`, re-derived by
+# `rederive_drift`, and `docs/DRIFT.md` byte-compared from it. `certify_threshold.py` is the last surface this
+# build tests without publishing, and it stays until an artefact of its own joins the tables.
+UNPUBLISHED_SURFACES = ("certify_threshold.py",)
 CONTAMINATION_RUBRIC_FIELDS = ("delta", "pieces", "min_cases_per_stratum", "max_interval_width")
 CONTAMINATION_STRATA_FIELDS = ("errors", "cases", "rows", "pointers", "declared_in_training")
 CONTAMINATION_PIN_ROW_FIELDS = ("suite", "variant", "n", "accuracy", "errors", "in_training", "pointer")
@@ -2259,3 +2262,119 @@ def build_contamination(pin: dict, root: Path = None) -> dict:
                              "excludes_zero": probe["excludes_zero"], "worse": probe["worse"],
                              "sign": probe["sign"]}
     return record
+
+
+# --- B3's drift envelope: the published withdrawals, re-derived by the gate (MAJOR-1) -------------------
+#
+# `data/drift_envelope.json` and `docs/DRIFT.md` are published bytes, so `autorate verify` has to re-derive
+# them; before this section it did not, which is the defect `drift-review.md` §5 names MAJOR-1 ("ungated
+# published evidence"). The measurements belong to `autorate.drift_envelope` -- the module the producer is a
+# thin CLI over -- and this arm calls it, exactly as `rederive_contamination` calls `build_contamination`:
+# a re-derivation that re-implemented the Monte-Carlo or the ACI walk would be a second arithmetic and could
+# agree with a stale artefact for its own reasons.
+
+DRIFT_JSON = "data/drift_envelope.json"
+DRIFT_MD = Path("docs/DRIFT.md")
+DRIFT_PRODUCER = "tools/drift_envelope.py"
+
+
+def _drift_module():
+    """`autorate.drift_envelope`, imported where it is used rather than at module scope.
+
+    The import is deferred because it would otherwise close a cycle the package cannot resolve at load time:
+    `drift_envelope` reads its exit codes from `cli`, and `cli` imports this module at its top. The same
+    posture already appears twice in this file (`_corpus_root_for_contamination` importing
+    `cli._default_corpus`, `load_protocol` reaching for `autorate.cli` inside a function), and it keeps one
+    owner for the field lists rather than buying a third copy of them here.
+    """
+    from autorate import drift_envelope
+
+    return drift_envelope
+
+
+def read_drift(path: Path) -> dict:
+    """Load the drift artefact or refuse its shape, before any number in it is compared.
+
+    Same posture as `read_contamination`: a missing key is named with the key, because the alternative is a
+    `KeyError` that reads like the gate failing rather than the artefact being wrong. The required-key list is
+    the producer's own `REQUIRED_KEYS`, not a second list here, so the gate cannot accept an artefact the
+    producer refuses or refuse one the producer accepts. Absence is not this loader's business:
+    `load_published` answers the filesystem through `require_published` before it calls anything.
+    """
+    doc = json.loads(Path(path).read_text())
+    required = _drift_module().REQUIRED_KEYS
+    if not isinstance(doc, dict):
+        raise ValueError("the drift artefact must be a JSON object, found %s" % type(doc).__name__)
+    absent = sorted(set(required) - set(doc))
+    if absent:
+        raise ValueError("the drift artefact is missing %s" % absent)
+    return doc
+
+
+def render_drift(doc: dict) -> str:
+    """`docs/DRIFT.md` as the producer renders it: the gate owns no second copy of the document."""
+    return _drift_module().render_document(doc)
+
+
+def rederive_drift(expect, expect_rubric, rubric=None) -> None:
+    """The drift envelope, measured again from `autorate.drift` and compared quantity by quantity.
+
+    One comparison per published quantity the producer's own `rederive_and_compare` re-tests, read from the
+    same `RECHECK_*` lists so the two surfaces cannot disagree about what they cover, and labelled the way the
+    contamination arm labels its rows -- `drift <section> <row>.<field>` -- so a `DRIFT:` line names the figure
+    and the field rather than the file.
+
+    Rows are matched by their own key (a claim by `id`, a mode-1 row by `n`, a mode-2 row by `name`) over the
+    union of stored and re-derived, so a publication that grew or lost a row is named per field instead of
+    being skipped by a positional zip the way the producer's single-sentence guard does. `expect_rubric` is
+    passed but never called: the artefact publishes no freeze budget, its alpha and seed belong to
+    `drift.py`'s envelope, and a rubric row here would enforce a rule the freeze never made.
+
+    A scale the producer refuses to measure at is refused as the table's own defect (exit 4), not as a usage
+    error: nobody typed this path, the publication table declared it, and `DriftEnvelopeUsage` is a
+    `ValueError`, which the CLI would otherwise map onto the code README reserves for a bad argument.
+    """
+    drift_envelope = _drift_module()
+    doc = load_published(Path(DRIFT_JSON), "report.DRIFT_JSON", read_drift)
+    stored_provenance = doc["provenance"] if isinstance(doc.get("provenance"), dict) else {}
+    trials = stored_provenance.get("trials_per_size")
+    if not isinstance(trials, int) or isinstance(trials, bool) or trials < 1:
+        raise PublishedArtefactUnavailable(
+            "%s is declared published by report.DRIFT_JSON, was read here, and its `provenance` states %r for "
+            "`trials_per_size` -- the scale the measurement has to be re-run at, so no figure in the artefact "
+            "can be re-derived from it. This is not a usage error: no argument selected this path, the table "
+            "did" % (DRIFT_JSON, trials))
+    try:
+        fresh = drift_envelope.build_artefact(trials)
+    except drift_envelope.DriftEnvelopeUsage as exc:
+        raise PublishedArtefactUnavailable(
+            "%s is declared published by report.DRIFT_JSON, was read here, and the artefact cannot be "
+            "re-measured from it: %s. This is not a usage error: no argument selected this path, the table did"
+            % (DRIFT_JSON, exc)) from exc
+
+    stored_claims = {row["id"]: row for row in doc["reproduction"]["checks"]}
+    fresh_claims = {row["id"]: row for row in fresh["reproduction"]["checks"]}
+    for claim_id in sorted(set(fresh_claims) | set(stored_claims)):
+        for field in drift_envelope.RECHECK_CLAIM_FIELDS:
+            expect("drift claim %s.%s" % (claim_id, field),
+                   fresh_claims.get(claim_id, {}).get(field), stored_claims.get(claim_id, {}).get(field))
+
+    fresh_mode1 = {row["n"]: row for row in fresh["mode1"]}
+    stored_mode1 = {row["n"]: row for row in doc["mode1"]}
+    for n in sorted(set(fresh_mode1) | set(stored_mode1), key=str):
+        for field in drift_envelope.RECHECK_MODE1_FIELDS:
+            expect("drift mode1 n=%s.%s" % (n, field),
+                   fresh_mode1.get(n, {}).get(field), stored_mode1.get(n, {}).get(field))
+
+    row_fields = (drift_envelope.RECHECK_MODE2_RECIPE_FIELDS + drift_envelope.RECHECK_MODE2_FIELDS)
+    for section in ("mode2", "mode2_controls"):
+        fresh_rows = {row["name"]: row for row in fresh[section]}
+        stored_rows = {row["name"]: row for row in doc[section]}
+        for name in sorted(set(fresh_rows) | set(stored_rows)):
+            for field in row_fields:
+                expect("drift %s %s.%s" % (section, name, field),
+                       fresh_rows.get(name, {}).get(field), stored_rows.get(name, {}).get(field))
+
+    for field in drift_envelope.RECHECK_SWEEP_FIELDS:
+        expect("drift mode2_sweep.%s" % field, fresh["mode2_sweep"].get(field),
+               doc["mode2_sweep"].get(field))

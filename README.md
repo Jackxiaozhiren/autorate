@@ -119,28 +119,29 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 612 /612 values` where the corpus is absent, `re-derived 649 /649
+prints say so: `re-derived 697 /697 values` where the corpus is absent, `re-derived 734 /734
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 649: every CI run is a 612 run, on both of its arms. Green CI is
+alone can never reach the 734: every CI run is a 697 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-A 612 run proves a lot inside that lane. Every published number that is a function of a
+A 697 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all seven published certificates, each from the committed
 records it was actually made from, G4's slice run from the four committed MASSIVE record files
 it names inside itself, the whole
 of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUDIT.md` byte
 for byte, `docs/SEVERITY.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
-for byte, `docs/CONTAMINATION.md` byte for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows
-from their committed pin. What a 612 run
+for byte, `docs/CONTAMINATION.md` byte for byte, `docs/FEASIBILITY.md` byte for byte, `docs/DRIFT.md` byte
+for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows
+from their committed pin. What a 697 run
 cannot prove is what its own disclosure says in so many words --
 `this run cannot see whether that snapshot went stale`. The gap is exactly 37
 checks: the 9 upstream `SOURCE.json` digests, the 26 snapshot keys a corpus-present run
 recomputes instead of reading back. On a machine without the archive those 35 do not run at
 all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 612 /612.
+had drifted from the corpus would agree with itself and report 697 /697.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -257,8 +258,8 @@ second place to keep them.
   platform witness of the frozen comparison; `docs/G5.md` states that workflow fact without quoting a run
   id, because a run belongs to the push that produced it and the transcript names a commit instead.
   Three limits stay stated: the archive lane is a local obligation, the
-  no-network claim covers the gate steps and not the dependency install, and the drift figures are
-  unpublished, so they are absent from both denominators instead of re-derived.
+  no-network claim covers the gate steps and not the dependency install, and the threshold certifier's own
+  figures are unpublished, so they are absent from both denominators instead of re-derived.
 
 The honest summary is that the gate's reproduction story is the strongest part of this tree today. G4's
 slice criterion now has published evidence and is short of its own wording, not short of an artefact; the
@@ -286,13 +287,18 @@ Covered by code and by tests: the `choice` primitive, marginal two-sided control
 Clopper-Pearson one-sided bounds, and the gate that turns a certificate into
 `auto` / `escalate` / `abstain`.
 
-Written and tested, but not yet published as evidence: the threshold certifier (`certify_threshold.py`)
-and drift-adaptive conformal (`drift.py`). Each of them is a library with unit tests and no committed
-artefact that `verify` re-derives, which is the difference between "implemented" and "certified" in this
-project -- see the criteria above. The contamination stratification (`contamination.py`) left that list when
+Written and tested, but not yet published as evidence: the threshold certifier
+(`certify_threshold.py`) -- a library with unit tests and no committed artefact that `verify` re-derives, which
+is the difference between "implemented" and "certified" in this project, and the only one left.
+Each of the surfaces that used to sit beside it has since
+published bytes the gate re-derives. The contamination stratification (`contamination.py`) left that list when
 the eleventh freeze published `tools/contamination_probe.py`'s `data/contamination_probe.json` and
 `docs/CONTAMINATION.md`: `verify` re-pools the committed pin and compares the gap field by field in both
-lanes, which is what the G4 row above names as its second output. The group-conditional (Mondrian) surface
+lanes, which is what the G4 row above names as its second output. Drift-adaptive conformal (`drift.py`) left
+it when `tools/drift_envelope.py` published `data/drift_envelope.json` and `docs/DRIFT.md`: `verify` re-runs
+the envelope's own Monte-Carlo and its adaptive-threshold walks from `src/autorate/drift.py` and compares
+every published figure by the field it is, so the two guarantees B3 withdrew are gate evidence now rather than
+a module docstring and a test. The group-conditional (Mondrian) surface
 and its simultaneous per-slice correction (`certify_choice.certify_groups`, `correction.py`) left it earlier,
 when `tools/language_slices.py` published `data/slices_language.json` and `docs/SLICES.md`: those are the
 artefacts the G4 row is about, and `verify` recomputes the run from the committed records field by field.

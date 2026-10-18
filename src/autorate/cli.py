@@ -18,19 +18,20 @@ from .inventory import corpus_label, inventory, write_inventory
 from .protocol import emit_protocol, file_digest, load_protocol, protocol_digest, write_protocol
 from .readers.feishu_zh import ReaderContractError
 from .records import Record
-from .report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_MD, G1_FEASIBILITY_JSON,
+from .report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_MD, DRIFT_JSON, DRIFT_MD,
+                     G1_FEASIBILITY_JSON,
                      G1_FEASIBILITY_MD, INVENTORY_JSON,
                      PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
                      RESPLIT_MD, SEVERITY_CERTS,
                      SEVERITY_LABEL, SEVERITY_RECORDS, SLICE_JSON, SLICE_MD,
                      build_report, certify_all, load_published,
                      load_records, published_severity, read_certificate, read_contamination,
-                     read_g1_feasibility,
+                     read_drift, read_g1_feasibility,
                      read_inventory_snapshot,
                      read_resplit, read_slices, rederive_g1_feasibility, rederive_massive,
                      rederive_resplit, rederive_severity,
-                     rederive_contamination, rederive_slices, render_contamination,
-                     render_g1_feasibility, render_resplit, render_severity,
+                     rederive_contamination, rederive_drift, rederive_slices, render_contamination,
+                     render_drift, render_g1_feasibility, render_resplit, render_severity,
                      render_slices, write_report)
 from .severity import DIRECTIONS, certify_severity
 from .techreport import REPORT_MD, load_inputs, render_report
@@ -771,12 +772,29 @@ PUBLISHED_DOCS = (
     # G1's ceiling document, same shape as the two above: rendered from the committed artefact's bytes,
     # and the artefact itself is re-derived field by field by `rederive_g1_feasibility` in both lanes.
     (G1_FEASIBILITY_MD, lambda inv, records: _render_feasibility_doc()),
+    # B3's drift envelope, same shape again: rendered from the committed artefact, whose figures the arm above
+    # re-measures from `autorate.drift` in both lanes. Placed BEFORE `REPORT_MD` because the order of this
+    # table decides which rc-4 refusal a reader is told about, and the technical report is the row that has to
+    # be reached last: a stale `docs/DRIFT.md` must name `docs/DRIFT.md`, not the document of tables.
+    (DRIFT_MD, lambda inv, records: _render_drift_doc()),
     # Plan D Task 4's single technical report. LAST in the table on purpose: the rc-4 rows in
     # `tests/test_cli.py` plant one absent or unreadable published artefact at a time and assert the
     # refusal names it, and a document that is read first would mask the ones behind it. Order is not a
     # formatting choice here -- it decides which failure a reader is told about.
     (REPORT_MD, lambda inv, records: _render_techreport_doc(inv, records)),
 )
+
+
+def _render_drift_doc() -> str:
+    """B3's drift envelope document, from the committed artefact and nothing else.
+
+    The artefact is read through `load_published`, so an absent or wrong-shaped drift artefact is the named
+    refusal at exit 4 -- no argument selected that path, the table did -- and the bytes come from
+    `report.render_drift`, which is the producer's own renderer. A second copy of the prose here would be a
+    document the tool and the gate disagree about.
+    """
+    doc = load_published(DRIFT_JSON, "report.DRIFT_JSON", read_drift)
+    return render_drift(doc)
 
 
 def _render_contamination_doc() -> str:
@@ -962,6 +980,12 @@ def cmd_verify(args) -> int:
     # corpus-absent lane exactly as it does here; a stale ceiling is drift with a field name on it.
     rederive_g1_feasibility(expect, expect_rubric, rubric)
     rederive_contamination(expect, expect_rubric, rubric)
+    # B3's drift envelope, from the module the producer is a thin CLI over. Nothing in the artefact reads the
+    # corpus either -- the measurement is `drift.py`'s own Monte-Carlo and its own ACI walks -- so both lanes
+    # re-derive the same figures and the same count, which is the disclosure the README's 612/649 paragraph
+    # has to carry. This is the arm MAJOR-1 asked for: the published withdrawals stop being evidence policed
+    # only by whoever runs pytest.
+    rederive_drift(expect, expect_rubric, rubric)
 
     inv, source = _inventory()
     for path, render in PUBLISHED_DOCS:

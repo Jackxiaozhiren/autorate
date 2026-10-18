@@ -111,6 +111,25 @@ PUBLISHED_DECIMALS = 6
 #: published documents here do and a re-flow is a producer change rather than an editor's.
 DOC_WIDTH = 92
 
+# The quantities a re-derivation re-tests, named once. `rederive_and_compare` below reads these tuples instead
+# of carrying inline literals, and `report.rederive_drift` -- the arm `autorate verify` runs -- reads the same
+# names, so the producer's self-check and the gate cannot drift to different granularities without reddening
+# `tests/test_drift_envelope.py::test_the_arm_and_the_producer_name_the_same_quantity_for_the_same_plant`.
+# Extracting these changed nothing about what is compared: the published artefact and document regenerate
+# byte-identically and every refusal plant still names the same class at the same code.
+#: The two fields of a `reproduction` claim the guard compares: the figure the run measured, and the verdict.
+RECHECK_CLAIM_FIELDS = ("agrees", "measured")
+#: The mode-1 fields, per published size row.
+RECHECK_MODE1_FIELDS = ("realised_miscoverage", "standard_error", "three_se", "vacuous_share")
+#: The mode-2 figure fields, per published construction and per control.
+RECHECK_MODE2_FIELDS = ("realised_long_run_rate", "regret_bound", "deviation_from_alpha")
+#: The two quantities that say a published recipe still names the sequence that was measured. The guard below
+#: covers both in one sentence; the gate's arm compares them field by field, so a refusal names which one.
+RECHECK_MODE2_RECIPE_FIELDS = ("sequence_digest_sha256", "rounds")
+#: The sweep's counts and scale, compared as published.
+RECHECK_SWEEP_FIELDS = ("violations", "violated_without_clip", "clipped", "held_clipped", "sequences",
+                        "rounds", "seed", "bound")
+
 
 class DriftEnvelopeUsage(ValueError):
     """An argument this command was handed is wrong -- `cli`'s register for exit 2."""
@@ -957,7 +976,7 @@ def rederive_and_compare(doc: dict, *, declared: bool) -> list:
         earlier = by_id.get(label)
         if earlier is None:
             disagreements.append("claim %s is not in the artefact" % label)
-        elif earlier["agrees"] != row["agrees"] or earlier["measured"] != row["measured"]:
+        elif any(earlier[field] != row[field] for field in RECHECK_CLAIM_FIELDS):
             disagreements.append("%s: the artefact published agrees=%s measured=%s and the re-run gives "
                                  "agrees=%s measured=%s (envelope states %s)"
                                  % (label, earlier["agrees"], earlier["measured"], row["agrees"],
@@ -965,7 +984,7 @@ def rederive_and_compare(doc: dict, *, declared: bool) -> list:
     disagreements.extend("claim %s is in the artefact but this producer no longer makes it" % label
                          for label in sorted(set(by_id) - set(fresh_by_id)))
     for stored_row, fresh_row in zip(doc["mode1"], mode1):
-        for field in ("realised_miscoverage", "standard_error", "three_se", "vacuous_share"):
+        for field in RECHECK_MODE1_FIELDS:
             if stored_row[field] != fresh_row[field]:
                 disagreements.append("mode1 n=%d %s: artefact %r, re-run %r" % (
                     fresh_row["n"], field, stored_row[field], fresh_row[field]))
@@ -985,14 +1004,13 @@ def rederive_and_compare(doc: dict, *, declared: bool) -> list:
             # `1e-9` this replaces was a tolerance on raw doubles: it could not tell a re-run on another
             # libm from a re-run that measured something else, and it went red the moment storage was
             # canonicalised because the stored value is the rounded one.
-            for field in ("realised_long_run_rate", "regret_bound", "deviation_from_alpha"):
+            for field in RECHECK_MODE2_FIELDS:
                 if stored_row[field] != fresh_row[field]:
                     disagreements.append("%s %s %s: artefact %r, re-run %r"
                                          % (section, stored_row["name"], field, stored_row[field],
                                             fresh_row[field]))
     stored_sweep = doc["mode2_sweep"]
-    for field in ("violations", "violated_without_clip", "clipped", "held_clipped", "sequences", "rounds",
-                  "seed", "bound"):
+    for field in RECHECK_SWEEP_FIELDS:
         if stored_sweep[field] != sweep[field]:
             disagreements.append("mode2_sweep %s: artefact %r, re-run %r"
                                  % (field, stored_sweep[field], sweep[field]))

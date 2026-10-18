@@ -1059,3 +1059,330 @@ def test_the_drift_logic_lives_in_the_package_and_the_tool_is_a_thin_cli_over_it
                  "DriftEnvelopeUsage", "DriftEnvelopeState"):
         assert hasattr(logic, name), "the module the gate calls does not own %s" % name
         assert not hasattr(tool, name), "the thin tool still owns %s" % name
+
+
+# ---------------------------------------------------------------- the gate's own arm, and its plants
+#
+# MAJOR-1 is closed by an arm in `report.py` that `cli.cmd_verify` calls: the published figures stop being
+# evidence this file alone polices. The rows below drive THAT arm -- the same function the gate runs -- and
+# each names the plant that turns it red. Two kinds of proof appear here and they are deliberately different:
+# one row asserts the COMPLETE label set against the committed bytes (so every published figure is shown to be
+# compared, at no runtime cost), and one row rebuilds the measurement once per comparison KIND (24 rebuilds at
+# 0.6s each, measured) to show each of those comparisons can actually fail and by what name.
+#
+# A third row is not a plant at all: `test_the_arm_and_the_producer_name_the_same_quantity_for_the_same_plant`
+# puts one defect through the producer's own `rederive_and_compare` and through the gate's arm and requires the
+# same field out of both, which is what makes "the two surfaces agree at the same granularity" a checked
+# sentence rather than a docstring.
+
+
+def _drive_arm(monkeypatch, mutate=None):
+    """Run the real `report.rederive_drift` against the committed artefact; return (labels, drift, rubric).
+
+    `mutate` edits the artefact as the gate READS it and never touches the file on disk; the hook is
+    `report.read_drift`, the seam `tests/test_g1_feasibility.py` uses for the ceiling arm. The two sinks are
+    the gate's own `expect` and `expect_rubric`, so a rubric row this arm has no business making is visible
+    here instead of being folded into a drift line.
+    """
+    import copy
+
+    from autorate import report
+
+    # `monkeypatch.setattr` on the same target twice would otherwise chain: the second drive would start from
+    # an artefact the first drive had already mutated, and a row that plants one figure would report two.
+    # `_undispatched` is the seam that keeps every drive reading the committed bytes.
+    original = getattr(report.read_drift, "_undispatched", report.read_drift)
+
+    def patched(path):
+        doc = original(path)
+        return mutate(copy.deepcopy(doc)) if mutate is not None else doc
+
+    patched._undispatched = original
+    monkeypatch.setattr(report, "read_drift", patched)
+    labels, drift, mismatches = [], [], []
+
+    def expect(label, actual, wanted):
+        labels.append(label)
+        if actual != wanted:
+            drift.append(label)
+
+    def expect_rubric(label, actual, wanted):
+        labels.append(label)
+        if actual != wanted:
+            mismatches.append(label)
+
+    report.rederive_drift(expect, expect_rubric)
+    return labels, drift, mismatches
+
+
+def _arm_expected_labels(doc):
+    """Every label the arm owes, built from the producer's field lists and the artefact's own rows."""
+    from autorate import drift_envelope
+
+    row_fields = (drift_envelope.RECHECK_MODE2_RECIPE_FIELDS + drift_envelope.RECHECK_MODE2_FIELDS)
+    labels = set()
+    for claim in doc["reproduction"]["checks"]:
+        for field in drift_envelope.RECHECK_CLAIM_FIELDS:
+            labels.add("drift claim %s.%s" % (claim["id"], field))
+    for row in doc["mode1"]:
+        for field in drift_envelope.RECHECK_MODE1_FIELDS:
+            labels.add("drift mode1 n=%s.%s" % (row["n"], field))
+    for section in ("mode2", "mode2_controls"):
+        for row in doc[section]:
+            for field in row_fields:
+                labels.add("drift %s %s.%s" % (section, row["name"], field))
+    for field in drift_envelope.RECHECK_SWEEP_FIELDS:
+        labels.add("drift mode2_sweep.%s" % field)
+    return labels
+
+
+#: One plant per comparison KIND the arm makes: (path into the stored artefact, the label that owns it,
+#: a value the measurement cannot yield by accident). The first row or claim of each kind stands for the
+#: kind; `_arm_expected_labels` above is what proves the other rows of the same kind are compared too.
+def _arm_plants():
+    from autorate import drift_envelope
+
+    doc = artefact()
+    plants = []
+    for field in drift_envelope.RECHECK_MODE1_FIELDS:
+        plants.append((("mode1", 0, field),
+                       "drift mode1 n=%s.%s" % (doc["mode1"][0]["n"], field), 0.012345))
+    for section in ("mode2", "mode2_controls"):
+        recipe, figures = (drift_envelope.RECHECK_MODE2_RECIPE_FIELDS, drift_envelope.RECHECK_MODE2_FIELDS)
+        for field in recipe + figures:
+            value = (12345 if field == "rounds" else
+                     "0" * 64 if field.endswith("digest_sha256") else 0.012345)
+            plants.append(((section, 0, field),
+                           "drift %s %s.%s" % (section, doc[section][0]["name"], field), value))
+    for field in drift_envelope.RECHECK_SWEEP_FIELDS:
+        plants.append((("mode2_sweep", field), "drift mode2_sweep.%s" % field,
+                       12345 if field != "bound" else 0.012345))
+    for field in drift_envelope.RECHECK_CLAIM_FIELDS:
+        plants.append(((
+            "reproduction", "checks", 0, field),
+            "drift claim %s.%s" % (doc["reproduction"]["checks"][0]["id"], field),
+            "planted-not-reproduced" if field == "agrees" else 0.012345))
+    return plants
+
+
+def test_the_arm_re_derives_every_published_quantity_the_producer_re_tests(monkeypatch):
+    """Green only with the arm wired; red on arrival because `report.rederive_drift` did not exist.
+
+    Three claims at once: the committed artefact reproduces under the arm with nothing failing; the arm's label
+    set is EXACTLY the one built from the producer's own `RECHECK_*` lists and this artefact's own rows, so no
+    published figure sits outside the gate and none is compared twice under one name; and the arm makes no
+    rubric row, because the artefact publishes no freeze budget -- its alpha and seed belong to `drift.py`'s
+    envelope, and a rubric line here would enforce a rule the freeze never made.
+    """
+    from autorate import drift_envelope
+    from autorate.report import DRIFT_JSON
+
+    doc = artefact()
+    labels, drift, mismatches = _drive_arm(monkeypatch)
+    assert drift == [], drift
+    assert mismatches == [], sorted(labels)[:3]
+    assert len(labels) == len(set(labels)), sorted(l for l in labels if labels.count(l) > 1)[:3]
+    assert set(labels) == _arm_expected_labels(doc), sorted(set(labels) ^ _arm_expected_labels(doc))[:5]
+    assert all(l.startswith("drift ") for l in labels), sorted(l for l in labels if not l.startswith("drift "))[:3]
+    assert DRIFT_JSON == str(ARTEFACT_REL), (DRIFT_JSON, ARTEFACT_REL)
+    for name in ("RECHECK_CLAIM_FIELDS", "RECHECK_MODE1_FIELDS", "RECHECK_MODE2_FIELDS",
+                 "RECHECK_MODE2_RECIPE_FIELDS", "RECHECK_SWEEP_FIELDS"):
+        assert getattr(drift_envelope, name), name
+
+
+@pytest.mark.parametrize("plant_index", range(len(_arm_plants())))
+def test_each_kind_of_comparison_the_arm_makes_can_fail_by_name(plant_index, monkeypatch):
+    """The falsifier for the arm: perturb one stored quantity, and the ONLY named refusal is that field's.
+
+    Written before the arm existed, so its RED is `AttributeError: module 'autorate.report' has no attribute
+    'read_drift'`. Each plant is asserted as an exact one-element list rather than "something went red": a
+    plant that reddened a neighbouring check while its own check passed would be the shape of an arm comparing
+    the wrong thing, and that is precisely how a field list and a publication drift apart.
+    """
+    path, label, value = _arm_plants()[plant_index]
+
+    def mutate(forged):
+        target = forged
+        for key in path[:-1]:
+            target = target[key]
+        target[path[-1]] = value
+        return forged
+
+    _labels, drift, _m = _drive_arm(monkeypatch, mutate)
+    assert drift == [label], (path, drift)
+
+
+def test_a_claim_the_arm_cannot_match_is_named_by_its_id_and_field(monkeypatch):
+    """A dropped reproduction claim and a phantom one both refuse, in both directions.
+
+    The producer's own guard answers this class with the sentence "claim X is not in the artefact"; the gate has
+    to say the same thing in the form its reader acts on -- a `DRIFT:` line naming the claim and the field -- or
+    an artefact that lost a claim would simply print a smaller denominator and stay green.
+    """
+    doc = artefact()
+    dropped = doc["reproduction"]["checks"][3]["id"]
+    phantom = "mode2 long-run rate: a sequence nobody publishes"
+
+    def mutate(forged):
+        assert [row["id"] for row in forged["reproduction"]["checks"]][3] == dropped
+        del forged["reproduction"]["checks"][3]
+        forged["reproduction"]["checks"].append({"id": phantom, "measured": 0.5, "agrees": True,
+                                                 "envelope_states": 0.0, "tolerance": None,
+                                                 "tolerance_basis": "planted"})
+        return forged
+
+    expected = {"drift claim %s.%s" % (name, field)
+                for name in (dropped, phantom)
+                for field in ("agrees", "measured")}
+    _labels, drift, _m = _drive_arm(monkeypatch, mutate)
+    assert set(drift) == expected, (sorted(set(drift) ^ expected)[:4], drift)
+    assert len(drift) == len(expected), drift
+
+
+def test_the_arm_and_the_producer_name_the_same_quantity_for_the_same_plant(monkeypatch):
+    """The two surfaces agree at the same granularity, shown by putting one defect through both.
+
+    `rederive_and_compare` is the producer's self-check and returns prose; `rederive_drift` is the gate's arm and
+    returns labels. This is the only row that can show they cover the same ground: the same perturbed artefact
+    goes through both, and the figure and field the producer names in its sentence have to be the figure and
+    field the gate names in its label. A quantity added to one list and not the other reddens here.
+    """
+    import copy
+
+    from autorate import drift_envelope
+
+    doc = artefact()
+    n = doc["mode1"][0]["n"]
+    field = drift_envelope.RECHECK_MODE1_FIELDS[1]
+
+    def move_row(forged):
+        forged["mode1"][0][field] = 0.012345
+        return forged
+
+    producer_lines = drift_envelope.rederive_and_compare(move_row(copy.deepcopy(doc)), declared=True)
+    _labels, row_drift, _m = _drive_arm(monkeypatch, move_row)
+    assert row_drift == ["drift mode1 n=%s.%s" % (n, field)], row_drift
+    assert len(producer_lines) == 1, producer_lines
+    assert field in producer_lines[0] and str(n) in producer_lines[0], producer_lines
+
+    claim_id = doc["reproduction"]["checks"][0]["id"]
+    assert claim_id.startswith("mode1 "), claim_id
+
+    def move_claim(forged):
+        for row in forged["reproduction"]["checks"]:
+            if row["id"] == claim_id:
+                row["measured"] = 0.012345
+        return forged
+
+    producer_lines = drift_envelope.rederive_and_compare(move_claim(copy.deepcopy(doc)), declared=True)
+    _labels, claim_drift, _m = _drive_arm(monkeypatch, move_claim)
+    assert claim_drift == ["drift claim %s.measured" % claim_id], claim_drift
+    assert len(producer_lines) == 1 and claim_id in producer_lines[0], producer_lines
+
+
+def test_read_drift_refuses_an_artefact_that_is_not_a_drift_envelope_by_naming_the_key(tmp_path):
+    """`report.read_drift` is the gate's shape guard, with one owner for the required-key list.
+
+    The list is the producer's own `REQUIRED_KEYS`, so the gate cannot accept an artefact the producer refuses
+    or refuse one the producer accepts, and a missing key answers with the key's name rather than a `KeyError`
+    that reads as the gate failing. Every forgery is written to a copy under `tmp_path`: the committed bytes are
+    never the subject of a test write, and a missing FILE is not this loader's refusal to make --
+    `load_published` answers the filesystem through `require_published` first, which is why the last two
+    assertions below expect the two different classes they do.
+    """
+    import copy
+
+    from autorate import drift_envelope, report
+    from autorate.report import read_drift
+
+    committed = artefact()
+    good = tmp_path / "artefact.json"
+    good.write_text(json.dumps(committed, indent=2, sort_keys=True) + "\n")
+    assert read_drift(good) == committed
+    assert sorted(drift_envelope.REQUIRED_KEYS) == sorted(committed), (
+        "the guard's key list and the published artefact's own keys have diverged")
+
+    for key in drift_envelope.REQUIRED_KEYS:
+        broken = copy.deepcopy(committed)
+        del broken[key]
+        path = tmp_path / ("missing-%s.json" % key)
+        path.write_text(json.dumps(broken, indent=2, sort_keys=True) + "\n")
+        with pytest.raises(ValueError) as caught:
+            read_drift(path)
+        assert key in str(caught.value), (key, str(caught.value))
+
+    for name, payload in (("list.json", "[1, 2]\n"), ("string.json", '"not an artefact"\n'),
+                          ("empty.json", "{}\n")):
+        path = tmp_path / name
+        path.write_text(payload)
+        with pytest.raises(ValueError):
+            read_drift(path)
+    # An absent file is the CALLER's refusal, not the loader's: `load_published` never hands `read_drift` a
+    # path it has not already opened, and the gate's arm for it is `PublishedArtefactUnavailable` at exit 4.
+    with pytest.raises(OSError):
+        read_drift(tmp_path / "never-written.json")
+    assert report.DRIFT_PRODUCER == committed["producer"] == drift_envelope.PRODUCER, report.DRIFT_PRODUCER
+    assert str(report.DRIFT_MD) == committed["document_path"] == drift_envelope.DOC_REL
+    assert str(report.DRIFT_JSON) == committed["artefact_path"]
+
+
+def test_an_artefact_naming_a_scale_the_producer_refuses_refuses_as_the_table_not_as_usage(monkeypatch):
+    """A stored `trials_per_size` the module forbids is exit 4 with the path named, never rc 1 and never 2.
+
+    `build_artefact` refuses a scale above the one the envelope states with `DriftEnvelopeUsage`, which is a
+    `ValueError` -- and the CLI maps `ValueError` onto usage (2), whose only readable content is "an input this
+    command was handed is wrong". Nobody handed this path: the publication table declared it. So the arm
+    translates it into `PublishedArtefactUnavailable`, the class that owns "the committed state cannot
+    reproduce what it publishes", and the sentence says which path and which field. The same arm also has to
+    survive a top-level-valid artefact whose provenance lost the one subkey it reads -- the BLOCKER-1 defect
+    class, re-planted against the gate instead of the producer.
+    """
+    from autorate import report
+
+    def scale(forged):
+        forged["provenance"]["trials_per_size"] = 999999
+        return forged
+
+    with pytest.raises(report.PublishedArtefactUnavailable) as caught:
+        _drive_arm(monkeypatch, scale)
+    message = str(caught.value)
+    assert "data/drift_envelope.json" in message, message
+    assert "not a usage error" in message, message
+    assert "999999" in message, message
+
+    def no_trials(forged):
+        del forged["provenance"]["trials_per_size"]
+        return forged
+
+    with pytest.raises(report.PublishedArtefactUnavailable) as caught:
+        _drive_arm(monkeypatch, no_trials)
+    assert "trials_per_size" in str(caught.value), str(caught.value)
+    # and the committed bytes still pass the same arm afterwards (the hook is undone by `monkeypatch`)
+    _labels, drift, _m = _drive_arm(monkeypatch)
+    assert drift == [], drift
+
+
+def test_the_drift_document_is_a_published_row_ordered_before_the_report():
+    """`docs/DRIFT.md` joins `cli.PUBLISHED_DOCS`, ahead of `REPORT_MD`, and renders from the artefact.
+
+    Order is the substance of this row, not formatting: the table's own comment states that the order decides
+    which rc-4 refusal a reader is told about, and `REPORT_MD` is last on purpose. So the drift document has to
+    be in the table, before the report, and its render has to be the committed bytes -- which is what turns a
+    stale `docs/DRIFT.md` into a named refusal in the gate rather than a sentence nobody re-reads.
+    """
+    from autorate import drift_envelope
+    from autorate.cli import PUBLISHED_DOCS
+    from autorate.report import DRIFT_MD, render_drift
+
+    paths = [str(path) for path, _render in PUBLISHED_DOCS]
+    assert str(DRIFT_MD) in paths, paths
+    assert paths.index(str(DRIFT_MD)) < paths.index("docs/REPORT.md"), paths
+    doc = read_json(REPO / ARTEFACT_REL)
+    assert render_drift(doc) == (REPO / DOC_REL).read_text()
+    assert drift_envelope.render_document(doc) == render_drift(doc), (
+        "`report.render_drift` is not a pass-through to the producer's renderer, so the gate and the tool would "
+        "disagree about what this document is")
+    stale = json.loads(json.dumps(doc))
+    stale["mode1"][0]["realised_miscoverage"] = 0.012345
+    assert render_drift(stale) != (REPO / DOC_REL).read_text(), (
+        "the renderer ignores that figure, so the byte comparison it feeds cannot fail")

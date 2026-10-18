@@ -71,11 +71,12 @@ def stage_published(work):
     `cli.PUBLISHED_DOCS`.)
     """
     from autorate.cli import PROTOCOL_JSON
-    from autorate.report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_PIN, G1_FEASIBILITY_JSON,
+    from autorate.report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON,
+                                 G1_FEASIBILITY_JSON,
                                  MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON)
 
     names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON, G1_FEASIBILITY_JSON,
-              CONTAMINATION_JSON, CONTAMINATION_PIN}
+              CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON}
              | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
              | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
@@ -165,15 +166,23 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                               SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
     from autorate.report import (CERTS, CONTAMINATION_HEADLINE_FIELDS, CONTAMINATION_RUBRIC_FIELDS,
-                                 CONTAMINATION_STRATA_KEYS, G1_FEASIBILITY_JSON,
+                                 CONTAMINATION_STRATA_KEYS, DRIFT_JSON,
+                                 G1_FEASIBILITY_JSON,
                                  G1_FEASIBILITY_REFERENCE_FIELDS,
                                  G1_FEASIBILITY_ROW_FIELDS, G1_FEASIBILITY_RUBRIC_FIELDS,
                                  MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
                                  SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
                                  SLICE_GROUP_FIELDS, SLICE_INPUT_FIELDS, SLICE_JSON, SLICE_POOLED_FIELDS,
                                  SLICE_RECORDS, SLICE_RUBRIC_FIELDS, SLICE_WORST_FIELDS,
-                                 read_g1_feasibility, read_resplit, read_slices,
+                                 read_g1_feasibility, read_drift, read_resplit, read_slices,
                                  resplit_invariants)
+    # The drift arm's own lists, read where they are defined. `rederive_drift` and the producer's
+    # `rederive_and_compare` both loop over these tuples, so the expectation below counts the gate's
+    # comparisons from the same owner the gate compares with -- a literal here would be a second memory of
+    # the field list, which is the defect class R-168 was written for.
+    from autorate.drift_envelope import (RECHECK_CLAIM_FIELDS, RECHECK_MODE1_FIELDS,
+                                        RECHECK_MODE2_FIELDS, RECHECK_MODE2_RECIPE_FIELDS,
+                                        RECHECK_SWEEP_FIELDS)
 
     pin_options = [o for o in corpus_options(None, pin=massive_pin())
                    if o["id"].startswith("massive")]
@@ -191,7 +200,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
                                                          "docs/AUDIT.md", "docs/SEVERITY.md",
                                                          "docs/RESPLIT.md", "docs/SLICES.md",
-                                                         "docs/FEASIBILITY.md", "docs/REPORT.md",
+                                                         "docs/FEASIBILITY.md", "docs/DRIFT.md",
+                                                         "docs/REPORT.md",
                                                          "docs/CONTAMINATION.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
@@ -234,6 +244,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     slice_doc = read_slices(REPO / SLICE_JSON)
     slice_run = slice_doc["run"]
     feas_doc = read_g1_feasibility(REPO / G1_FEASIBILITY_JSON)
+    drift_doc = read_drift(REPO / DRIFT_JSON)
     expected = ((len(CERTS) + len(MASSIVE_CERTIFICATES)) * (len(CERT_COMPARE_FIELDS) + 1)
                 + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
                 + len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
@@ -264,6 +275,20 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + 9
                 + len(CONTAMINATION_HEADLINE_FIELDS)
                 + len(CONTAMINATION_RUBRIC_FIELDS)
+                # B3's drift envelope enters the same way, from the producer's own `RECHECK_*` lists and the
+                # rows the artefact carries: one comparison per published reproduction claim for each field the
+                # guard reads, one per mode-1 figure for each published size, one per recipe quantity and one
+                # per figure for every construction and every control, and one per sweep count. Nothing joins
+                # for a rubric -- the artefact publishes no freeze budget, so `rederive_drift` never calls
+                # `expect_rubric` -- and the `docs/DRIFT.md` byte row arrives through `len(PUBLISHED_DOCS)`
+                # below, not as a term here. Measured on the committed bytes: the absent lane printed 612
+                # before the arm and 697 after, the present 649 before and 734 after, and the 37-row
+                # inter-lane gap is unchanged because nothing in the envelope reads the corpus.
+                + len(drift_doc["reproduction"]["checks"]) * len(RECHECK_CLAIM_FIELDS)
+                + len(drift_doc["mode1"]) * len(RECHECK_MODE1_FIELDS)
+                + (len(drift_doc["mode2"]) + len(drift_doc["mode2_controls"]))
+                * len(RECHECK_MODE2_RECIPE_FIELDS + RECHECK_MODE2_FIELDS)
+                + len(RECHECK_SWEEP_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 
@@ -726,6 +751,13 @@ def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_
         # function of the artefact, which this scratch tree holds intact, so the refusal below can only
         # be about these unreadable bytes.
         ("docs/FEASIBILITY.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
+        # B3's drift envelope: read by `rederive_drift` and rendered by the document row, both through
+        # `report.DRIFT_JSON`, so unreadable bytes here must come back as the table's own named refusal at
+        # exit 4 rather than as a `JSONDecodeError` mapped onto the operator's argument.
+        ("data/drift_envelope.json", "report.DRIFT_JSON", "{not the drift envelope", False),
+        # The envelope's document, one entry before the report in the same table: its render is a function
+        # of the artefact this case leaves intact, so only these bytes can be refusing.
+        ("docs/DRIFT.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
     ]
     for rel, table, corrupt, needs_snapshot in cases:
         work = tmp_path / rel.replace("/", "-").replace(".", "-")
