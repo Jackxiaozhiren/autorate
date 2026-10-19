@@ -2321,6 +2321,21 @@ def render_drift(doc: dict) -> str:
     return _drift_module().render_document(doc)
 
 
+_ROW_ABSENT = object()
+"""The gate's own marker for "this row is not in that side of the comparison at all".
+
+`.get(name, {}).get(field)` collapses a missing row into `{}`, so a field the artefact publishes as `null`
+reads as AGREEING with a row the re-measurement never produced -- a forged or dropped claim then hides behind
+one null field while the rest of its fields are named. Keeping the two states apart means a one-sided row is
+reported per field, which is the form a reader of a `DRIFT:` line can act on.
+"""
+
+
+def _compared_value(rows, key, field):
+    row = rows.get(key, _ROW_ABSENT)
+    return _ROW_ABSENT if row is _ROW_ABSENT else row.get(field)
+
+
 def rederive_drift(expect, expect_rubric, rubric=None) -> None:
     """The drift envelope, measured again from `autorate.drift` and compared quantity by quantity.
 
@@ -2368,14 +2383,15 @@ def rederive_drift(expect, expect_rubric, rubric=None) -> None:
     for claim_id in sorted(set(fresh_claims) | set(stored_claims)):
         for field in drift_envelope.RECHECK_CLAIM_FIELDS:
             expect("drift claim %s.%s" % (claim_id, field),
-                   fresh_claims.get(claim_id, {}).get(field), stored_claims.get(claim_id, {}).get(field))
+                   _compared_value(fresh_claims, claim_id, field),
+                   _compared_value(stored_claims, claim_id, field))
 
     fresh_mode1 = {row["n"]: row for row in fresh["mode1"]}
     stored_mode1 = {row["n"]: row for row in doc["mode1"]}
     for n in sorted(set(fresh_mode1) | set(stored_mode1), key=str):
         for field in drift_envelope.RECHECK_MODE1_FIELDS:
             expect("drift mode1 n=%s.%s" % (n, field),
-                   fresh_mode1.get(n, {}).get(field), stored_mode1.get(n, {}).get(field))
+                   _compared_value(fresh_mode1, n, field), _compared_value(stored_mode1, n, field))
 
     row_fields = (drift_envelope.RECHECK_MODE2_RECIPE_FIELDS + drift_envelope.RECHECK_MODE2_FIELDS)
     for section in ("mode2", "mode2_controls"):
@@ -2384,7 +2400,8 @@ def rederive_drift(expect, expect_rubric, rubric=None) -> None:
         for name in sorted(set(fresh_rows) | set(stored_rows)):
             for field in row_fields:
                 expect("drift %s %s.%s" % (section, name, field),
-                       fresh_rows.get(name, {}).get(field), stored_rows.get(name, {}).get(field))
+                       _compared_value(fresh_rows, name, field),
+                       _compared_value(stored_rows, name, field))
 
     for field in drift_envelope.RECHECK_SWEEP_FIELDS:
         expect("drift mode2_sweep.%s" % field, fresh["mode2_sweep"].get(field),

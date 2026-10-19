@@ -1306,7 +1306,7 @@ def test_a_claim_the_arm_cannot_match_is_named_by_its_id_and_field(monkeypatch):
         assert [row["id"] for row in forged["reproduction"]["checks"]][3] == dropped
         del forged["reproduction"]["checks"][3]
         forged["reproduction"]["checks"].append({"id": phantom, "measured": 0.5, "agrees": True,
-                                                 "envelope_states": 0.0, "tolerance": None,
+                                                 "envelope_states": 0.0, "tolerance": 0.125,
                                                  "tolerance_basis": "planted"})
         return forged
 

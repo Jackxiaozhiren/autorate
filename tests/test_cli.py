@@ -285,7 +285,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 # `expect_rubric` -- and the `docs/DRIFT.md` byte row arrives through `len(PUBLISHED_DOCS)`
                 # below, not as a term here. The denominators this formula is checked against are measured by
                 # `tests/test_verify_protocol.py`, which runs the command and reads its print -- the numbers it
-                # prints at this revision are 734 with the corpus absent and 771 with it present, and the
+                # totals are the print's, not this comment's, and the pair is quoted by README and the G5 note,
                 # 37-row inter-lane gap is unchanged because nothing in the envelope reads the corpus. These
                 # figures are a restatement of that run, kept because the arithmetic below is unreadable
                 # without knowing what it is supposed to sum to; they cannot be the evidence for it.

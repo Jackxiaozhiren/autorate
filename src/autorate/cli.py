@@ -124,7 +124,8 @@ def corpus_only_comparisons(inv: dict | None = None) -> int:
     `SOURCE.json` digests and the snapshot keys, and `rederive_contamination` re-digests and re-sizes the
     upstream results file when the corpus is visible. The second term was missing from the transcript guard,
     which therefore accepted a 35-comparison transcript and would have refused the honest 37-comparison one
-    the frozen gate actually prints (measured: `re-derived 734 /734` absent against `771 /771` present).
+    the frozen gate actually prints, whose two totals move whenever an arm gains a comparison and are
+    therefore the print's to state, never this comment's.
 
     Every term is a count of published structure, so an arm that gains a corpus-only comparison moves this
     number instead of making a transcript's lanes disagree with the gate. `inv` is the snapshot the caller

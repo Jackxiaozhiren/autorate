@@ -2539,3 +2539,40 @@ test if any exception escapes rather than an exit code.
 lane denominators do NOT move this round -- no comparison was added -- so `docs/G5.md` stays the record of the
 commit it names and needs no re-export: the quoter rows are satisfied by re-emitting the note, not by re-running
 the export.
+
+## 2026-10-19 — the drift document printed nineteen figures the gate never compared
+
+The objective this repository exists for is the sentence "`verify` re-derives every published number", so it was
+tested instead of quoted: mutate one leaf of `data/drift_envelope.json`, re-render `docs/DRIFT.md` through the
+producer's own renderer, and ask whether the bytes moved. Nineteen numeric or boolean leaves move the document
+and appear in no comparison the gate performs. Seven of them are figures the document prints as results: the two
+claim rows' `tolerance`, and per mode-1 size `trials`, `vacuous_trials`, `vacuous_share_three_se` and the
+agreement decision, and per mode-2 recipe `violates_bound` and `clip_observable`. Several are computable from
+fields that *are* compared, which is exactly why the arm stayed unremarked -- but "derivable if you read the
+other fields and do the arithmetic" is not a check, and the slice artefact's unit notes (#111) are the precedent
+for settling this class by comparing.
+
+The `RECHECK_*` lists are widened, which widens the producer's `--check` with the gate because both read them.
+The census itself is left in the suite --
+`test_every_figure_the_drift_document_prints_is_compared_by_the_gate` -- and it takes the compared set from
+`rederive_drift`'s own labels rather than from a list of field names typed into the row, because a literal there
+would be a third owner of the coverage claim and would go stale the way `owned["G5"]` did this morning. The
+`provenance` subtree is excluded by name and the exclusion is asserted to be *exactly* that subtree: the arm reads
+the measurement's declared scale and measures at it, so a mutation there moves the measurement rather than
+contradicting it, and those inputs are policed where policing exists -- against `autorate.drift`'s constants by
+`read_module_provenance`, and against the module's wording by the envelope-copy check.
+
+What follows from adding comparisons: the lane denominators move from 734/771 to 773/810 -- the gap stays 37,
+because every added comparison is corpus-independent and lands in both lanes equally. The transcript, the frozen
+G5 note and README are all transcriptions of those two numbers, so the transcript was re-exported from the commit
+that widened the arm, the note and README were re-authored at their owner, and the protocol digest moves with the
+note: the sixteenth emission. Two comments that had begun reciting lane totals -- one in `cli.py`, one in
+`tests/test_cli.py` -- were rewritten to name the print as the owner, because a comment that copies a number
+expires the moment an arm grows.
+
+**The sixteenth emission.** `freeze16.sh` emitted the protocol at 2026-10-19, digest
+`50941330a77e40d1a26f7c1e0f9a5f9b4ce9f5e9a7b0e2f7c4a5f7c0c0a9ea5d` (fixed point proved by a second emission); the
+stamped artefacts moved only in `meta.protocol_digest`, and the published documents re-rendered from their
+producers. `docs/G5.md` is the transcript of `73e3a63`, the commit that widened the arm, and reports that
+commit's own protocol digest -- the staleness row reads it out of the object database rather than from the
+reader's tree, which is why a re-export and a re-freeze can land in either order without either one lying.
