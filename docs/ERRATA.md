@@ -2608,11 +2608,29 @@ citing the freeze that never ran all over again. The defect is the thing worth r
 possible without publishing it: a hash is this project's identifier, and a hash that matches no emission is a
 citation of a freeze that never happened.
 
+**Why this was corrected in the entry rather than only beside it, stated because the file rules otherwise.** Two
+earlier sections of this document insist that a superseded sentence stays where it is and the correction arrives as
+a new dated row, and that the append-only rule outranks tidy prose. This entry did not follow that, so the
+disagreement is recorded rather than left for a reader to discover: the rule protects *observations* -- a sentence
+that was true of the tree on the day it was written and was later refuted, which is evidence about the refutation.
+A mis-typed identifier is not an observation of anything; no emission ever had that tail, so leaving it in place
+would not preserve a fact but publish a false one, and a reader following the citation would find no object. The
+amendment is one line, provably: `git diff 3b27aff..0e7da12 -- docs/ERRATA.md` removes exactly one line, the digest
+line itself, and adds the rest below. Where the wrong value has to be described, it is described by its prefix and
+its length rather than reprinted, so both rules hold at once: the dated entry states the true digest, and no
+document in this repository carries a hash that no digest function produces.
+
 `tests/test_errata_digests.py` is the guard the second defect needed. It recomputes `protocol_digest` for every
-committed revision of `protocol.json`, adds the working tree's own so a round can cite its own emission before it
-is committed, and unions that with `file_digest` over the tracked files, then refuses any 64-hex token in
-`docs/ERRATA.md` or `README.md` outside that set. It was RED on the retyped tail and it accepts the seven real
-digests the earlier entries cite, so the pass is a measurement and not an empty census;
+committed revision of `protocol.json` (`--full-history`, so a merge-simplified revision cannot drop its own digest
+out of the legal set), adds the working tree's own so a round can cite its own emission before it is committed,
+and unions that with `file_digest` over the bytes this repository publishes FROM -- `data/` and `protocol.json`,
+not every tracked file, or the guard would launder the sha256 of anything in the tree into legal prose -- then
+refuses any other 64-hex token in a hand-written document, the scan set being every tracked markdown the
+publication table does not render (so a document added next week is policed without anyone adding it to a list),
+minus two files waived with a stated reason because their hashes are upstream `laya` revisions no object database
+here recomputes -- and a waiver is refused if the file stops holding a hash or starts quoting one this repository
+can compute. It was RED on the retyped tail and it accepts
+every digest the earlier entries cite, so the pass is a measurement and not an empty census;
 `test_a_real_digest_with_a_fabricated_tail_is_refused` builds a plant from two real emissions -- one's prefix, the
 other's tail -- and asserts the census names it while still accepting the true value. The scope is asserted in the
 same file rather than assumed: `docs/VERIFICATION.md` must hold no full digest (its hashes are upstream revisions

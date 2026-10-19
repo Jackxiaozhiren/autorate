@@ -999,14 +999,18 @@ def _g5_exception_clause(note):
 def _exception_clause_violations(clause_text, owner, stems):
     """Every way a claim of the form "X publishes nothing" can be wrong, as a list of sentences.
 
-    One predicate, two callers: the live note has to produce no violations, and the planted note below has to
-    produce one. Written as a function because a row that re-implements its own plant proves nothing about the
-    row that polices the release.
+    One predicate, three callers: the live note has to produce no violations, the planted note below has to
+    produce one, and the emitter's own branches (zero, one, many surfaces) have to produce none for the owner they
+    were built from. Written as a function because a row that re-implements its own plant proves nothing about
+    the row that polices the release, and because the empty-owner case is the graduation path the note promises:
+    refusing a clause that names nothing is right only while the owner still names something.
     """
     violations = []
     named = sorted(set(re.findall(r"`([a-z0-9_]+\.py)`", clause_text)))
-    if not named:
-        violations.append("the clause names no surface, so it cannot be checked against the owner")
+    if not named and owner:
+        violations.append("the clause names no surface while the owner names %s" % sorted(owner))
+    if not owner and named:
+        violations.append("the clause names %s while the owner has emptied" % named)
     if named != sorted(owner):
         violations.append("names %s where the owner names %s" % (named, sorted(owner)))
     for module in named:
@@ -1066,6 +1070,42 @@ def test_a_note_exception_clause_that_names_a_published_surface_is_refused(in_re
     assert any(v.startswith("drift.py is called unpublished") for v in violations), (
         "the plant was refused only for its count, not by the producer census, so the census half never fired "
         "here: %s" % violations)
+
+
+def test_the_emitter_spells_the_exception_clause_for_every_owner_size(in_repo):
+    """The graduation path has to be reachable, so every branch of the emitter is called, not just today's.
+
+    Review MAJOR-1 on this round: the note promised a surface "can only leave the tuple by landing an artefact",
+    while the row that polices the clause refused a clause that named no surface -- so the day the tuple emptied,
+    the last surface could not leave without someone editing a remembered assertion, and no test could see that
+    because the empty and plural branches were computed once at import and never called again. The emitter is now
+    a function of the tuple and this row drives it with zero, one, two and three surfaces through the same
+    predicate the release row uses: each must produce no violations for its own owner, and the empty case must
+    produce a sentence that claims no surface is unpublished.
+    """
+    from autorate.protocol import g5_exception_clause
+
+    stems = _published_surface_stems()
+    # Names no producer can collide with: the predicate matches stems as substrings on purpose (it errs toward
+    # calling a surface published), so a fixture called `a.py` would be refused for matching `contamination_*`.
+    cases = [(), ("zzz_solo.py",), ("zzz_first.py", "zzz_second.py"),
+             ("zzz_a.py", "zzz_b.py", "zzz_c.py")]
+    for owner in cases:
+        clause = g5_exception_clause(owner)
+        violations, named = _exception_clause_violations(clause, owner, stems)
+        assert not violations, "owner %s emitted %r, which the release predicate refuses: %s" % (
+            owner, clause, violations)
+        if owner:
+            assert named == sorted(owner), (owner, named, clause)
+            assert "denominators" in clause, (
+                "a non-empty owner has to say where the missing figures are, and the clause lost the word: %r"
+                % clause)
+        else:
+            assert not named, "the empty owner still names surfaces: %s" % named
+            assert "nothing this build publishes is absent" in clause, (
+                "an emptied tuple must be stated as nothing-left-out, not as silence: %r" % clause)
+    assert g5_exception_clause(cases[0]) != g5_exception_clause(cases[1]), (
+        "the empty and one-surface branches render the same sentence, so one of them is unreachable")
 
 
 def test_the_readme_lane_gap_breakdown_names_every_term_the_owner_counts():

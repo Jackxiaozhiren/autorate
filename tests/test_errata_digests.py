@@ -10,12 +10,14 @@ recomputed by `verify`, quoted as the witness of a freeze -- so a prose digest t
 about an emission that never happened.
 
 The census is closed rather than pattern-shaped: the valid set is what `protocol.protocol_digest` returns for
-each committed revision of `protocol.json` (plus the working tree's own, so the round being written can cite
-its own emission before it is committed), together with `protocol.file_digest` over every tracked file, so an
-entry that quotes a corpus or artefact hash stays legal. The claim surface is ERRATA and README: the
-producer-rendered documents cannot drift from their own bytes, and `docs/VERIFICATION.md` records upstream
-revisions whose hashes this repository has no object database to recompute -- both facts are asserted below
-rather than left to the reader.
+each committed revision of `protocol.json` (`--full-history`, so a merge-simplified revision keeps its own digest
+legal), plus the working tree's own so the round being written can cite its emission before it is committed,
+unioned with `protocol.file_digest` over the bytes this repository publishes FROM -- `data/` and `protocol.json`,
+not every tracked file, or the guard would accept the sha256 of its own source as legal prose. The scan set is
+enumerated, not listed: every tracked markdown the publication table does not render is hand-written, so a new
+hand-typed document joins the census without anyone remembering to add it. Two files are waived with a stated
+reason because their hashes are upstream `laya` revisions this checkout has no object database to recompute, and
+the waiver is refused if the file stops holding a hash or starts quoting a digest this repository can compute.
 """
 import json
 import os
@@ -30,7 +32,25 @@ from autorate.protocol import file_digest, protocol_digest
 
 REPO = Path(cli.__file__).resolve().parents[2]
 FULL_SHA = re.compile(r"\b[0-9a-f]{64}\b")
-CLAIM_SURFACES = ("docs/ERRATA.md", "README.md")
+
+# Hand-written documents this repository publishes, enumerated from the tables rather than remembered: a tracked
+# markdown file that `cli.PUBLISHED_DOCS` does NOT render is typed by a human, so a digest in it is a claim the
+# census can check. A new hand-typed document therefore falls into the scan by itself -- review MINOR-7's hole was
+# that a fixed list would never look at one, which is how the retyped digest in ERRATA stayed invisible in the
+# first place.
+#
+# Two files state hashes this repository cannot recompute, and saying so is what keeps the census honest: their
+# token is an upstream `laya` revision, and the object database that would verify it is not in this checkout. An
+# exemption that stops holding a token is refused below, so the reason cannot outlive the fact.
+UPSTREAM_HASH_EXEMPTIONS = {
+    "docs/upstream/SUBMISSION.md": "the upstream laya revision this branch submits against",
+    "docs/upstream/patch/README.md": "the same upstream revision, restated for the patch reader",
+}
+
+
+def _hand_written_markdown():
+    published = {str(path) for path, _render in cli.PUBLISHED_DOCS}
+    return sorted(rel for rel in _tracked_files() if rel.endswith(".md") and rel not in published)
 
 
 def _git(*args):
@@ -55,8 +75,14 @@ def _tracked_files():
 
 
 def _emitted_digests():
-    """`protocol_digest` recomputed from every committed revision of `protocol.json`, plus this tree's."""
-    log = _git("log", "--format=%H", "--", "protocol.json")
+    """`protocol_digest` recomputed from every committed revision of `protocol.json`, plus this tree's.
+
+    `--full-history` because the sentence claims EVERY committed revision: the default `git log -- <path>`
+    simplifies the list when a merge leaves the file's content unchanged on one side, and a simplified-away
+    emission would drop its own digest out of the legal set -- a false red on a document citing a value the
+    repository really did emit.
+    """
+    log = _git("log", "--full-history", "--format=%H", "--", "protocol.json")
     assert log.returncode == 0, log.stderr[:200]
     digests = set()
     for rev in log.stdout.split():
@@ -67,8 +93,27 @@ def _emitted_digests():
     return digests
 
 
+PUBLISHED_SOURCE_DIRS = ("data",)
+
+
 def _on_disk_digests():
-    return {file_digest(REPO / rel) for rel in _tracked_files() if (REPO / rel).is_file()}
+    """Hashes of the bytes this repository publishes FROM, so an entry may cite one as evidence.
+
+    Deliberately narrower than "every tracked file": a guard that accepts the sha256 of anything in the tree
+    would also accept a digest of the guard's own source, and the census is about protocol digests, not about
+    whatever a file happens to hash to. The exclusion is reported by the row that uses it so the appetite is
+    visible rather than implied.
+    """
+    tracked = _tracked_files()
+    legal = [rel for rel in tracked if rel.split("/", 1)[0] in PUBLISHED_SOURCE_DIRS or rel == "protocol.json"]
+    return {file_digest(REPO / rel) for rel in legal if (REPO / rel).is_file()}
+
+
+def _excluded_tracked_files():
+    tracked = _tracked_files()
+    return sorted(rel for rel in tracked
+                  if not (rel.split("/", 1)[0] in PUBLISHED_SOURCE_DIRS or rel == "protocol.json"))
+
 
 
 def _unbacked(text, emitted, on_disk):
@@ -82,41 +127,72 @@ def _near_misses(unbacked, emitted):
             for tok in unbacked if any(e[:12] == tok[:12] for e in emitted)}
 
 
-def test_the_claim_surface_is_the_documents_a_human_types_by_hand():
-    """The scope of the row above is itself a claim, so it is measured rather than asserted in a docstring.
+def _stated_digests(rel):
+    return set(FULL_SHA.findall((REPO / rel).read_text()))
 
-    Plant: give one of these documents a full digest that no producer emitted; the census row has to see it.
+
+def test_the_census_reads_every_hand_written_document_not_a_remembered_pair():
+    """The scan set is enumerated from the tables, so a document nobody remembered cannot escape it.
+
+    Three halves. The set: every tracked `.md` that `cli.PUBLISHED_DOCS` does not render is hand-written, so
+    README, ERRATA, `docs/VERIFICATION.md` and a file added next week all land in the scan by construction --
+    review MINOR-7's hole was a fixed list, and a fixed list is how the retyped digest in ERRATA stayed invisible
+    while a guard existed for digests. The exemptions: a declared reason must still be a hand-written tracked file
+    AND must still hold a hash, or the reason has outlived the fact and the row says so. The reach: a planted
+    digest appended to each scanned document's own text is caught by the same call the release row makes, so the
+    file walk -- not just the extractor -- is proven.
     """
-    counts = {}
-    for rel in ("docs/VERIFICATION.md", "docs/REPORT.md", "docs/G5.md"):
-        counts[rel] = len(FULL_SHA.findall((REPO / rel).read_text()))
-    assert counts["docs/VERIFICATION.md"] == 0, (
-        "docs/VERIFICATION.md now carries %d full digests; they are upstream revisions this repository cannot "
-        "recompute, so widen the census by reading the file and naming the exclusion, not by dropping the row"
-        % counts["docs/VERIFICATION.md"])
-    assert counts["docs/REPORT.md"] and counts["docs/G5.md"], (
-        "the producer-rendered documents stopped carrying digests, so the sentence explaining why they are "
-        "excluded is no longer true: %s" % counts)
-    planted = "digest ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff and that one"
-    assert _unbacked(planted, set(), set()) == ["f" * 64], "the census cannot see a planted digest at all"
+    hand = _hand_written_markdown()
+    published_md = sorted(str(path) for path, _render in cli.PUBLISHED_DOCS if str(path).endswith(".md"))
+    assert published_md, (
+        "`cli.PUBLISHED_DOCS` renders no markdown, so the subtraction that defines a hand-written document has "
+        "no content and the census would read the producer-rendered files too")
+    for expected in ("README.md", "docs/ERRATA.md", "docs/VERIFICATION.md", "docs/G5.md"):
+        assert expected in hand, "%s is not in the hand-written set %s" % (expected, hand)
+    assert not (set(published_md) & set(hand)), sorted(set(published_md) & set(hand))
+
+    for rel, reason in UPSTREAM_HASH_EXEMPTIONS.items():
+        assert reason, "exemption %s carries no reason, which is an ignore list" % rel
+        assert rel in hand, "exemption %s names no hand-written tracked document" % rel
+        assert _stated_digests(rel), (
+            "exemption %s (%s) holds no full digest any more, so the file is being waived for a fact that is "
+            "gone -- delete the exemption" % (rel, reason))
+
+    emitted, on_disk = _emitted_digests(), _on_disk_digests()
+    planted = "\ndigest " + "f" * 64 + " claimed by nobody\n"
+    for rel in hand:
+        if rel in UPSTREAM_HASH_EXEMPTIONS:
+            continue
+        hits = _unbacked((REPO / rel).read_text() + planted, emitted, on_disk)
+        assert "f" * 64 in hits, (
+            "the census does not refuse a planted digest read through %s: %s" % (rel, hits))
+    assert _excluded_tracked_files(), (
+        "the on-disk half of the legal set excludes no tracked file, which means any sha256 in the tree becomes "
+        "legal prose -- the narrowing this row exists to police")
 
 
-def test_every_full_digest_the_errata_entries_state_is_one_the_repository_computed():
+def test_every_full_digest_a_hand_written_document_states_is_one_the_repository_computed():
     """RED for the sixteenth round's entry: a digest whose tail belongs to no emission this tree has made."""
     if not _history_available():
         pytest.skip("no object database here (a `git archive` export), so earlier emissions cannot be recomputed")
     emitted, on_disk = _emitted_digests(), _on_disk_digests()
+    scanned = [rel for rel in _hand_written_markdown() if rel not in UPSTREAM_HASH_EXEMPTIONS]
     stated = set()
-    for rel in CLAIM_SURFACES:
-        stated.update(FULL_SHA.findall((REPO / rel).read_text()))
+    for rel in scanned:
+        stated.update(_stated_digests(rel))
     assert len(stated & emitted) >= 7, (
         "the census expects at least seven hand-quoted emission digests, and sees %d of %d: if the set shrank, "
-        "this row has stopped policing the document it was written for" % (len(stated & emitted), len(stated)))
-    unbacked = _unbacked("\n".join((REPO / rel).read_text() for rel in CLAIM_SURFACES), emitted, on_disk)
+        "this row has stopped policing the documents it was written for" % (len(stated & emitted), len(stated)))
+    unbacked = sorted(tok for tok in stated if tok not in emitted and tok not in on_disk)
     assert not unbacked, (
         "%s state a full digest no digest function in this repository produces: %s -- near misses among them "
         "%s -- so those sentences cite an emission that never happened; read the value out of the freeze log "
-        "instead of retyping it" % (list(CLAIM_SURFACES), unbacked, _near_misses(unbacked, emitted)))
+        "instead of retyping it" % (scanned, unbacked, _near_misses(unbacked, emitted)))
+    for rel in UPSTREAM_HASH_EXEMPTIONS:
+        toks = _stated_digests(rel)
+        assert not (toks & emitted), (
+            "%s is waived as an upstream-hash document but quotes %s, which this repository can recompute -- "
+            "move it into the scan" % (rel, sorted(toks & emitted)))
 
 
 def test_a_real_digest_with_a_fabricated_tail_is_refused():

@@ -56,18 +56,25 @@ PROTOCOL_VERSION = 1
 # `drift.py` after #110 gave it `data/drift_envelope.json`, and `contamination.py` after #107 gave it
 # `data/contamination_probe.json` -- so the sentence is emitted from the owner, and a surface can only leave it
 # by landing an artefact the gate re-derives rather than by someone remembering to edit a frozen string.
-_SPOKEN_UNPUBLISHED = " and ".join("`%s`" % s for s in UNPUBLISHED_SURFACES) if len(
-    UNPUBLISHED_SURFACES) < 3 else ", ".join(
-        "`%s`" % s for s in UNPUBLISHED_SURFACES[:-1]) + ", and `%s`" % UNPUBLISHED_SURFACES[-1]
-if not UNPUBLISHED_SURFACES:
-    G5_EXCEPTION_CLAUSE = ("every figure this build computes reaches a committed artefact the gate re-derives, "
-                           "so nothing this build publishes is absent from the denominators")
-elif len(UNPUBLISHED_SURFACES) == 1:
-    G5_EXCEPTION_CLAUSE = ("%s is the surface this build tests without publishing, so its figures are absent "
-                           "from both denominators rather than re-derived" % _SPOKEN_UNPUBLISHED)
-else:
-    G5_EXCEPTION_CLAUSE = ("%s are the surfaces this build tests without publishing, so their figures are "
-                           "absent from both denominators rather than re-derived" % _SPOKEN_UNPUBLISHED)
+#
+# A function of the tuple, not a constant: the day the tuple empties is the day the last tested surface gets its
+# artefact, and a branch that only that day can reach has to be reachable by a test now. The note below calls this
+# with the owner; the rows in `tests/test_verify_protocol.py` call it with zero, one, two and three surfaces.
+def g5_exception_clause(surfaces) -> str:
+    """The note's sentence about what the gate does NOT re-derive, spelled from the owner's tuple."""
+    spoken = " and ".join("`%s`" % s for s in surfaces) if len(surfaces) < 3 else (
+        ", ".join("`%s`" % s for s in surfaces[:-1]) + ", and `%s`" % surfaces[-1])
+    if not surfaces:
+        return ("every figure this build computes reaches a committed artefact the gate re-derives, so nothing "
+                "this build publishes is absent from the denominators")
+    if len(surfaces) == 1:
+        return ("%s is the surface this build tests without publishing, so its figures are absent from both "
+                "denominators rather than re-derived" % spoken)
+    return ("%s are the surfaces this build tests without publishing, so their figures are absent from both "
+            "denominators rather than re-derived" % spoken)
+
+
+G5_EXCEPTION_CLAUSE = g5_exception_clause(UNPUBLISHED_SURFACES)
 
 # The document's own field order, which is also its canonical order: `render_protocol` writes these
 # keys in this sequence, so the bytes -- and therefore the digest -- do not depend on the ordering a
