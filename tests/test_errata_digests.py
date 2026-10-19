@@ -158,7 +158,11 @@ def test_the_census_reads_every_hand_written_document_not_a_remembered_pair():
             "exemption %s (%s) holds no full digest any more, so the file is being waived for a fact that is "
             "gone -- delete the exemption" % (rel, reason))
 
-    emitted, on_disk = _emitted_digests(), _on_disk_digests()
+    # The reach half needs no history: a planted string is unbacked whether or not the emission list is
+    # computable, and skipping the whole row for want of a repository would hide the enumeration and exemption
+    # assertions above in exactly the environment -- a `git archive` export -- where the census is weakest.
+    emitted = _emitted_digests() if _history_available() else set()
+    on_disk = _on_disk_digests()
     planted = "\ndigest " + "f" * 64 + " claimed by nobody\n"
     for rel in hand:
         if rel in UPSTREAM_HASH_EXEMPTIONS:
