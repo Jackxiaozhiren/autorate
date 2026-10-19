@@ -1466,3 +1466,26 @@ def test_the_drift_document_is_a_published_row_ordered_before_the_report():
     stale["mode1"][0]["realised_miscoverage"] = 0.012345
     assert render_drift(stale) != (REPO / DOC_REL).read_text(), (
         "the renderer ignores that figure, so the byte comparison it feeds cannot fail")
+
+
+def test_a_source_defect_in_the_envelope_lands_at_four_through_the_gate(tmp_path, monkeypatch, capsys):
+    """The gate re-measures the artefact, so a defect in the source it measures must reach the gate at 4.
+
+    `report.rederive_drift` calls `drift_envelope.build_artefact`, which reads `autorate.drift` again; the arm
+    caught only the usage class, so `DriftEnvelopeState` -- a plain `RuntimeError`, and `cli.main` maps no
+    `RuntimeError` -- walked out of `verify` as exit 1. The tool path already refuses the identical defect at 4
+    (`test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes`), which is what made the gate's hole
+    invisible: the class rule 1 forbids had one covered caller and one uncovered one.
+
+    Plant: delete `WEIGHTED_ENVELOPE` from the declared module and drive `autorate verify`.
+    """
+    from autorate import cli, drift
+
+    monkeypatch.delattr(drift, "WEIGHTED_ENVELOPE")
+    monkeypatch.setenv("AUTORATE_FEISHU_ROOT", str(tmp_path / "no_corpus_here"))
+    monkeypatch.chdir(REPO)
+    rc = cli.main(["verify", "--protocol", "protocol.json"])
+    captured = capsys.readouterr()
+    assert rc == 4, (rc, (captured.err or captured.out)[-600:])
+    assert "WEIGHTED_ENVELOPE" in (captured.err + captured.out), (captured.err + captured.out)[-600:]
+    assert "Traceback" not in captured.err, captured.err[-600:]

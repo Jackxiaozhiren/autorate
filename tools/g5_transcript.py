@@ -327,7 +327,10 @@ def main(argv=None) -> int:
 
     try:
         text = render(read_record(Path(args.record)))
-    except (TranscriptRefusal, OSError, ValueError) as exc:
+    except (TranscriptRefusal, OSError, ValueError, RuntimeError) as exc:
+        # `RuntimeError` because the gap check reads the committed inventory through `load_published`, whose
+        # absence or wrong shape is that class; the emitter's own contract is 0 or 2 and it must write nothing
+        # (review MINOR -- the same rc-1 escape class as the gate's, reached from the other direction).
         print("tools/g5_transcript.py: %s" % exc, file=sys.stderr)
         return 2
     offenders = [(i, line) for i, line in enumerate(text.splitlines(), 1) if LEAK_RX.search(line)]

@@ -2492,3 +2492,50 @@ the producer change with `no clause of the note names n_cal_cases`, green after;
 `autorate severity ... --protocol protocol.json` under the fourteenth digest, and `verify` re-derives at
 `734 /734`, rc 0. No published figure moved -- only the sentence that describes which denominator each one
 used -- so this is not a re-freeze.
+
+## 2026-10-19 — the terminal review found three things this round had broken itself
+
+The review of the drift-publication stretch through the fourteenth freeze came back with one BLOCKER, two
+MAJORs and one MINOR, and all four are in code or prose that the round itself touched. They are recorded here in
+the order that shows what happened, not in severity order.
+
+**A gate path that escapes at rc 1.** `report.rederive_drift` re-measures the envelope by calling the producer's
+`build_artefact`, which re-reads `autorate.drift`. It caught `DriftEnvelopeUsage` and nothing else, so
+`DriftEnvelopeState` -- a `RuntimeError`, and `cli.main` maps no `RuntimeError` -- left `autorate verify` as a
+traceback at exit 1. The published contract says nothing escapes at 1, and the tool path already honoured it:
+`test_a_source_constant_that_has_vanished_refuses_by_name_on_both_axes` drives the same defect through
+`drift_envelope.main` and asserts 4. A defect with one covered caller and one uncovered caller is exactly how a
+green suite hides a contract hole. The arm now walks the same net the tool does -- usage, state, and the two
+catch-alls that a missing or unreadable constant arrives through -- and converts them to the table's own refusal
+at 4. Measured: the gate plant escaped as `AttributeError: module 'autorate.drift' has no attribute
+'WEIGHTED_ENVELOPE'` before the change, and returns 4 naming `WEIGHTED_ENVELOPE`, with no traceback, after.
+
+**A note that contradicts itself about which commit the transcript names.** The fourteenth round moved the G5
+note's `git archive` sentence to the re-exported commit and its denominators to 734/771, and left a later sentence
+in the same note still reciting "`docs/G5.md` opens by saying it was produced from commit 9e6363a". The quoter row
+could not see it: its regex takes the first `git archive`-shaped mention and stops. So the frozen note asserted a
+false thing about a committed document, and because `docs/REPORT.md` quotes claim notes verbatim, the false thing
+ships in the technical report. The sentence no longer restates a sha at all -- the note names the unpacked commit
+once and refers to the transcript's own opening by description -- and the row now polices *every* commit-shaped
+token the note ties to that document, which is what made the stale second mention invisible.
+
+**A README breakdown that summed to the number it replaced.** The paragraph says the gap "is exactly 37 checks"
+and then enumerates "the 9 upstream `SOURCE.json` digests, the 26 snapshot keys", which is 35, and calls those
+"those 35" in the next sentence. The third term -- the contamination arm's two corpus-only re-digest checks, the
+very thing the fourteenth round established -- was missing, so the README and the note disagreed about what the
+same number is made of, and no row read that decomposition at all: the denominator row matches only `N /N values`,
+and the digit-residue row reads the protocol's notes, not the README. The sentence now names all three counts and
+a new row, `test_the_readme_lane_gap_breakdown_names_every_term_the_owner_counts`, checks each term against the
+committed inventory, the contamination declaration and `cli.corpus_only_comparisons`.
+
+**The emitter's own rc-1 hole (MINOR).** `tools/g5_transcript.py` refuses with exit 2 and writes nothing, but its
+gap check reads the committed inventory through `load_published`, whose absence is a `RuntimeError` -- outside the
+`(TranscriptRefusal, OSError, ValueError)` net -- so a run without the snapshot exited 1 with a traceback. It now
+refuses at 2, with a row that runs the emitter from a directory holding no `data/inventory.md.json` and fails the
+test if any exception escapes rather than an exit code.
+
+**Why this is a fifteenth emission.** The G5 note is authored in `autorate/protocol.py` and emitted into
+`protocol.json`, so correcting a sentence in it moves the protocol digest and every stamped artefact with it. The
+lane denominators do NOT move this round -- no comparison was added -- so `docs/G5.md` stays the record of the
+commit it names and needs no re-export: the quoter rows are satisfied by re-emitting the note, not by re-running
+the export.

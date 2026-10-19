@@ -683,3 +683,25 @@ def test_two_plants_answering_identically_are_refused(tmp_path):
     # ...and the collapse does not have to be with plant 1: any two plants on one outcome are the same defect
     with pytest.raises(TranscriptRefusal, match="same code and the same first clause"):
         _render(tmp_path, _minimal_record(**{"wrong_shape_snapshot.output": "DRIFT"}))
+
+
+def test_the_emitter_refuses_a_missing_snapshot_at_two_rather_than_escaping_one(tmp_path, monkeypatch):
+    """The writer reads the committed inventory to check the lane gap, and its contract is 0 or 2.
+
+    `corpus_only_comparisons()` with no argument goes through `load_published`, which raises a `RuntimeError`
+    subclass when the declared file is absent -- and `main` caught only `(TranscriptRefusal, OSError,
+    ValueError)`, so the emitter exited 1 with a traceback on the one path where it promised to "refuse with
+    exit 2 and write nothing" (review MINOR). Plant: run the emitter from a directory with no
+    `data/inventory.md.json`.
+    """
+    from tools import g5_transcript
+
+    record = _write(tmp_path, _minimal_record())
+    out = tmp_path / "G5.md"
+    monkeypatch.chdir(tmp_path)
+    try:
+        rc = g5_transcript.main(["--record", str(record), "--out", str(out)])
+    except Exception as exc:
+        pytest.fail("the emitter escaped %s instead of refusing at 2: %s" % (type(exc).__name__, exc))
+    assert rc == 2, rc
+    assert not out.exists(), "a document was written from an inventory the emitter could not read"

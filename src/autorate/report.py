@@ -2351,7 +2351,13 @@ def rederive_drift(expect, expect_rubric, rubric=None) -> None:
             "did" % (DRIFT_JSON, trials))
     try:
         fresh = drift_envelope.build_artefact(trials)
-    except drift_envelope.DriftEnvelopeUsage as exc:
+    except (drift_envelope.DriftEnvelopeUsage, drift_envelope.DriftEnvelopeState,
+            LookupError, AttributeError) as exc:
+        # The same net the producer's tool path walks: a module the arm cannot read, or whose envelope no longer
+        # matches its own patterns, is a defect in the state this checkout declares (4), never the operator's
+        # (2) and never a traceback. `DriftEnvelopeState` is a `RuntimeError` and `cli.main` maps none of those,
+        # so catching only the usage class let `verify` escape at rc 1 -- the one code the published contract
+        # forbids (review BLOCKER; the tool path was already covered, which is what hid the gate's hole).
         raise PublishedArtefactUnavailable(
             "%s is declared published by report.DRIFT_JSON, was read here, and the artefact cannot be "
             "re-measured from it: %s. This is not a usage error: no argument selected this path, the table did"

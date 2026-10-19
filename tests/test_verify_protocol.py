@@ -612,6 +612,18 @@ def test_the_g5_transcript_is_the_only_owner_of_its_digits_and_every_quoter_tran
         "the note names commit %s and docs/G5.md names itself the product of %s -- one record, two owners"
         % (note_commit.group(1), recorded_commit.group(1)))
 
+    # Every commit-shaped token the note spends on the transcript, not just the one the `git archive` sentence
+    # carries. The fourteenth re-export moved the unpacked commit and left a second sentence in the same note
+    # reciting the old sha ("`docs/G5.md` opens by saying it was produced from commit ..."), which the
+    # single-match search above cannot see because it stops at the first mention. Review MAJOR #1: the note was
+    # self-contradictory and shipped that contradiction into `docs/REPORT.md`, which quotes it verbatim.
+    tied = re.findall(r"commit `?([0-9a-f]{7,40})`?", note)
+    assert tied, "the note names no commit at all, so the pairing is unquoted"
+    stale = sorted({t for t in tied if t != recorded_commit.group(1)})
+    assert not stale, (
+        "the note ties %s to the transcript while docs/G5.md names itself the product of %s -- a record and a "
+        "restatement of it, disagreeing inside the frozen document" % (stale, recorded_commit.group(1)))
+
     readme_commit = re.search(r"git archive` of commit `([0-9a-f]{7,40})`", readme)
     assert readme_commit, "README.md no longer names the commit the transcript was unpacked from"
     assert readme_commit.group(1) == recorded_commit.group(1), (
@@ -973,3 +985,37 @@ def test_readme_s_unpublished_list_agrees_with_the_artefacts_producers(in_repo):
         for producer in stems:
             assert producer.split("_")[0] not in sentence or producer in sentence, (
                     "README calls %r unpublished in %r while an artefact names it as produced" % (producer, sentence[:160]))
+
+
+def test_the_readme_lane_gap_breakdown_names_every_term_the_owner_counts():
+    """README decomposes the corpus-only gap in prose; the decomposition has to be the owner's sum, term by term.
+
+    `cli.corpus_only_comparisons` counts three arms. The README sentence said "exactly 37 checks" and then
+    enumerated only the digests and the snapshot keys -- 9 + 26 -- and called those "those 35", so the paragraph
+    contradicted itself and dropped the contamination arm's re-digest checks (review MAJOR #2). No existing row
+    saw it: the denominator row matches `N /N values` shapes, and the digit-residue row reads protocol notes,
+    not the README. This row reads the breakdown itself and requires each named count to be the count the owner
+    computes and the terms to sum to the gap.
+    """
+    from autorate.cli import corpus_only_comparisons
+
+    text = re.sub(r"\s+", " ", (REPO / "README.md").read_text())
+    stated = re.search(r"The gap is exactly (\d+) checks: the (\d+) upstream `SOURCE\.json` digests, "
+                       r"the (\d+) snapshot keys[^.]*?and (?:the )?(\d+)[^.]*?(?:re-digest|corpus-only)[^.]*?checks", text)
+    assert stated, (
+        "README no longer states the lane gap as digests + snapshot keys + contamination corpus-only checks, "
+        "so this row cannot check its arithmetic against the owner: %r" % text[text.find("The gap is exactly"):
+                                                                              text.find("The gap is exactly") + 320])
+    gap, digests, keys, contamination = (int(g) for g in stated.groups())
+    inv = json.loads((REPO / "data" / "inventory.md.json").read_text())
+    assert digests == len(inv["digests"]), (
+        "README says %d `SOURCE.json` digests; the committed inventory holds %d" % (digests, len(inv["digests"])))
+    assert contamination == len(report.CONTAMINATION_CORPUS_ONLY_CHECKS), (
+        "README counts %d contamination corpus-only checks; the arm declares %d"
+        % (contamination, len(report.CONTAMINATION_CORPUS_ONLY_CHECKS)))
+    expected = corpus_only_comparisons(inv)
+    assert (digests + keys + contamination) == gap == expected, (
+        "README breaks the gap down as %d + %d + %d = %d while `cli.corpus_only_comparisons` counts %d"
+        % (digests, keys, contamination, gap, expected))
+    assert "those %d do not run" % (digests + keys) not in text.replace("  ", " "), (
+        "README still calls the two-term sum the thing a corpus-less run skips")

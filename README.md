@@ -139,9 +139,10 @@ from their committed pin. What a 734 run
 cannot prove is what its own disclosure says in so many words --
 `this run cannot see whether that snapshot went stale`. The gap is exactly 37
 checks: the 9 upstream `SOURCE.json` digests, the 26 snapshot keys a corpus-present run
-recomputes instead of reading back. On a machine without the archive those 35 do not run at
-all; the figures they would test exist there only as the transcription, so a snapshot that
-had drifted from the corpus would agree with itself and report 734 /734.
+recomputes instead of reading back, and the 2 corpus-only re-digest checks the contamination
+arm makes against the upstream results file. On a machine without the archive those 37 do not
+run at all; the figures they would test exist there only as the transcription, so a snapshot
+that had drifted from the corpus would agree with itself and report 734 /734.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
