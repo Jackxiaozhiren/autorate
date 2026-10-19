@@ -4,10 +4,10 @@ from importlib.metadata import version as _dist_version
 # bumped and nothing in the suite could notice.
 __version__ = _dist_version("autorate")
 
-from .certificate import Certificate, Reason  # noqa: F401
-from .certify_choice import certify_choice  # noqa: F401
-from .gate import Gate  # noqa: F401
-from .records import (  # noqa: F401
+from .certificate import Certificate, Reason
+from .certify_choice import certify_choice
+from .gate import Gate
+from .records import (
     NOUL_SLOTS,
     QTYPES,
     Record,

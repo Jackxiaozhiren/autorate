@@ -1428,6 +1428,41 @@ def test_no_committed_file_carries_an_absolute_home_path():
         "the guard is vacuous"
 
 
+def test_no_source_file_suppresses_the_linter_and_the_config_declares_no_per_file_exempt():
+    """AGENTS.md rule 11 states this absolutely -- no inline waiver, no per-file exclusion -- and nothing policed it.
+
+    Five `F401` waivers sit in the two package `__init__.py` files, which is the harmless case (a re-exported name
+    looks unused to a linter) but is also the shape a real suppression takes: an inline marker on the line the gate
+    would otherwise flag. `src/autorate/__init__.py` already lists every one of those names in `__all__`, which
+    ruff treats as a use, so its waivers certify nothing; the reader's does, so it gains an `__all__` instead of a
+    comment. The plan documents under `docs/superpowers/` quote the rule and are excluded on purpose -- this scans
+    Python sources, where a waiver would hide a defect from the command CI runs. The marker is assembled from
+    pieces so this file cannot become the offender it is looking for, the same trick the machine-path guard uses
+    for a home directory.
+    """
+    marker = "#" + " noqa"
+    names, source = _tracked_subjects(REPO)
+    assert names, "empty subject from %s; the guard would pass vacuously" % source
+    flagged = {}
+    for rel in names:
+        if not rel.endswith(".py"):
+            continue
+        text = (REPO / rel).read_text()
+        hits = [i + 1 for i, line in enumerate(text.splitlines()) if marker in line]
+        if hits:
+            flagged[rel] = hits
+    assert not flagged, (
+        "%s suppress the linter inline, which AGENTS.md rule 11 forbids; express the intent instead -- an "
+        "`__all__` entry for a re-export, or remove the name" % flagged)
+    pyproject = (REPO / "pyproject.toml").read_text()
+    exempt = [section for section in ("per-file-ignores", "extend-per-file-ignores", "force-exclude")
+              if section in pyproject]
+    assert not exempt, (
+        "pyproject.toml declares %s, which is a per-file exclusion to clear a gate; the rule says the selection "
+        "applies to every file" % exempt)
+    assert marker in "import os  #" + " noqa: F401", "the marker assembled here is not the one written there"
+
+
 def test_the_path_guard_scans_a_manifest_when_there_is_no_repository(tmp_path, monkeypatch):
     """The export case: no `.git`, so the subject must come from the manifest -- and still bite."""
     (tmp_path / "docs").mkdir()

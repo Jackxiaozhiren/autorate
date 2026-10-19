@@ -57,6 +57,13 @@ rule the gate enforces.
     `uv run --frozen --extra dev ruff check src tests tools --select=E9,F63,F7,F82,F401,F811 --line-length=120`.
     No `# noqa` and no per-file exclusion to clear a gate, and never relax an assertion to make a check pass:
     if the gate is wrong that is a ruling in the ledger with a reason, not a quieter test.
+    `tests/test_cli.py::test_no_source_file_suppresses_the_linter_and_the_config_declares_no_per_file_exempt`
+    refuses both -- an inline waiver anywhere in the tree, and a `per-file-ignores` section. A re-export belongs in
+    `__all__`, which the linter reads as a use, not in a comment.
+11b. A suite run needs the shipped console script on `PATH`: `uv run --frozen pytest` provides it, a bare
+    `.venv/bin/python3 -m pytest` from another checkout does not, and the rows that drive `autorate` as a process
+    (the rc-1 sweep and the refusal battery in `tests/test_inventory.py`) assert rather than skip, which is the
+    behaviour wanted -- a contract sweep that degrades to calling a function certifies a different surface.
 12. **A test that is green on arrival proves nothing.** Write the failing assertion first and keep the RED
     output. For every guard added, plant the defect it exists to catch, record the exit code, then restore
     byte-identically and prove the restore with `cmp`.
