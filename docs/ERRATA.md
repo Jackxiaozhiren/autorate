@@ -2571,8 +2571,58 @@ note: the sixteenth emission. Two comments that had begun reciting lane totals -
 expires the moment an arm grows.
 
 **The sixteenth emission.** `freeze16.sh` emitted the protocol at 2026-10-19, digest
-`50941330a77e40d1a26f7c1e0f9a5f9b4ce9f5e9a7b0e2f7c4a5f7c0c0a9ea5d` (fixed point proved by a second emission); the
+`50941330a77eeda819df4964d6fd4cc40a5c204fc48054b2d1e4156a0331b982` (fixed point proved by a second emission); the
 stamped artefacts moved only in `meta.protocol_digest`, and the published documents re-rendered from their
 producers. `docs/G5.md` is the transcript of `73e3a63`, the commit that widened the arm, and reports that
 commit's own protocol digest -- the staleness row reads it out of the object database rather than from the
 reader's tree, which is why a re-export and a re-freeze can land in either order without either one lying.
+
+## 2026-10-19 -- a frozen note remembered a list it did not own, and this document retyped a digest (#118)
+
+Two sentences said something the repository contradicts, and both were in prose no gate read.
+
+**The G5 note's exception list.** The note closed its account of what `verify` re-derives with "`drift.py` and
+`contamination.py` have no published artefact, so those figures are absent from both denominators rather than
+re-derived". Both halves are false as of this branch: #107 committed `data/contamination_probe.json` and #110
+committed `data/drift_envelope.json`, each with a `verify` arm that reads it through `load_published` and each
+rendering a document in `cli.PUBLISHED_DOCS`, so their comparisons are inside BOTH denominators. The owner of
+that list has been `report.UNPUBLISHED_SURFACES` since the eleventh freeze -- its own comment records `drift.py`
+leaving -- and README transcribes the tuple under a guard that refuses a stale copy. The note carried a second,
+unguarded copy, so the guard could not see it. Fixed at the emitter rather than in the document:
+`protocol.G5_EXCEPTION_CLAUSE` builds the sentence from the tuple (with the singular and plural spellings, and a
+distinct wording for the day the tuple empties), and `tests/test_verify_protocol.py::test_the_g5_note_s_exception_list_is_transcribed_from_the_owner_not_remembered`
+refuses a clause that names a surface a committed artefact claims as its producer. The row was RED before the
+fix, naming all three violations -- the count mismatch and both producer collisions -- and
+`test_a_note_exception_clause_that_names_a_published_surface_is_refused` plants `drift.py` back into the clause to
+prove the predicate, not just the note, can fail.
+
+**This document's own retyped digest.** The sixteenth-round entry above stated that emission's protocol digest
+with the right twelve hex digits, `50941330a77e`, and a tail of fifty-two that belongs to no digest this
+repository has ever computed. The value was written from the shape of the log line rather than copied out of it.
+Corrected above, in today's own entry, to the digest the emission printed and the certificates carry:
+`50941330a77eeda819df4964d6fd4cc40a5c204fc48054b2d1e4156a0331b982` -- read from `t116/freeze16-run.txt` and
+confirmed against `git show 3b27aff:data/cert_laya.json`'s `meta.protocol_digest`, two independent witnesses of
+one value. The bad tail is described rather than reprinted, because the guard below refuses any 64-hex token in
+this document that no digest function produces, and a disclosure that reintroduces the unbacked hash would be
+citing the freeze that never ran all over again. The defect is the thing worth recording, and recording it is
+possible without publishing it: a hash is this project's identifier, and a hash that matches no emission is a
+citation of a freeze that never happened.
+
+`tests/test_errata_digests.py` is the guard the second defect needed. It recomputes `protocol_digest` for every
+committed revision of `protocol.json`, adds the working tree's own so a round can cite its own emission before it
+is committed, and unions that with `file_digest` over the tracked files, then refuses any 64-hex token in
+`docs/ERRATA.md` or `README.md` outside that set. It was RED on the retyped tail and it accepts the seven real
+digests the earlier entries cite, so the pass is a measurement and not an empty census;
+`test_a_real_digest_with_a_fabricated_tail_is_refused` builds a plant from two real emissions -- one's prefix, the
+other's tail -- and asserts the census names it while still accepting the true value. The scope is asserted in the
+same file rather than assumed: `docs/VERIFICATION.md` must hold no full digest (its hashes are upstream revisions
+this repository cannot recompute), and the producer-rendered documents must hold some.
+
+**The seventeenth emission.** `freeze17.sh` emitted the protocol at 2026-10-19 with digest
+`caece11fbd8133498f4d78f2f8a1174cc41df31cb6ce163e1fe85fe74b80c76c` (fixed point proved: `protocol.json is stable:
+one emission covered the round`), re-stamped seven artefacts -- every one of them moved in `meta.protocol_digest`
+and nowhere else -- and re-rendered the published documents from their producers. No comparison was added or
+removed, so both lane denominators hold and were printed again at STEP 8: `re-derived 773 /773 values` with the
+corpus absent and `810 /810` with it present, plain and `--protocol`, all at rc 0. `docs/G5.md` therefore stays
+the transcript of `73e3a63` and needs no re-export: the rule this branch now enforces is that a re-export is owed
+when the comparisons move, not when a sentence is repaired.

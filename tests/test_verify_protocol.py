@@ -987,6 +987,87 @@ def test_readme_s_unpublished_list_agrees_with_the_artefacts_producers(in_repo):
                     "README calls %r unpublished in %r while an artefact names it as produced" % (producer, sentence[:160]))
 
 
+G5_EXCEPTION_HEAD = "'every published number' means "
+G5_EXCEPTION_TAIL = " The record is a record OF a revision"
+
+
+def _g5_exception_clause(note):
+    """The note's own words about what the gate does NOT re-derive, sliced out of the frozen text."""
+    return re.search(re.escape(G5_EXCEPTION_HEAD) + r"(.*?)" + re.escape(G5_EXCEPTION_TAIL), note)
+
+
+def _exception_clause_violations(clause_text, owner, stems):
+    """Every way a claim of the form "X publishes nothing" can be wrong, as a list of sentences.
+
+    One predicate, two callers: the live note has to produce no violations, and the planted note below has to
+    produce one. Written as a function because a row that re-implements its own plant proves nothing about the
+    row that polices the release.
+    """
+    violations = []
+    named = sorted(set(re.findall(r"`([a-z0-9_]+\.py)`", clause_text)))
+    if not named:
+        violations.append("the clause names no surface, so it cannot be checked against the owner")
+    if named != sorted(owner):
+        violations.append("names %s where the owner names %s" % (named, sorted(owner)))
+    for module in named:
+        stem = module[:-len(".py")]
+        hits = sorted(producer for producer in stems if stem in producer)
+        if hits:
+            violations.append("%s is called unpublished while an artefact names %s as its producer"
+                              % (module, hits))
+    return violations, named
+
+
+def test_the_g5_note_s_exception_list_is_transcribed_from_the_owner_not_remembered(in_repo):
+    """The frozen note carried its own copy of the unpublished-surface list, and it went stale like copies do.
+
+    `report.UNPUBLISHED_SURFACES` gave up `contamination.py` at the eleventh freeze, when
+    `data/contamination_probe.json` landed with that tool in its `producer` field, and gave up `drift.py` when
+    #110 published `data/drift_envelope.json` -- the owner's comment says both in as many words. The G5 note
+    still read "`drift.py` and `contamination.py` have no published artefact, so those figures are absent from
+    both denominators rather than re-derived", which this round's `verify` refutes by counting: both families
+    ARE compared, and their comparisons are inside both denominators. README's copy of the same list is policed
+    by the row above; nothing read the note's, because the note is emitted by `protocol.py` and the row that
+    could have seen it keyed on README. The slice is anchored on the two sentences that bracket the clause, so
+    the row goes red if the clause is deleted (no witness) as well as if it names a published surface.
+    """
+    from autorate.report import UNPUBLISHED_SURFACES
+
+    note = _folded_notes()["G5"]
+    clause = _g5_exception_clause(note)
+    assert clause, (
+        "the G5 note no longer states its exception list between %r and %r, so the sentence this row polices "
+        "has no witness -- re-anchor this row, do not delete the clause" % (G5_EXCEPTION_HEAD, G5_EXCEPTION_TAIL))
+    stems = _published_surface_stems()
+    assert stems, "no committed artefact names a producer, so this row could not refuse anything"
+    violations, named = _exception_clause_violations(clause.group(1), UNPUBLISHED_SURFACES, stems)
+    assert not violations, (
+        "the frozen G5 note contradicts the tree about what it re-derives: %s -- emit the clause from "
+        "`report.UNPUBLISHED_SURFACES` in `protocol.py` instead of remembering it here" % violations)
+    assert named, "an empty clause would pass the predicate, so the row asserts a clause exists"
+
+
+def test_a_note_exception_clause_that_names_a_published_surface_is_refused(in_repo):
+    """The row above has to be able to fail, and it fails the way the defect actually arrived.
+
+    Plant: put `drift.py` into the clause while the artefact that proves it published stays under `data/`. Both
+    halves of the predicate fire -- the equality against the owner and the producer census -- so neither is
+    decorative, and the plant is checked to have landed inside the slice rather than beside it.
+    """
+    from autorate.report import UNPUBLISHED_SURFACES
+
+    clause = _g5_exception_clause(_folded_notes()["G5"])
+    assert clause, "the live note has no exception clause, so this plant has nothing to corrupt"
+    planted_text = clause.group(1).rstrip() + " `drift.py` too publishes nothing."
+    violations, named = _exception_clause_violations(planted_text, UNPUBLISHED_SURFACES,
+                                                    _published_surface_stems())
+    assert violations, "the planted clause was accepted, so the live row is asserting nothing about staleness"
+    assert "drift.py" in named, "the planted name vanished from the extraction: %s" % named
+    assert any(v.startswith("drift.py is called unpublished") for v in violations), (
+        "the plant was refused only for its count, not by the producer census, so the census half never fired "
+        "here: %s" % violations)
+
+
 def test_the_readme_lane_gap_breakdown_names_every_term_the_owner_counts():
     """README decomposes the corpus-only gap in prose; the decomposition has to be the owner's sum, term by term.
 

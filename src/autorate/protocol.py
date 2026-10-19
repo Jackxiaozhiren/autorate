@@ -46,9 +46,28 @@ from .certificate import N_CLAIMS, PUBLISHED_RUBRIC, SHAPE_VERSION
 from .inventory import MASSIVE_PIN_LABEL, massive_pin
 from .records import QTYPES
 from .report import (CERTS, INVENTORY_JSON, MASSIVE_CERTIFICATES, RECORDS,
-                     PublishedArtefactUnavailable, load_published, read_certificate)
+                     PublishedArtefactUnavailable, load_published, read_certificate,
+                     UNPUBLISHED_SURFACES)
 
 PROTOCOL_VERSION = 1
+
+# The G5 note's exception list has one owner: `report.UNPUBLISHED_SURFACES`, the same tuple README's
+# unpublished sentence is policed against. Written into the note as prose it went stale twice over -- it named
+# `drift.py` after #110 gave it `data/drift_envelope.json`, and `contamination.py` after #107 gave it
+# `data/contamination_probe.json` -- so the sentence is emitted from the owner, and a surface can only leave it
+# by landing an artefact the gate re-derives rather than by someone remembering to edit a frozen string.
+_SPOKEN_UNPUBLISHED = " and ".join("`%s`" % s for s in UNPUBLISHED_SURFACES) if len(
+    UNPUBLISHED_SURFACES) < 3 else ", ".join(
+        "`%s`" % s for s in UNPUBLISHED_SURFACES[:-1]) + ", and `%s`" % UNPUBLISHED_SURFACES[-1]
+if not UNPUBLISHED_SURFACES:
+    G5_EXCEPTION_CLAUSE = ("every figure this build computes reaches a committed artefact the gate re-derives, "
+                           "so nothing this build publishes is absent from the denominators")
+elif len(UNPUBLISHED_SURFACES) == 1:
+    G5_EXCEPTION_CLAUSE = ("%s is the surface this build tests without publishing, so its figures are absent "
+                           "from both denominators rather than re-derived" % _SPOKEN_UNPUBLISHED)
+else:
+    G5_EXCEPTION_CLAUSE = ("%s are the surfaces this build tests without publishing, so their figures are "
+                           "absent from both denominators rather than re-derived" % _SPOKEN_UNPUBLISHED)
 
 # The document's own field order, which is also its canonical order: `render_protocol` writes these
 # keys in this sequence, so the bytes -- and therefore the digest -- do not depend on the ordering a
@@ -248,8 +267,9 @@ NON_G1_CLAIMS = (
                 "license: the no-network claim covers the gate steps, not the `uv sync` that provisions "
                 "them; the corpus-present lane needs an archive that is not a committed file, so no runner "
                 "reproduces that lane and it stays a local obligation; 'every published number' means the "
-                "numbers this gate owns, and `drift.py` and `contamination.py` have no published "
-                "artefact, so those figures are absent from both denominators rather than re-derived. The "
+                "numbers this gate owns -- "
+                + G5_EXCEPTION_CLAUSE
+                + ". The "
                 "record is a record OF a revision, so the revision is named twice rather than related: "
                 "`docs/G5.md` opens by naming the commit it was produced from, which is the commit this note says "
                 "the export unpacked, and the row named above polices EVERY commit the note ties to that "
