@@ -63,8 +63,14 @@ uv run --frozen autorate compare data/cert_laya.json data/cert_jev.json
 uv run --frozen autorate gate data/records_feishu.jsonl --cert data/cert_jev.json --limit 5
 uv run --frozen autorate report --out docs/RESULTS.md   # write the published numbers
 uv run --frozen autorate report --full               # write docs/REPORT.md, one document for a reviewer
+uv run --frozen autorate emit-docs                   # re-render EVERY document the publication table declares
 uv run --frozen autorate verify                          # re-derive them, fail on drift
 ```
+
+`emit-docs` takes its list from `cli.PUBLISHED_DOCS` -- the same table `verify` byte-compares -- so there is no
+per-document command to forget and no second list to keep in sync. It renders everything before it writes
+anything: a document whose artefact is missing is a refusal at exit 4, not a partially updated tree. `--out-dir`
+writes somewhere else, and `--only PATH` narrows the run to declared documents.
 
 The `uv run --frozen` prefix is not decoration: the console script is not on `PATH`
 after `uv sync`, and a bare `pytest` on this machine resolves to a different

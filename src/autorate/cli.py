@@ -1147,6 +1147,58 @@ def cmd_protocol(args) -> int:
     return 0
 
 
+def cmd_emit_docs(args) -> int:
+    """Re-render every document `PUBLISHED_DOCS` declares, from that table and no other list.
+
+    `verify` already byte-compares each row, so a stale document cannot pass the gate; what it could not do is
+    tell a reader how to regenerate one. Every freeze round until now re-rendered from a script kept outside this
+    repository, so the published tree described its own production without carrying it. The loop here IS the
+    table: the set this writes and the set the gate compares cannot diverge, and the command a clone needs is in
+    the clone.
+
+    Two-phase on purpose -- every document is rendered before any is written. A row whose artefact is missing
+    raises `PublishedArtefactUnavailable` (exit 4: nothing the operator typed is wrong), and a run that had
+    already written the earlier documents would leave a half-updated tree with a loud message, which is the
+    state a freeze round must never hand to the digest step.
+    """
+    root = Path(args.out_dir).resolve() if args.out_dir else Path.cwd()
+    rows = list(PUBLISHED_DOCS)
+    if args.only:
+        declared = {str(path) for path, _render in rows}
+        unknown = sorted({name for name in args.only if name not in declared})
+        if unknown:
+            print("USAGE: %s names no document in `cli.PUBLISHED_DOCS` (%s); the table is what this command "
+                  "writes, and a document it does not declare is not publishable from here"
+                  % (", ".join(unknown), ", ".join(sorted(declared))), file=sys.stderr)
+            return EXIT_USAGE
+        wanted = set(args.only)
+        rows = [(path, render) for path, render in rows if str(path) in wanted]
+    targets = []
+    for path, render in rows:
+        # A declared path that leaves the destination is a defect in the table, not a request to obey it: the
+        # operator named nothing, so the repository's own state is at fault (exit 4).
+        target = (root / str(path)).resolve()
+        if not target.is_relative_to(root):
+            raise PublishedArtefactUnavailable(
+                "%s is declared published by cli.PUBLISHED_DOCS, but it resolves to %s, outside the destination "
+                "%s. This is not a usage error: no argument selected that path, the table did."
+                % (str(path), target, root))
+        targets.append((path, render, target))
+    inv, _ = _inventory()
+    records = load_records(Path(RECORDS))
+    rendered = [(path, target, render(inv, records),
+                 target.read_text() if target.exists() else None)
+                for path, render, target in targets]
+    for path, target, text, before in rendered:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        after = target.read_text()
+        state = "NEW" if before is None else ("CHANGED" if before != after else "identical")
+        print("  wrote %-24s %6d bytes  %s" % (str(path), len(after), state))
+    print("documents written: %d (PUBLISHED_DOCS has %d rows)" % (len(rendered), len(PUBLISHED_DOCS)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="autorate")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -1287,6 +1339,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="which freeze to enforce (default %s, read as a published artefact)"
                         % PROTOCOL_JSON)
     v.set_defaults(fn=cmd_verify)
+    d = sub.add_parser("emit-docs", help="re-render the documents `cli.PUBLISHED_DOCS` declares, from the "
+                                         "inputs those documents are built from -- the same table `verify` "
+                                         "byte-compares")
+    d.add_argument("--out-dir", default=None,
+                   help="where to write (default the current directory, i.e. the checkout being published)")
+    d.add_argument("--only", action="append", default=None, metavar="PATH",
+                   help="restrict the run to these documents; each must be a path the table declares")
+    d.set_defaults(fn=cmd_emit_docs)
     return p
 
 
