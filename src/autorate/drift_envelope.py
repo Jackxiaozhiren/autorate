@@ -122,16 +122,17 @@ DOC_WIDTH = 92
 #: compared only `agrees` and `measured`, and a forged cited figure -- `envelope_states` moved from 0.0933 to
 #: 0.0999, its document re-rendered from the forged bytes -- passed the whole `--check` at rc 0 (measured on
 #: `2acf379` before this change). A published figure the module no longer states must not be able to do that.
-RECHECK_CLAIM_FIELDS = ("agrees", "measured", "envelope_states")
+RECHECK_CLAIM_FIELDS = ("agrees", "measured", "envelope_states", "tolerance")
 #: The mode-1 fields, per published size row, INCLUDING the two figures the module is cited for: comparing
 #: only what this run measured would let the cited half of a row say anything at all.
-RECHECK_MODE1_FIELDS = ("realised_miscoverage", "standard_error", "three_se", "vacuous_share",
-                        "envelope_cited", "vacuous_share_cited_in_envelope")
+RECHECK_MODE1_FIELDS = ("realised_miscoverage", "standard_error", "three_se", "vacuous_share", "envelope_cited",
+                                 "vacuous_share_cited_in_envelope", "trials", "vacuous_trials",
+                                 "vacuous_share_three_se", "cited_agrees_within_measured_three_se")
 #: The mode-2 figure fields, per published construction and per control. The two cited halves are optional --
 #: a control publishes no envelope figure -- so they are compared through `_both`, which keeps "absent" and
 #: "null" two different states instead of letting a deleted key read as a null the producer also emits.
-RECHECK_MODE2_FIELDS = ("realised_long_run_rate", "regret_bound", "deviation_from_alpha",
-                        "envelope_cited_rate", "envelope_cited_bound")
+RECHECK_MODE2_FIELDS = ("realised_long_run_rate", "regret_bound", "deviation_from_alpha", "envelope_cited_rate",
+                                 "envelope_cited_bound", "violates_bound", "clip_observable")
 #: The two quantities that say a published recipe still names the sequence that was measured. The guard below
 #: covers both in one sentence; the gate's arm compares them field by field, so a refusal names which one.
 RECHECK_MODE2_RECIPE_FIELDS = ("sequence_digest_sha256", "rounds")

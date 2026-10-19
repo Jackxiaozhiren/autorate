@@ -1489,3 +1489,93 @@ def test_a_source_defect_in_the_envelope_lands_at_four_through_the_gate(tmp_path
     assert rc == 4, (rc, (captured.err or captured.out)[-600:])
     assert "WEIGHTED_ENVELOPE" in (captured.err + captured.out), (captured.err + captured.out)[-600:]
     assert "Traceback" not in captured.err, captured.err[-600:]
+
+
+def test_every_figure_the_drift_document_prints_is_compared_by_the_gate(tmp_path, monkeypatch):
+    """#117: `verify` claims every published number re-derives, so the claim is measured leaf by leaf.
+
+    How it measures rather than asserts: mutate ONE leaf of the committed artefact, re-render `docs/DRIFT.md`
+    through the producer's own renderer, and ask whether the document's bytes moved. A leaf that moves the
+    document is a published figure, and every published figure has to be compared against the re-measured
+    artefact -- so the set of such leaves must be a subset of the fields the arm actually compares. That set is
+    taken from `rederive_drift`'s own labels rather than from a list typed into this row, because a literal here
+    would be a second owner of the coverage claim and would go stale exactly the way `owned["G5"]` did.
+
+    Leaves that do NOT move the document are provenance, digests and the envelope's own wording: they are the
+    producer's inputs and the module's text, and the document publishes no number read from them, so the gate
+    owes them no comparison -- stated rather than left to a reader's guess.
+    """
+    import copy
+    import json as _json
+
+    from autorate import report
+
+    doc = _json.loads((REPO / ARTEFACT_REL).read_text())
+    base = report.render_drift(copy.deepcopy(doc))
+
+    compared = set()
+    report.rederive_drift(lambda label, actual, wanted: compared.add(label),
+                          lambda label, actual, wanted: compared.add(label))
+
+    def walk(o, path=()):
+        if isinstance(o, dict):
+            for key, value in o.items():
+                yield from walk(value, path + (key,))
+        elif isinstance(o, list):
+            for index, value in enumerate(o):
+                yield from walk(value, path + (index,))
+        else:
+            yield path, o
+
+    published, skipped, wording, declared_excluded = [], [], 0, []
+    for path, value in walk(doc):
+        # A string leaf that reaches the document is WORDING, and wording has its own owners: the envelope-copy
+        # check refuses a document whose sentences no longer match the module, and `PUBLISHED_DOCS` byte-compares
+        # the rendered file. A number or a decision printed in the document is the class with no such owner: if
+        # no arm compares it against the re-measured artefact, nothing checks that it is still the measurement.
+        if isinstance(value, str):
+            wording += 1
+            continue
+        probe = copy.deepcopy(doc)
+        cursor = probe
+        for step in path[:-1]:
+            cursor = cursor[step]
+        leaf = path[-1]
+        if isinstance(value, bool):
+            cursor[leaf] = not value
+        elif isinstance(value, (int, float)):
+            cursor[leaf] = value + 1
+        else:
+            continue
+        try:
+            moved = report.render_drift(probe) != base
+        except Exception:
+            # A renderer that refuses on the mutated value is itself a reaction to that field, so it counts as
+            # published rather than being skipped -- silence here would hide the class this row hunts.
+            moved = True
+        if not moved:
+            skipped.append("/".join(str(step) for step in path))
+            continue
+        # `provenance` is the measurement's own declared inputs -- the scale, the seeds, the sizes and the
+        # constants the module states. No re-measurement can settle those from outside: the arm READS
+        # `trials_per_size` and measures at it, so mutating it moves the measurement instead of contradicting
+        # it. They are policed where policing exists -- against `autorate.drift`'s constants by
+        # `read_module_provenance`, and against the module's wording by the envelope-copy check -- and the
+        # exclusion below is asserted to be exactly that subtree, so no other figure can join it quietly.
+        if path[0] == "provenance":
+            declared_excluded.append("/".join(str(step) for step in path))
+            continue
+        fields = {str(step) for step in path if isinstance(step, str)}
+        if not any(field in lab for lab in compared for field in fields):
+            published.append("/".join(str(step) for step in path))
+    assert not published, (
+        "%d figure(s) the drift document prints are compared by no arm of `verify`: %s -- widen the producer's "
+        "RECHECK_* lists (the tool path reads the same lists, so --check widens with the gate)"
+        % (len(published), published[:12]))
+    assert declared_excluded and all(p.startswith("provenance/") for p in declared_excluded), (
+        "the excluded set left the provenance subtree, so figures are outside the guard's reach: %s"
+        % [p for p in declared_excluded if not p.startswith("provenance/")][:6])
+    assert wording, "no string leaf at all, so the wording/figure split this row draws has no subject"
+    assert len(skipped) > 0, (
+        "nothing was skipped, so the comparison set may as well be the whole artefact -- this row would then"
+        " pass on an artefact whose every field is published")
