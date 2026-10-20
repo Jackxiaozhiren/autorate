@@ -2527,6 +2527,12 @@ def check_g3_contrast(doc: dict, rubric_fields) -> dict:
     extra = sorted(set(doc) - set(G3_CONTRAST_TOP_FIELDS))
     if extra:
         raise ValueError("the G3 contrast document carries keys %s, which this build does not read" % extra)
+    if not isinstance(doc["rubric"], dict):
+        # The three row blocks below get this guard from their own loop; `rubric` is read by set arithmetic
+        # first, so a committed `"rubric": null` reached `set(doc["rubric"])` and raised `TypeError` -- a class
+        # `cli.main` maps nothing for, at a path this build declares published, which is rc 1.
+        raise ValueError("the G3 contrast document's `rubric` is a JSON %s, not a row of budget fields"
+                         % type(doc["rubric"]).__name__)
     missing_budget = sorted(set(rubric_fields) - set(doc["rubric"]))
     if missing_budget:
         raise ValueError("the G3 contrast document's `rubric` omits %s, which this build reads as the budget "
@@ -2549,14 +2555,17 @@ def check_g3_contrast(doc: dict, rubric_fields) -> dict:
         if unknown:
             raise ValueError("the G3 contrast document's `%s` carries %s, which this build does not read"
                              % (name, unknown))
-    n_cases = doc["population"]["n_cases"]
-    if not isinstance(n_cases, int) or isinstance(n_cases, bool) or n_cases < 1:
-        # The shape bound above says the key exists; this one says the value can be divided by. The document
-        # states how many records repeat a case by dividing the published `n_records` by this figure, and a
-        # `ZeroDivisionError` or a `TypeError` from a renderer is not a class `cli.main` maps -- rc 1 reached
-        # through the publication table, with no argument an operator typed.
-        raise ValueError("the G3 contrast document's population carries `n_cases` = %r, which `docs/G3.md`"
-                         " divides its `n_records` by to state how many records repeat one case" % (n_cases,))
+    for name in ("n_records", "n_cases"):
+        value = doc["population"][name]
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            # The shape bound above says the key exists; this one says the value can be divided and printed.
+            # The document states how many records repeat a case by dividing the published `n_records` by the
+            # published `n_cases`, and both operands come from the committed bytes. A non-int dividend raises
+            # `TypeError` and a zero divisor raises `ZeroDivisionError`, which `cli.main` maps only as far as
+            # `ArithmeticError` -- so the dividend was the class that would have escaped the contract at rc 1.
+            raise ValueError("the G3 contrast document's population carries `%s` = %r, which `docs/G3.md`"
+                             " uses to divide `n_records` by `n_cases` when it states how many records"
+                             " repeat one case" % (name, value))
     return doc
 
 
@@ -2599,9 +2608,15 @@ def rederive_g3_contrast(expect, expect_rubric, rubric_fields, rubric=None) -> N
             "contrast has no single population to measure. This is not a usage error -- no argument selected "
             "the table -- and it is not a value that disagrees: the artefact and its renderer have to be "
             "widened together" % (G3_CONTRAST_JSON, len(rows_by_label),
-                                  ", ".join(label for label, _row in rows_by_label) or "nothing"))
+                                  ", ".join(label for label, _row in rows_by_label)))
     for label, (rows, _stored, direction) in rows_by_label:
         records_path = SEVERITY_CERTS[label][0]
+        # The artefact names the program that wrote it, so that name is a published field like any other:
+        # without this row a forged `producer` drifts nothing, because the renderer prints the module constant
+        # rather than the field. `rederive_g1_feasibility` compares its artefact's producer for the same
+        # reason, and a self-description nobody checks is how an artefact ends up claiming another tool's
+        # provenance while its numbers are re-measured and agreed with.
+        expect("contrast %s.producer" % label, G3_CONTRAST_PRODUCER, doc["producer"])
         for name in rubric_fields:
             expect_rubric("contrast %s.%s" % (label, name), doc["rubric"][name], chosen[name])
         built = build_g3_contrast(records_path, rows, direction, chosen)
@@ -2682,9 +2697,13 @@ def render_g3_contrast(doc: dict) -> str:
         "## The one-sided gate: `%s`" % severity["module"],
         "",
     ]
-    lines += ["- `%s`: `%s`" % (field, _published_value(severity[field])) for field in
-              ("feasible", "reason", "ahat", "bound", "price_bound", "override_bound", "measured_violation",
-               "n_cal", "n_eval", "n_cal_cases", "n_eval_cases")]
+    # The printed set is the published row minus the two names the document gives its heading and its
+    # blockquote -- not a second list of the same eleven names, which is how a renamed field would end up
+    # missing from a document that still claims to print the row. If the owner list ever renames `module`, the
+    # filter stops matching it, the heading gains a field line, and the byte comparison of `docs/G3.md`
+    # refuses rather than shipping a silent widening.
+    printed = tuple(name for name in G3_CONTRAST_SEVERITY_FIELDS if name not in ("module", "summary"))
+    lines += ["- `%s`: `%s`" % (field, _published_value(severity[field])) for field in printed]
     lines += ["- verdict: %s" % _verdict_text(severity["feasible"], severity["reason"])]
     lines += [
         "",
@@ -2706,8 +2725,10 @@ def render_g3_contrast(doc: dict) -> str:
         "",
         "## What this artefact does not settle",
         "",
-        "On this population the set gate publishes nothing, so it reproduces nothing -- which is the",
-        "criterion's direction. That is not the wider claim the criterion is worded as. On a corner of the",
+        "On this population the set gate certifies no `qhat`, no automation rate and no bound; the verbatim",
+        "refusal above reports the candidate it rejected, which is a measurement about a refusal rather than a",
+        "figure this repository stands behind. So it reproduces nothing, which is the criterion's direction.",
+        "That is not the wider claim the criterion is worded as. On a corner of the",
         "generator where the set gate does certify (`shift = 0`, `error_rate = 0`), the interval's top",
         "endpoint yields a one-sided bound out of the coverage statement alone, so the bare sentence",
         "\"multiclass CP cannot express one\" is false for the ordinal interval construction; what survives",

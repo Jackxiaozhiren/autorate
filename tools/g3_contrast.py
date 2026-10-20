@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -101,7 +102,15 @@ def main(argv=None) -> int:
         return EXIT_USAGE
     try:
         protocol = resolve_protocol(args.protocol)
-        rubric = {name: protocol.rubric[name] for name in G3_CONTRAST_RUBRIC_FIELDS}
+    except (OSError, ValueError) as exc:
+        print("%s: %s: %s -- nothing was written" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
+        return EXIT_USAGE
+    rubric = {name: protocol.rubric[name] for name in G3_CONTRAST_RUBRIC_FIELDS}
+    # Measuring is a separate refusal from argument handling: the records, the certificate and the shape of
+    # the object assembled from them are all bytes this build's tables name, and no argument an operator typed
+    # selects or repairs them. A defect that surfaced here used to answer 2 -- the code README says names the
+    # operator -- because the certifier's `ValueError` shared the net with `--protocol` (review MINOR).
+    try:
         label, rows, _stored, direction = report.published_severity()
         records_path = report.SEVERITY_CERTS[label][0]
         built = report.build_g3_contrast(records_path, rows, direction, rubric)
@@ -113,22 +122,50 @@ def main(argv=None) -> int:
         print("%s: PUBLISHED ARTEFACT UNAVAILABLE: %s -- nothing was written" % (PRODUCER, exc),
               file=sys.stderr)
         return EXIT_DRIFT
-    except (OSError, ValueError) as exc:
-        print("%s: %s: %s -- nothing was written" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
-        return EXIT_USAGE
+    except (ArithmeticError, AttributeError, KeyError, OSError, TypeError, ValueError) as exc:
+        # The net `tools/drift_envelope.py`'s gate arm walks for the same reason: these are the classes a
+        # missing constant, an unreadable record or a shape this build cannot honour arrives through, and
+        # letting one escape would put rc 1 -- the code the published contract forbids -- on a run whose only
+        # input was the table's own path.
+        print("%s: PUBLISHED ARTEFACT UNAVAILABLE: %s: %s -- this run read the paths %s declares and could "
+              "not assemble the contrast from them; nothing was written"
+              % (PRODUCER, type(exc).__name__, exc, ARTEFACT), file=sys.stderr)
+        return EXIT_DRIFT
 
     # The write is inside a refusal, not outside one: an `--out` this process cannot write is an input the
     # operator named, and `tools/g1_feasibility.py` answers the identical input with 2. Letting `OSError`
     # escape here would put a traceback at rc 1, the one code the published contract forbids.
+    #
+    # Both destinations or neither. Each blob is rendered and serialised before either file is touched, then
+    # written beside its target and moved into place: an `--out` that landed and a `--doc` that then failed
+    # would leave the artefact and its document describing different runs while the handler below printed
+    # "nothing was written" over a file that exists.
+    moved = []
     try:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+        payload = json.dumps(doc, indent=2, sort_keys=True) + "\n"
+        pair = [(out, payload)]
         if args.doc is not None:
             document = Path(args.doc)
             document.parent.mkdir(parents=True, exist_ok=True)
-            document.write_text(text)
+            pair.append((document, text))
+        for path, body in pair:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            Path(str(path) + ".tmp").write_text(body)
+        for path, _body in pair:
+            os.replace(str(path) + ".tmp", str(path))
+            moved.append(str(path))
     except OSError as exc:
-        print("%s: %s: %s -- nothing was written" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
+        for path in pair:
+            try:
+                os.unlink(str(path[0]) + ".tmp")
+            except OSError:
+                pass
+        if moved:
+            print("%s: %s: %s -- PARTIAL WRITE: %s landed before the failure; the pair is not a single "
+                  "emission and must be re-run" % (PRODUCER, type(exc).__name__, exc, ", ".join(moved)),
+                  file=sys.stderr)
+        else:
+            print("%s: %s: %s -- nothing was written" % (PRODUCER, type(exc).__name__, exc), file=sys.stderr)
         return EXIT_USAGE
     print("wrote %s" % args.out)
     if args.doc is not None:

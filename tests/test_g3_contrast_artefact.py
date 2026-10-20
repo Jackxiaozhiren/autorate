@@ -155,25 +155,38 @@ def test_the_contrast_artefact_is_declared_and_its_reader_refuses_a_wrong_shape(
     # being a witness to that hole and the row needs a different example.
     assert not set(padded["rubric"]) - set(report.PUBLISHED_RUBRIC_FIELDS), padded["rubric"]
 
+    # `rubric` is read by set arithmetic before any row loop can type-check it, so it needs the same
+    # `isinstance` refusal the three row blocks get: a committed `"rubric": null` raised `TypeError` from the
+    # reader, and `cli.main` maps that class nowhere.
+    for not_a_row in (None, 5, "alpha", []):
+        broken_row = json.loads(json.dumps(doc))
+        broken_row["rubric"] = not_a_row
+        path.write_text(json.dumps(broken_row))
+        with pytest.raises(ValueError, match="not a row of budget fields"):
+            report.read_g3_contrast(path, cli.G3_CONTRAST_RUBRIC_FIELDS)
 
-def test_a_contrast_artefact_whose_population_has_no_cases_is_refused_before_the_renderer_divides(tmp_path):
-    """`n_cases` is a published value the document divides by, so its bound has to be about its value.
+
+def test_population_counts_the_renderer_divides_are_bounded_as_values_and_not_only_as_keys(tmp_path):
+    """Both operands of the document's repeats division are published, so both get a value bound.
 
     `render_g3_contrast` states how many records repeat one calibration case by dividing the published
-    `n_records` by the published `n_cases`. A shape contract that names the key but not its domain lets
-    `n_cases` = 0 reach that line, and `ZeroDivisionError` is not a class `cli.main` maps -- rc 1, the code
-    this project's contract forbids, arrived at through a document table rather than an argument. `None` and
-    `"0"` are planted beside 0 because the bound has to hold for the spellings JSON actually carries, and a
-    type test that only checks `< 1` would itself raise a `TypeError`.
+    `n_records` by the published `n_cases`. Naming the two keys is not enough: a committed `n_records` of
+    `"1200"` reaches that line as a `TypeError`, which `cli.main` maps nowhere -- rc 1, the code the contract
+    forbids, arrived at through the publication table with no argument an operator typed. (`n_cases` = 0
+    raises `ZeroDivisionError`, which `cli.main` does answer, at 4 -- but only because an `ArithmeticError`
+    happens to be the class it nets, which is a coincidence worth bounding by name rather than relying on.)
+    `None`, `"0"`, `True` and `-3` are planted because those are the spellings JSON carries, and a bound
+    written as `< 1` alone would itself raise on the values that are not integers at all.
     """
     path = tmp_path / "g3.json"
     doc = json.loads(json.dumps(_doc()))
-    for bad in (0, None, "0", True, -3):
-        forged = json.loads(json.dumps(doc))
-        forged["population"]["n_cases"] = bad
-        path.write_text(json.dumps(forged))
-        with pytest.raises(ValueError, match="n_cases"):
-            report.read_g3_contrast(path, cli.G3_CONTRAST_RUBRIC_FIELDS)
+    for key in ("n_records", "n_cases"):
+        for bad in (0, None, "0", True, -3):
+            forged = json.loads(json.dumps(doc))
+            forged["population"][key] = bad
+            path.write_text(json.dumps(forged))
+            with pytest.raises(ValueError, match=key):
+                report.read_g3_contrast(path, cli.G3_CONTRAST_RUBRIC_FIELDS)
 
 
 def test_the_committed_contrast_is_a_re_derivation_of_the_committed_records():
@@ -192,9 +205,14 @@ def test_the_arm_re_derives_every_field_and_a_planted_digit_drifts_by_name(tmp_p
     drift, rubric_rows = _collect(tmp_path)
     assert drift == [], drift
     assert rubric_rows == ["contrast %s.%s" % (report.SEVERITY_LABEL, name)
-                           for name in cli.G3_CONTRAST_RUBRIC_FIELDS], rubric_rows
+                           for name in ("alpha", "beta", "delta", "seed")], rubric_rows
+    # The four names above are typed rather than read off `cli.G3_CONTRAST_RUBRIC_FIELDS`, because an
+    # expectation generated from the list the arm iterates cannot see that list shrink -- the shape this
+    # file's header refuses. This row is what ties the literal to the code instead.
+    assert cli.G3_CONTRAST_RUBRIC_FIELDS == ("alpha", "beta", "delta", "seed"), cli.G3_CONTRAST_RUBRIC_FIELDS
 
-    # The literal list above is the arm's whole published surface, and these two rows are what make it the
+    # The literal list above is every field of the arm's three row blocks -- the top-level `producer` is
+    # planted separately below, because these pairs are addressed as `doc[block][field]` -- and these two rows are what make it the
     # arm's surface rather than a list that drifted from it: a field in the code but not here is a field no
     # plant ever touches, and a field here but not in the code cannot be planted at all.
     from_lists = [("population", name) for name in report.G3_CONTRAST_POPULATION_FIELDS]
@@ -233,6 +251,18 @@ def test_the_arm_re_derives_every_field_and_a_planted_digit_drifts_by_name(tmp_p
         planted += 1
     assert planted == 26, planted
 
+    # The twenty-seventh published field is the top-level `producer`, which is not in any of the three row
+    # lists, so the loop above cannot reach it: a self-declared provenance nobody compares is a field an
+    # editor can rewrite without the gate noticing, while the document keeps printing the module constant.
+    def mutate_producer(doc):
+        doc["producer"] = "tools/a_different_tool.py"
+
+    producer_tree = tmp_path / "plant-producer"
+    producer_tree.mkdir(exist_ok=True)
+    found, _rows = _collect(producer_tree, mutate_producer)
+    assert [label for label, _f, _s in found] == ["contrast %s.producer" % report.SEVERITY_LABEL], found
+    assert found[0][1] == report.G3_CONTRAST_PRODUCER, found
+
 
 def test_the_refusal_half_publishes_no_bound_and_that_is_a_measurement_not_a_hardcode():
     """The row is live: on a population where the set gate certifies, the same builder reports bounds.
@@ -244,7 +274,10 @@ def test_the_refusal_half_publishes_no_bound_and_that_is_a_measurement_not_a_har
     doc = _doc()
     set_gate = doc["set_gate"]
     assert set_gate["feasible"] is False and set_gate["reason"] == "empty_feasible_set", set_gate
-    for field in ("qhat", "autorate", "conditional_error_bound", "marginal_error_bound", "mean_set_size"):
+    assert report.G3_CONTRAST_HEADLINE_FIELDS == ("qhat", "autorate", "conditional_error_bound",
+                                                  "marginal_error_bound", "mean_set_size"), \
+        report.G3_CONTRAST_HEADLINE_FIELDS
+    for field in report.G3_CONTRAST_HEADLINE_FIELDS:
         assert set_gate[field] is None, (field, set_gate[field])
     severity = doc["severity_gate"]
     assert severity["feasible"] is True and severity["bound"] <= RUBRIC["alpha"], severity

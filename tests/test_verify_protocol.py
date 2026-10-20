@@ -465,7 +465,11 @@ def test_readme_quotes_both_lane_denominators_and_neither_is_remembered(capsys, 
         "README.md stopped quoting %s, which is what one of the two lanes prints; the document has to name "
         "both denominators or a reader cannot tell a corpus-less CI run from a local one" % missing)
 
-    named = sorted({int(m.group(1)) for m in re.finditer(r"\ba (\d{3}) run\b", text, re.IGNORECASE)})
+    # `an?` rather than `a`: this README used to write `a 804 run`, and the pattern was keyed to that
+    # spelling, so repairing the article (review MINOR) made the row fail on an empty census rather than on a
+    # wrong digit. The check is unchanged -- a prose lane name that matches neither denominator is still a
+    # stray, and a README that stopped naming a lane at all is still the empty-set failure below.
+    named = sorted({int(m.group(1)) for m in re.finditer(r"\ban? (\d{3}) run\b", text, re.IGNORECASE)})
     assert named, "README.md no longer names a lane in prose, so the second shape has nothing to check"
     stray = sorted(set(named) - {n_absent, n_present})
     assert not stray, (

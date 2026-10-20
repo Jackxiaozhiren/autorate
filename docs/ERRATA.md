@@ -2795,3 +2795,46 @@ sentence, each figure read from the artefact, and the document row pins the clau
 rule's cost, which is`) and the absence of the fragment. Re-emitting through the producer left
 `data/g3_contrast.json` byte-identical -- the change is prose-only and lives in the renderer, and the `md5`
 before and after is the witness.
+
+**A fourth review of the same package: two rc-1 classes, one uncompared field, and a document that denied its
+own number.** The reviewer read the tree after the nineteenth emission had already run, so the finding about
+ordering -- that a G5-only re-export would leave the frozen note stating a pair the tree no longer prints -- is
+the one this commit discharges by moving the note and the re-emission into the same round rather than promising
+them. The rest were in the code and the prose of the artefact, and all of them are real:
+
+*`rubric` had a key bound and no type bound.* The three row blocks each answer `isinstance(..., dict)` before
+their fields are compared; `rubric` was read by set arithmetic first, so a committed `"rubric": null` raised
+`TypeError` inside the reader, `cli.main` maps that class nowhere, and the gate escaped at rc 1 on a path its
+own table named. The reader refuses it by name now, and the row plants `null`, `5`, `"alpha"` and `[]`.
+
+*The division in `docs/G3.md` had one bounded operand.* The value guard added an hour earlier covered the
+divisor `n_cases` and not the dividend `n_records`, and a published `"n_records": "1200"` is a string divided
+by an integer -- `TypeError`, rc 1, the same class the guard's own comment named. Both counts now carry the
+same int-domain bound, and the plant loop walks both keys.
+
+*The artefact's `producer` was a published field `verify` never compared.* The renderer prints the module
+constant, so a rewritten provenance in the JSON drifted nothing -- which is what `rederive_g1_feasibility`
+already refuses for its own artefact. The arm compares it now, one more row per population: both lane
+denominators move by one, `805 /805` absent and `842 /842` present, measured rather than stated, and the
+corpus-only gap holds at 37 because the row is corpus-independent. Because comparisons moved, the transcript
+owes a re-export from this commit and the frozen note owes the new pair, which is the twentieth emission.
+
+*`docs/G3.md` denied a figure it printed.* "the set gate publishes nothing" sat above a verbatim refusal
+carrying the rejected candidate's case-level upper bound -- the same over-claim README was scored for this
+round, and the document's copy was left in place. The sentence now distinguishes a certified bound from a
+measurement about a refusal, and `docs/G3.md` re-emitted with `data/g3_contrast.json` byte-identical.
+
+*The producer could write half a pair.* With `--out --doc --force`, the artefact landed and the document's
+`write_text` could then fail, and the handler printed "nothing was written" over a file that existed. Both
+blobs are serialised before either destination is touched and moved with `os.replace`; a failure after any
+move prints `PARTIAL WRITE` with the paths that landed. A records defect surfacing as a certifier `ValueError`
+answered 2, blaming an operator who named no path; the axis is drawn at who named the path, so measurement and
+shape failures answer 4 now, on the model of the drift arm's net, and only `--protocol` and `--out` remain 2.
+
+*Three ownership nits and one about the guards themselves:* the renderer carried a second literal of eleven
+severity field names, now derived from the owner list minus the two names the document gives its heading and
+its blockquote; the test re-typed the five headline bounds instead of reading the constant that owns them; the
+rubric-row expectation was generated from the same list the arm iterates, which is the shape this file's header
+refuses, so it is a literal now with a row tying it to the code; and the README prose census was keyed to
+`a 804 run`, so repairing the article reddened the row on an empty set rather than a wrong digit -- the
+pattern accepts either article now and the assertion behind it is unchanged.

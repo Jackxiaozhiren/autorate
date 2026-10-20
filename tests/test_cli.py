@@ -304,6 +304,10 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 # that budget as rubric rows. Nothing in the arm reads the corpus, so both lanes move alike.
                 + len(G3_CONTRAST_POPULATION_FIELDS) + len(G3_CONTRAST_SET_FIELDS)
                 + len(G3_CONTRAST_SEVERITY_FIELDS) + len(G3_CONTRAST_RUBRIC_FIELDS)
+                # one row per population beyond those field lists: the artefact's own `producer` label, which
+                # the arm compares against the constant that names it (`report.G3_CONTRAST_PRODUCER`) so a
+                # tampered provenance comes back as a drift line rather than an unchecked self-description.
+                + 1
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 

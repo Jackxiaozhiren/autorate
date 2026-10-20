@@ -475,7 +475,9 @@ def test_the_ordinal_arm_is_counted_in_both_lanes_and_the_total_is_derived(tmp_p
             # the arm's own lists rather than typed, and proved by the delta below -- an arm that silently
             # stopped being counted shows up as a total that does not drop by this much.
             + len(report.G3_CONTRAST_POPULATION_FIELDS) + len(report.G3_CONTRAST_SET_FIELDS)
-            + len(report.G3_CONTRAST_SEVERITY_FIELDS) + len(cli.G3_CONTRAST_RUBRIC_FIELDS))
+            + len(report.G3_CONTRAST_SEVERITY_FIELDS) + len(cli.G3_CONTRAST_RUBRIC_FIELDS)
+            # the `producer` row is inside the same per-population loop, so it leaves with the table too
+            + 1)
     assert len(cli.SEVERITY_COMPARE_FIELDS) == 15, cli.SEVERITY_COMPARE_FIELDS
     assert len(cli.SEVERITY_RUBRIC_FIELDS) == 3, cli.SEVERITY_RUBRIC_FIELDS
     assert {"ahat", "bound", "price_bound", "override_bound", "measured_violation", "direction",
