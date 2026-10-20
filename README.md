@@ -11,6 +11,12 @@ requested coverage that caused it, and a diagnostic sweep of the neighbouring co
 levels -- evidence for the refusal, not a certificate. It exits 3 and does not publish a
 number about nothing.
 
+## Verification-first navigation
+
+- [Verification status](docs/VERIFICATION.md) · [Known errata](docs/ERRATA.md) · [Results](docs/RESULTS.md)
+- The present implementation covers the decision-certification primitives described below; planned certificate families and guarantees are **not** implemented claims.
+- This is a private development repository. No public licensing or release rights are implied.
+
 ## What a certificate carries
 
 Stored: `feasible`, `reason`, `backend`, `method`, `alpha`, `beta`, `delta`, `autorate`,
