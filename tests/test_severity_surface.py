@@ -469,7 +469,13 @@ def test_the_ordinal_arm_is_counted_in_both_lanes_and_the_total_is_derived(tmp_p
         assert checked == total, out
         return total
 
-    rows = len(cli.SEVERITY_COMPARE_FIELDS) + 1 + len(cli.SEVERITY_RUBRIC_FIELDS)
+    rows = (len(cli.SEVERITY_COMPARE_FIELDS) + 1 + len(cli.SEVERITY_RUBRIC_FIELDS)
+            # #119's contrast arm is driven off the same table: `rederive_g3_contrast` loops over
+            # `severity_certificates()`, so emptying it removes the contrast's rows with these. Counted from
+            # the arm's own lists rather than typed, and proved by the delta below -- an arm that silently
+            # stopped being counted shows up as a total that does not drop by this much.
+            + len(report.G3_CONTRAST_POPULATION_FIELDS) + len(report.G3_CONTRAST_SET_FIELDS)
+            + len(report.G3_CONTRAST_SEVERITY_FIELDS) + len(cli.G3_CONTRAST_RUBRIC_FIELDS))
     assert len(cli.SEVERITY_COMPARE_FIELDS) == 15, cli.SEVERITY_COMPARE_FIELDS
     assert len(cli.SEVERITY_RUBRIC_FIELDS) == 3, cli.SEVERITY_RUBRIC_FIELDS
     assert {"ahat", "bound", "price_bound", "override_bound", "measured_violation", "direction",
@@ -487,9 +493,14 @@ def test_the_ordinal_arm_is_counted_in_both_lanes_and_the_total_is_derived(tmp_p
     # dropping one document leaves the gate refusing on the other, which is exactly what this row measured
     # when Task 4 joined the table. The delta is therefore the arm plus one row per document dropped, and
     # the dropped rows are read from the filter rather than typed.
+    # `docs/G3.md` joins the dropped set with #119: it renders the contrast whose population is the same
+    # ordinal publication, so a tree with no ordinal publication has no contrast document either. Leaving it
+    # in would keep its byte row passing while the arm behind it had nothing left to measure -- a published
+    # number with no producer, which is the defect class this row exists to make loud.
     dropped = tuple(row for row in cli.PUBLISHED_DOCS
-                    if str(row[0]) in {str(cli.SEVERITY_MD), str(cli.REPORT_MD)})
-    assert len(dropped) == 2, dropped
+                    if str(row[0]) in {str(cli.SEVERITY_MD), str(cli.REPORT_MD),
+                                       str(report.G3_CONTRAST_MD)})
+    assert len(dropped) == 3, dropped
     monkeypatch.setattr(cli, "PUBLISHED_DOCS",
                         tuple(row for row in cli.PUBLISHED_DOCS if row not in dropped))
     without_severity = absent_total()

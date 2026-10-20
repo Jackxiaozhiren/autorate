@@ -159,12 +159,16 @@ NON_G1_CLAIMS = (
         "measurement": "the one-sided severity certificate (§6.4): `P(Y > â(X)) ≤ α`. If vanilla "
                        "multiclass set CP reproduces it, this criterion fails",
         "status": CLAIM_STATUS_NOT_MEASURED,
-        "artefacts": ["data/cert_severity_ordinal.json", "docs/SEVERITY.md",
-                      "tests/test_g3_contrast.py"],
+        "artefacts": ["data/cert_severity_ordinal.json", "data/g3_contrast.json", "docs/SEVERITY.md",
+                      "docs/G3.md", "tests/test_g3_contrast.py"],
         "note": "the ordinal certificate is published and re-derived (`autorate severity`, "
                 "`data/cert_severity_ordinal.json`, `docs/SEVERITY.md`, 19 comparisons in `verify`), and "
                 "the contrast the criterion asks for has now been counted -- and it went against this "
-                "row's original wording. On the population where this repository's ordinal SET gate "
+                "row's original wording. Its measured half is published rather than only printed: "
+                "`data/g3_contrast.json` holds the set gate's refusal beside the one-sided certificate over "
+                "the same committed records, `docs/G3.md` renders that artefact, and `verify` re-measures "
+                "both rows in either lane with `tools/g3_contrast.py`'s own builder. On the population "
+                "where this repository's ordinal SET gate "
                 "certifies (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells searched), the interval "
                 "top is above the gold level in none of the 600 evaluated records (200 cases), so "
                 "`P(Y > hi(X)) = 0` lies inside that "

@@ -72,11 +72,11 @@ def stage_published(work):
     """
     from autorate.cli import PROTOCOL_JSON
     from autorate.report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON,
-                                 G1_FEASIBILITY_JSON,
+                                 G1_FEASIBILITY_JSON, G3_CONTRAST_JSON,
                                  MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON)
 
     names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON, G1_FEASIBILITY_JSON,
-              CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON}
+              CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON, G3_CONTRAST_JSON}
              | set(CERTS.values())
              | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
              | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
@@ -162,14 +162,16 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # separately so a narrowing of the arm (dropping `basis`, say) cannot pass as a formula change.
     # The key list is read from the gate itself (R-83), so a column the arm stops comparing has to
     # widen this expectation before it can shrink the gate.
-    from autorate.cli import (PIN_DERIVED_KEYS, PUBLISHED_DOCS, SEVERITY_COMPARE_FIELDS,
-                              SEVERITY_RUBRIC_FIELDS)
+    from autorate.cli import (G3_CONTRAST_RUBRIC_FIELDS, PIN_DERIVED_KEYS, PUBLISHED_DOCS,
+                              SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS)
     from autorate.inventory import corpus_options, massive_pin
     from autorate.report import (CERTS, CONTAMINATION_HEADLINE_FIELDS, CONTAMINATION_RUBRIC_FIELDS,
                                  CONTAMINATION_STRATA_KEYS, DRIFT_JSON,
                                  G1_FEASIBILITY_JSON,
                                  G1_FEASIBILITY_REFERENCE_FIELDS,
                                  G1_FEASIBILITY_ROW_FIELDS, G1_FEASIBILITY_RUBRIC_FIELDS,
+                                 G3_CONTRAST_POPULATION_FIELDS,
+                                 G3_CONTRAST_SEVERITY_FIELDS, G3_CONTRAST_SET_FIELDS,
                                  MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
                                  SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
                                  SLICE_GROUP_FIELDS, SLICE_INPUT_FIELDS, SLICE_JSON, SLICE_POOLED_FIELDS,
@@ -198,7 +200,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
     # which published documents `verify` owns -- it is the assertion that was red for `docs/AUDIT.md`
     # before MAJ-3, and it is what a future narrowing of `PUBLISHED_DOCS` has to edit first.
     assert {str(path) for path, _ in PUBLISHED_DOCS} == {"docs/RESULTS.md", "data/inventory.md",
-                                                         "docs/AUDIT.md", "docs/SEVERITY.md",
+                                                         "docs/AUDIT.md", "docs/SEVERITY.md", "docs/G3.md",
                                                          "docs/RESPLIT.md", "docs/SLICES.md",
                                                          "docs/FEASIBILITY.md", "docs/DRIFT.md",
                                                          "docs/REPORT.md",
@@ -294,6 +296,14 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + (len(drift_doc["mode2"]) + len(drift_doc["mode2_controls"]))
                 * len(RECHECK_MODE2_RECIPE_FIELDS + RECHECK_MODE2_FIELDS)
                 + len(RECHECK_SWEEP_FIELDS)
+                # Task #119's G3 contrast enters the same way, from the arm's own field lists: one comparison
+                # per published field of the population, the set gate's row and the severity row, and one rubric
+                # row per budget field the freeze owns for the two gates. `docs/G3.md` arrives through
+                # `len(PUBLISHED_DOCS)`, not as a term here, and the artefact publishes no digest stamp -- the
+                # measurement artefacts under `data/` publish a budget, not a run record, and `verify` compares
+                # that budget as rubric rows. Nothing in the arm reads the corpus, so both lanes move alike.
+                + len(G3_CONTRAST_POPULATION_FIELDS) + len(G3_CONTRAST_SET_FIELDS)
+                + len(G3_CONTRAST_SEVERITY_FIELDS) + len(G3_CONTRAST_RUBRIC_FIELDS)
                 + len(PUBLISHED_DOCS) + pin_rows)
     assert total == expected, (total, expected, p.stdout)
 
@@ -763,6 +773,13 @@ def test_a_published_artefact_that_does_not_parse_is_the_same_drift_not_a_usage_
         # The envelope's document, one entry before the report in the same table: its render is a function
         # of the artefact this case leaves intact, so only these bytes can be refusing.
         ("docs/DRIFT.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
+        # Task #119's contrast: read by `rederive_g3_contrast` before the document loop, so unreadable bytes
+        # here must come back as the named refusal on `report.G3_CONTRAST_JSON` and not as a `KeyError` or a
+        # `JSONDecodeError` mapped onto the operator's argument.
+        ("data/g3_contrast.json", "report.G3_CONTRAST_JSON", "{not the contrast document", False),
+        # Its document, in the same table: the render is a function of the artefact this case leaves intact,
+        # so only these bytes can be refusing.
+        ("docs/G3.md", "cli.PUBLISHED_DOCS", b"\xff\xfe\x80 not utf-8 \x81", True),
     ]
     for rel, table, corrupt, needs_snapshot in cases:
         work = tmp_path / rel.replace("/", "-").replace(".", "-")
@@ -1098,6 +1115,10 @@ def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_pat
         # before the document loop, so its absence must refuse as the table's own failure -- the
         # artefact a published G1 claim is stored in is as declared as the certificates beside it.
         ("data/g1_feasibility.json", "report.G1_FEASIBILITY_JSON", False),
+        # Task #119's contrast, the same pair of rows: the artefact is read by `rederive_g3_contrast` before
+        # the document loop and its document is byte-compared inside it, so an absent copy of either must
+        # refuse as the table's own failure rather than as a missing file the operator is blamed for.
+        ("data/g3_contrast.json", "report.G3_CONTRAST_JSON", False),
         # First in `PUBLISHED_DOCS`. Every document the table declares is staged, so the refusal below can
         # only be about the file this case removed -- table order no longer decides which absence a reader
         # is told about (see `stage_documents`).
@@ -1106,6 +1127,7 @@ def test_a_missing_published_artefact_is_a_named_drift_not_a_usage_error(tmp_pat
         # `--doc` run and re-rendered from the artefact by the gate, so its absence contradicts the
         # publication table exactly like its head row's does.
         ("docs/FEASIBILITY.md", "cli.PUBLISHED_DOCS", True),
+        ("docs/G3.md", "cli.PUBLISHED_DOCS", True),
         # Last in the same table: the technical report is rendered after six other documents, so a gate
         # that refused on something else first would never reach it -- and its render reads two further
         # table-declared artefacts of its own, which is the next row.

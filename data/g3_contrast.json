@@ -1,0 +1,41 @@
+{
+  "population": {
+    "direction": "under",
+    "n_cases": 400,
+    "n_records": 1200,
+    "records": "data/records_ordinal_synthetic.jsonl"
+  },
+  "producer": "tools/g3_contrast.py",
+  "rubric": {
+    "alpha": 0.05,
+    "beta": 0.05,
+    "delta": 0.05,
+    "seed": 7
+  },
+  "set_gate": {
+    "autorate": null,
+    "conditional_error_bound": null,
+    "feasible": false,
+    "marginal_error_bound": null,
+    "mean_set_size": null,
+    "module": "autorate.certify_score",
+    "qhat": null,
+    "reason": "empty_feasible_set",
+    "summary": "NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; n_cal=600 n_eval=600; at coverage 0.950 the 84 automated cases include 2 carrying a wrong automated level; the exact case-level upper bound 0.073 exceeds the budget 0.050"
+  },
+  "severity_gate": {
+    "ahat": 3,
+    "bound": 0.045180414995,
+    "feasible": true,
+    "measured_violation": 0.005,
+    "module": "autorate.severity",
+    "n_cal": 600,
+    "n_cal_cases": 200,
+    "n_eval": 600,
+    "n_eval_cases": 200,
+    "override_bound": 0.701257737805,
+    "price_bound": 0.686920803929,
+    "reason": null,
+    "summary": "one-sided severity certificate, direction=under: P(Y > ahat(X)) <= 0.045180 at ahat=3, tested at delta=0.050 on 200 calibration cases (alpha=0.050 is the risk target, not a confidence); the price is P(Y < ahat(X)) <= 0.686921 at the same rule and the rule replaces the model's own level on <= 0.701258 of cases; measured on 200 held-out cases: 0.005000; joint level 0.85 over 3 claims at delta=0.050; n_cal=600 n_eval=600; synthetic ordinal data with known answers (the offline archive carries no `score` answers), and the construction is prior art -- Dey et al. NeurIPS 2023, Zhang et al. AAAI-26, Xu-Guo-Wei UAI 2023 (PMLR 216:2346-2355), ours being the automation rule and the one-sided statement"
+  }
+}

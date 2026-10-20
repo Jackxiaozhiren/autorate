@@ -1,6 +1,6 @@
 {
   "protocol_version": 1,
-  "frozen_at": "2026-10-19",
+  "frozen_at": "2026-10-20",
   "record_contract": {
     "shape_version": 2,
     "primitives": [
@@ -162,10 +162,12 @@
       "status": "not_measured",
       "artefacts": [
         "data/cert_severity_ordinal.json",
+        "data/g3_contrast.json",
         "docs/SEVERITY.md",
+        "docs/G3.md",
         "tests/test_g3_contrast.py"
       ],
-      "note": "the ordinal certificate is published and re-derived (`autorate severity`, `data/cert_severity_ordinal.json`, `docs/SEVERITY.md`, 19 comparisons in `verify`), and the contrast the criterion asks for has now been counted -- and it went against this row's original wording. On the population where this repository's ordinal SET gate certifies (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells searched), the interval top is above the gold level in none of the 600 evaluated records (200 cases), so `P(Y > hi(X)) = 0` lies inside that certificate's own marginal bound of 0.014867 -- a number `tests/test_g3_contrast.py`'s builder computes in memory and prints, not a value any artefact under `data/` publishes, which is why the digit is named with its producer here rather than called published: a coverage claim over ordered intervals yields a one-sided bound by itself. The bare sentence 'multiclass CP cannot express one' is therefore false for the ordinal interval construction, and what survives is narrower -- the set certificate publishes no named reporting rule, no price and no override rate, and its certified set is empty on 36 evaluated records, so the reader who wants the one-sided number must derive it for a rule nobody certified; the severity artefact certifies a named rule and states both quantities beside its bound. Status stays `not_measured` because the criterion is worded as the wider claim, and this document records the narrowing rather than quietly re-defining the row to fit it."
+      "note": "the ordinal certificate is published and re-derived (`autorate severity`, `data/cert_severity_ordinal.json`, `docs/SEVERITY.md`, 19 comparisons in `verify`), and the contrast the criterion asks for has now been counted -- and it went against this row's original wording. Its measured half is published rather than only printed: `data/g3_contrast.json` holds the set gate's refusal beside the one-sided certificate over the same committed records, `docs/G3.md` renders that artefact, and `verify` re-measures both rows in either lane with `tools/g3_contrast.py`'s own builder. On the population where this repository's ordinal SET gate certifies (`shift = 0`, `error_rate = 0`; 4 of the 64 knob cells searched), the interval top is above the gold level in none of the 600 evaluated records (200 cases), so `P(Y > hi(X)) = 0` lies inside that certificate's own marginal bound of 0.014867 -- a number `tests/test_g3_contrast.py`'s builder computes in memory and prints, not a value any artefact under `data/` publishes, which is why the digit is named with its producer here rather than called published: a coverage claim over ordered intervals yields a one-sided bound by itself. The bare sentence 'multiclass CP cannot express one' is therefore false for the ordinal interval construction, and what survives is narrower -- the set certificate publishes no named reporting rule, no price and no override rate, and its certified set is empty on 36 evaluated records, so the reader who wants the one-sided number must derive it for a rule nobody certified; the severity artefact certifies a named rule and states both quantities beside its bound. Status stays `not_measured` because the criterion is worded as the wider claim, and this document records the narrowing rather than quietly re-defining the row to fit it."
     },
     {
       "id": "G4",

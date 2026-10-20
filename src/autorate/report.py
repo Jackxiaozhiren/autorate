@@ -407,6 +407,16 @@ def rederive_severity(expect, expect_rubric, fields, rubric_fields, rubric=None,
         expect("cert %s.summary" % label, fresh.summary(), stored.summary())
 
 
+def _verdict_text(feasible, reason) -> str:
+    """The verdict's wording, from the two facts a verdict is made of.
+
+    Split out of `_verdict_cell` so a renderer that holds a published row rather than a live certificate
+    still prints the same sentence: `docs/G3.md` renders the contrast artefact's rows, and a second copy of
+    the "certified / NOT_CERTIFIABLE (reason)" spelling there is exactly the drift #38 was written about.
+    """
+    return "**certified**" if feasible else "**NOT_CERTIFIABLE** (%s)" % reason
+
+
 def _verdict_cell(cert) -> str:
     """The one rendering of a certificate's verdict, shared by every document that states one.
 
@@ -414,7 +424,23 @@ def _verdict_cell(cert) -> str:
     `summary()` block printed directly beneath -- and a byte-compare against a renderer that formats the
     verdict in two places re-derives a drifted wording instead of refusing it. One function, both sites.
     """
-    return "**certified**" if cert.feasible else "**NOT_CERTIFIABLE** (%s)" % cert.reason
+    return _verdict_text(cert.feasible, cert.reason)
+
+
+def _published_value(value) -> str:
+    """One field of a published row, spelled the way the artefact spells it.
+
+    The contrast's document says a refused bound is `null`; printing Python's `None` beside that sentence
+    would make the document disagree with its own prose, so booleans and the absent value are rendered in
+    the JSON spelling the bytes use.
+    """
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "%s" % (value,)
 
 
 def render_severity(label: str, cert: SeverityCertificate) -> str:
@@ -2406,3 +2432,300 @@ def rederive_drift(expect, expect_rubric, rubric=None) -> None:
     for field in drift_envelope.RECHECK_SWEEP_FIELDS:
         expect("drift mode2_sweep.%s" % field, fresh["mode2_sweep"].get(field),
                doc["mode2_sweep"].get(field))
+
+
+# --- G3's contrast, published: one population, two gates, one refusal -----------------------------------
+# Spec §2's G3 asks for ">=1 ordinal guarantee that multiclass CP cannot express", and its measurement is
+# the negative test: "if vanilla multiclass set CP reproduces it, this criterion fails". Both halves of the
+# answer were computed only inside `tests/test_g3_contrast.py` -- printed, asserted, published nowhere -- so
+# the fact that a set-gate REFUSAL writes no certificate at all left `data/` with no record that this
+# repository's multiclass gate publishes nothing on the population its one-sided gate certifies. G1's
+# ceiling (#97), G4's `delta_hat` (#107) and the drift envelope (#110) all moved from "a test checks it" to
+# "an artefact publishes it and the gate re-derives it" first; this is the same widening for G3.
+#
+# Deliberate scope limit: only populations whose records are COMMITTED are published here. The narrowing
+# half of the G3 note -- the `shift = 0, error_rate = 0` corner where the set gate does certify, and the
+# one-sided count taken on it -- is generated from knobs rather than read from a file, so its digits keep
+# naming their producer in the note and no field of this artefact claims them.
+G3_CONTRAST_JSON = "data/g3_contrast.json"
+G3_CONTRAST_MD = Path("docs/G3.md")
+G3_CONTRAST_PRODUCER = "tools/g3_contrast.py"
+# The rubric field list this arm compares lives in `cli` beside `SEVERITY_RUBRIC_FIELDS`, not here: the guard
+# `test_the_rubric_field_names_have_one_owner_inside_the_module_that_owns_them` reads this module and allows it
+# one literal of the published names, `PUBLISHED_RUBRIC_FIELDS`. The subset is handed to the arm as a
+# parameter, which is the reason a fourth name cannot quietly join one side of the pair.
+G3_CONTRAST_TOP_FIELDS = ("producer", "rubric", "population", "set_gate", "severity_gate")
+G3_CONTRAST_POPULATION_FIELDS = ("records", "n_records", "n_cases", "direction")
+# The headline bounds are the point of the row, so they are published as fields rather than left out: an
+# artefact that omitted them could not tell "the gate answered and the answer was no bound" from "this
+# build does not know that field's name".
+G3_CONTRAST_SET_FIELDS = ("module", "feasible", "reason", "qhat", "autorate", "conditional_error_bound",
+                          "marginal_error_bound", "mean_set_size", "summary")
+# The subset of that row that is a *bound*, named once: the renderer prints them and the document describes them,
+# so a second literal list of the same five names is how a renamed field ends up missing from a published
+# sentence that still claims to cover it.
+G3_CONTRAST_HEADLINE_FIELDS = ("qhat", "autorate", "conditional_error_bound", "marginal_error_bound",
+                               "mean_set_size")
+G3_CONTRAST_SEVERITY_FIELDS = ("module", "feasible", "reason", "ahat", "bound", "price_bound",
+                               "override_bound", "measured_violation", "n_cal", "n_eval", "n_cal_cases",
+                               "n_eval_cases", "summary")
+
+
+def build_g3_contrast(records_path: str, rows, direction: str, rubric: dict) -> dict:
+    """Both gates over the same records at the same freeze, assembled into one comparison.
+
+    `certify_score` and `certify_severity` are called in their production shapes -- the arguments each
+    command-line surface actually passes -- because a differential that omits an argument its caller sends
+    measures a different function. The path, the rows and the `direction` are handed in from `SEVERITY_CERTS`
+    by both callers rather than looked up here: a re-derivation that read the rule back off the bytes it is
+    checking could not contradict them, and a table-driven arm is one that disappears when the table does.
+    """
+    from .certify_score import certify_score
+
+    score = certify_score(rows, alpha=rubric["alpha"], beta=rubric["beta"], delta=rubric["delta"],
+                          seed=rubric["seed"])
+    severity = certify_severity(rows, alpha=rubric["alpha"], delta=rubric["delta"], direction=direction,
+                                seed=rubric["seed"])
+    population = {"records": records_path, "n_records": len(rows),
+                  "n_cases": len({record.case_id for record in rows}), "direction": direction}
+    set_gate = {"module": "autorate.certify_score", "feasible": score.feasible, "reason": score.reason,
+                "qhat": score.qhat, "autorate": score.autorate,
+                "conditional_error_bound": score.conditional_error_bound,
+                "marginal_error_bound": score.marginal_error_bound, "mean_set_size": score.mean_set_size,
+                "summary": score.summary()}
+    severity_gate = {"module": "autorate.severity", "feasible": severity.feasible,
+                     "reason": severity.reason, "ahat": severity.ahat, "bound": severity.bound,
+                     "price_bound": severity.price_bound, "override_bound": severity.override_bound,
+                     "measured_violation": severity.measured_violation, "n_cal": severity.n_cal,
+                     "n_eval": severity.n_eval, "n_cal_cases": severity.meta.get("n_cal_cases"),
+                     "n_eval_cases": severity.meta.get("n_eval_cases"), "summary": severity.summary()}
+    return {"population": population, "set_gate": set_gate, "severity_gate": severity_gate}
+
+
+def check_g3_contrast(doc: dict, rubric_fields) -> dict:
+    """Refuse a contrast document whose shape this build does not read, and hand it back.
+
+    The shape contract is the four field lists above plus the caller's rubric subset, so the gate cannot accept
+    a row the producer would not write or a field it has no opinion about. Split out of `read_g3_contrast`
+    because the producer checks the object it is about to write through this same function: bytes the writer
+    would refuse cannot reach disk.
+
+    `rubric_fields` is a parameter and not a fifth list owned here, for the reason stated above the comment at
+    `G3_CONTRAST_TOP_FIELDS`: `cli` owns which budget fields this arm consumes, and `report.py` is allowed one
+    literal of the published names. Bounding the block against `PUBLISHED_RUBRIC_FIELDS` here instead -- which
+    is what this function used to do -- is slack in both directions at once. A block missing `alpha` survived
+    the reader and reached the builder and the renderer, which read that key by name; a block carrying
+    `method` survived too, the renderer prints every published name it finds, and the document would have
+    published a rule statement no comparison covers -- a figure with no owner, in the one artefact whose
+    `summary` lines already quote the rule verbatim.
+    """
+    if not isinstance(doc, dict):
+        raise ValueError("the G3 contrast document is a JSON %s, not an object" % type(doc).__name__)
+    absent = sorted(set(G3_CONTRAST_TOP_FIELDS) - set(doc))
+    if absent:
+        raise ValueError("the G3 contrast document is missing %s" % absent)
+    extra = sorted(set(doc) - set(G3_CONTRAST_TOP_FIELDS))
+    if extra:
+        raise ValueError("the G3 contrast document carries keys %s, which this build does not read" % extra)
+    missing_budget = sorted(set(rubric_fields) - set(doc["rubric"]))
+    if missing_budget:
+        raise ValueError("the G3 contrast document's `rubric` omits %s, which this build reads as the budget "
+                         "the contrast was measured at" % missing_budget)
+    unbudgeted = sorted(set(doc["rubric"]) - set(rubric_fields))
+    if unbudgeted:
+        raise ValueError("the G3 contrast document's `rubric` carries %s, which nothing in this artefact "
+                         "compares -- the renderer would print it as a published figure with no owner"
+                         % unbudgeted)
+    for name, keys in (("population", G3_CONTRAST_POPULATION_FIELDS), ("set_gate", G3_CONTRAST_SET_FIELDS),
+                       ("severity_gate", G3_CONTRAST_SEVERITY_FIELDS)):
+        row = doc[name]
+        if not isinstance(row, dict):
+            raise ValueError("the G3 contrast document's `%s` is a %s, not a row of fields"
+                             % (name, type(row).__name__))
+        missing = sorted(set(keys) - set(row))
+        if missing:
+            raise ValueError("the G3 contrast document's `%s` is missing %s" % (name, missing))
+        unknown = sorted(set(row) - set(keys))
+        if unknown:
+            raise ValueError("the G3 contrast document's `%s` carries %s, which this build does not read"
+                             % (name, unknown))
+    n_cases = doc["population"]["n_cases"]
+    if not isinstance(n_cases, int) or isinstance(n_cases, bool) or n_cases < 1:
+        # The shape bound above says the key exists; this one says the value can be divided by. The document
+        # states how many records repeat a case by dividing the published `n_records` by this figure, and a
+        # `ZeroDivisionError` or a `TypeError` from a renderer is not a class `cli.main` maps -- rc 1 reached
+        # through the publication table, with no argument an operator typed.
+        raise ValueError("the G3 contrast document's population carries `n_cases` = %r, which `docs/G3.md`"
+                         " divides its `n_records` by to state how many records repeat one case" % (n_cases,))
+    return doc
+
+
+def read_g3_contrast(path: Path, rubric_fields) -> dict:
+    """Load the contrast or refuse its shape, naming the key.
+
+    Same posture as `read_g1_feasibility`: a missing or unread field is the artefact's defect, reported as
+    the key that is wrong, and absence of the file is `load_published`'s business (exit 4). The caller names
+    the rubric subset because the reader is the shape contract's only enforcement point -- both the gate's
+    load and the document renderer's load go through it.
+    """
+    return check_g3_contrast(json.loads(Path(path).read_text()), rubric_fields)
+
+
+def rederive_g3_contrast(expect, expect_rubric, rubric_fields, rubric=None) -> None:
+    """Re-measure both gates over the committed records and compare the published contrast field by field.
+
+    Rows are matched on their own field names, not positionally, and every published quantity gets its own
+    comparison: a stale or forged contrast is then a `DRIFT:` line that names the gate and the field. The
+    records come from `SEVERITY_CERTS` while the artefact's own `population.records` is compared as a value,
+    so a contrast that claims a different input than the publication declares is caught rather than honoured.
+
+    No `meta.protocol_digest` is published here, and that is the convention this artefact joins rather than
+    breaks: the only files under `data/` that carry that key are the certificates the publication tables name,
+    because a certificate's `meta` is the record of the run that produced it. The measurement artefacts -- G1's
+    ceiling, the drift envelope, the contamination probe, the slice run, this contrast -- publish the budget they
+    were measured at and let `expect_rubric` compare it against the freeze. The set equality itself is not left
+    to a counted sentence: `tests/test_g3_contrast_artefact.py`'s
+    `test_only_certificate_tables_publish_a_protocol_digest` walks `data/*.json` and refuses any file that
+    stamps a digest no certificate table declares, which is the same invariant `t96/restamp.py` enforces from
+    outside the repository.
+    """
+    doc = load_published(Path(G3_CONTRAST_JSON), "report.G3_CONTRAST_JSON",
+                         lambda path: read_g3_contrast(path, rubric_fields))
+    chosen = rubric or dict(doc["rubric"])
+    rows_by_label = sorted(severity_certificates().items())
+    if len(rows_by_label) > 1:
+        raise PublishedArtefactUnavailable(
+            "%s publishes one ordinal population and report.SEVERITY_CERTS now holds %d (%s), so the "
+            "contrast has no single population to measure. This is not a usage error -- no argument selected "
+            "the table -- and it is not a value that disagrees: the artefact and its renderer have to be "
+            "widened together" % (G3_CONTRAST_JSON, len(rows_by_label),
+                                  ", ".join(label for label, _row in rows_by_label) or "nothing"))
+    for label, (rows, _stored, direction) in rows_by_label:
+        records_path = SEVERITY_CERTS[label][0]
+        for name in rubric_fields:
+            expect_rubric("contrast %s.%s" % (label, name), doc["rubric"][name], chosen[name])
+        built = build_g3_contrast(records_path, rows, direction, chosen)
+        for block, fields in (("population", G3_CONTRAST_POPULATION_FIELDS),
+                              ("set_gate", G3_CONTRAST_SET_FIELDS),
+                              ("severity_gate", G3_CONTRAST_SEVERITY_FIELDS)):
+            for field in fields:
+                expect("contrast %s.%s.%s" % (label, block, field), built[block].get(field),
+                       doc[block].get(field))
+
+
+def render_g3_contrast(doc: dict) -> str:
+    """`docs/G3.md`, written entirely out of the contrast artefact.
+
+    Every figure below is read off `doc`; a sentence whose value the artefact does not carry is not written
+    here. No timestamp and no machine path, so both lanes byte-compare the same bytes.
+    """
+    population, set_gate, severity = doc["population"], doc["set_gate"], doc["severity_gate"]
+    rubric = doc["rubric"]
+    lines = [
+        "# The G3 contrast: one population, two gates",
+        "",
+        "Every number in this file is emitted by `python3 %s` and re-checked by" % G3_CONTRAST_PRODUCER,
+        "`python -m autorate.cli verify`, which re-measures both gates over the records file named below.",
+        "None of them is typed, and the document carries no timestamp, so a re-run is byte-comparable --",
+        "in the corpus-present lane and in the corpus-absent one alike.",
+        "",
+        "Spec section 2 states G3 as `>=1 ordinal guarantee that multiclass CP cannot express`, and its",
+        "measurement as the negative test: if vanilla multiclass set CP reproduces the one-sided bound,",
+        "the criterion fails. This artefact is that test run on the population the published ordinal",
+        "certificate is certified from.",
+        "",
+        "## The population",
+        "",
+        "| field | value |",
+        "| --- | --- |",
+    ]
+    lines += ["| `%s` | `%s` |" % (field, _published_value(population[field]))
+              for field in G3_CONTRAST_POPULATION_FIELDS]
+    lines += ["", "Rubric, read from the committed freeze:"]
+    lines += ["- `%s` = `%s`" % (name, _published_value(rubric[name]))
+              for name in PUBLISHED_RUBRIC_FIELDS if name in rubric]
+    lines += [
+        "",
+        "## The multiclass set gate: `%s`" % set_gate["module"],
+        "",
+        "- `feasible`: `%s`" % _published_value(set_gate["feasible"]),
+        "- `reason`: `%s`" % _published_value(set_gate["reason"]),
+        "- verdict: %s" % _verdict_text(set_gate["feasible"], set_gate["reason"]),
+        "",
+    ]
+    headline_fields = G3_CONTRAST_HEADLINE_FIELDS
+    silent = [field for field in headline_fields if set_gate[field] is None]
+    if len(silent) == len(headline_fields):
+        lines += [
+            "Every headline bound of the shape is `null`, and the artefact publishes them as fields rather than",
+            "omitting them, so a reader can tell \"the gate answered, and the answer was no bound\" from \"this",
+            "build does not know that field's name\":",
+            "",
+        ]
+    else:
+        # That sentence used to print unconditionally, so on a population where the set gate certifies the
+        # document claimed `null` directly above the figures it had just printed. A claim about a value has to
+        # read the value (rule 5); this branch is what stops the wording drifting back.
+        lines += [
+            "%d of the %d headline bounds this shape carries are `null` and %d hold a figure, both counted"
+            " from the row printed below -- no sentence here asserts either shape"
+            % (len(silent), len(headline_fields), len(headline_fields) - len(silent)),
+            "",
+        ]
+    lines += ["- `%s`: `%s`" % (field, _published_value(set_gate[field])) for field in headline_fields]
+    lines += [
+        "",
+        "The gate's own verdict, verbatim:",
+        "",
+        "> %s" % set_gate["summary"],
+        "",
+        "## The one-sided gate: `%s`" % severity["module"],
+        "",
+    ]
+    lines += ["- `%s`: `%s`" % (field, _published_value(severity[field])) for field in
+              ("feasible", "reason", "ahat", "bound", "price_bound", "override_bound", "measured_violation",
+               "n_cal", "n_eval", "n_cal_cases", "n_eval_cases")]
+    lines += ["- verdict: %s" % _verdict_text(severity["feasible"], severity["reason"])]
+    lines += [
+        "",
+        "The statement this row certifies is `P(Y > ahat(X)) <= alpha`, at `ahat` = `%s` inside the freeze's"
+        % severity["ahat"],
+        "`alpha` = `%s`; the certified figure is the `bound` = `%s` printed above, not the budget it sits"
+        % (rubric["alpha"], _published_value(severity["bound"])),
+        "under. `price_bound` = `%s` and `override_bound` = `%s` are the always-report rule's cost, which is"
+        % (_published_value(severity["price_bound"]), _published_value(severity["override_bound"])),
+        "the half a membership bound cannot carry. `n_cal`/`n_eval` count RECORDS and",
+        "`n_cal_cases`/`n_eval_cases` count CASES -- %d repeats of one case are one observation for the"
+        % (population["n_records"] // population["n_cases"],),
+        "guarantee, so the two denominators are not interchangeable and this document names which figure",
+        "divides which.",
+        "",
+        "The certificate's own verdict, verbatim:",
+        "",
+        "> %s" % severity["summary"],
+        "",
+        "## What this artefact does not settle",
+        "",
+        "On this population the set gate publishes nothing, so it reproduces nothing -- which is the",
+        "criterion's direction. That is not the wider claim the criterion is worded as. On a corner of the",
+        "generator where the set gate does certify (`shift = 0`, `error_rate = 0`), the interval's top",
+        "endpoint yields a one-sided bound out of the coverage statement alone, so the bare sentence",
+        "\"multiclass CP cannot express one\" is false for the ordinal interval construction; what survives",
+        "is narrower -- the set certificate names no reporting rule, states no price and no override rate,",
+        "and publishes no abstention count. That corner is generated from the",
+        "knobs rather than read from a committed file, so its counts belong to `tests/test_g3_contrast.py`",
+        "and its generator and are not published here. `claims.G3.status` therefore stays `not_measured`:",
+        "this document makes the measured half re-derivable and records the narrowing rather than quietly",
+        "re-defining the row to fit it.",
+        "The status is not neutral about the missing half either: that row moves once the corner",
+        "population is committed as records the gate re-derives, and the honest direction it moves in is",
+        "`not_met` rather than `met`, because that measurement is the one the criterion's negative test",
+        "turns on. Calling the row measured either way, before those bytes exist, would claim evidence",
+        "this repository does not hold.",
+        "",
+        "Re-produce: `python3 %s --out %s --doc %s --force`."
+        % (G3_CONTRAST_PRODUCER, G3_CONTRAST_JSON, G3_CONTRAST_MD),
+        "Re-check: `python -m autorate.cli verify`.",
+        "",
+    ]
+    return "\n".join(lines)

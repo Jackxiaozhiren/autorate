@@ -21,19 +21,20 @@ from .records import Record
 from .report import (CERTS, CONTAMINATION_CORPUS_ONLY_CHECKS, CONTAMINATION_JSON, CONTAMINATION_MD,
                      DRIFT_JSON, DRIFT_MD,
                      G1_FEASIBILITY_JSON,
-                     G1_FEASIBILITY_MD, INVENTORY_JSON,
+                     G1_FEASIBILITY_MD, G3_CONTRAST_JSON, G3_CONTRAST_MD, INVENTORY_JSON,
                      PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
                      RESPLIT_MD, SEVERITY_CERTS,
                      SEVERITY_LABEL, SEVERITY_RECORDS, SLICE_JSON, SLICE_MD,
                      build_report, certify_all, load_published,
                      load_records, published_severity, read_certificate, read_contamination,
-                     read_drift, read_g1_feasibility,
+                     read_drift, read_g1_feasibility, read_g3_contrast,
                      read_inventory_snapshot,
                      read_resplit, read_slices, rederive_g1_feasibility, rederive_massive,
                      rederive_resplit, rederive_severity,
-                     rederive_contamination, rederive_drift, rederive_slices, render_contamination,
-                     render_drift, render_g1_feasibility, render_resplit, render_severity,
-                     render_slices, write_report)
+                     rederive_contamination, rederive_drift, rederive_g3_contrast, rederive_slices,
+                     render_contamination,
+                     render_drift, render_g1_feasibility, render_g3_contrast, render_resplit,
+                     render_severity, render_slices, write_report)
 from .severity import DIRECTIONS, certify_severity
 from .techreport import REPORT_MD, load_inputs, render_report
 
@@ -411,6 +412,14 @@ CERTIFY_RUBRIC_FLAGS = (("alpha", ALPHA), ("beta", BETA), ("delta", DELTA), ("se
 # verb of its own rather than a `--measure` flag on `certify` -- see `cmd_severity`.
 SEVERITY_RUBRIC_FLAGS = (("alpha", ALPHA), ("delta", DELTA), ("seed", SEED))
 SEVERITY_RUBRIC_FIELDS = ("alpha", "delta", "seed")
+# G3's contrast consumes four budget fields, and the reason it is neither three nor five is the two gates it
+# calls: `certify_severity` takes no `beta` (a severity certificate has no automated subset to condition on),
+# and `certify_score` takes no `method` (it scores ordinal sets on one nonconformity, chosen by `grid`, so a
+# published `method` here would state a rule that never ran). It is declared in this module because
+# `test_the_rubric_field_names_have_one_owner_inside_the_module_that_owns_them` reads `report.py` and allows
+# that module one such literal -- `PUBLISHED_RUBRIC_FIELDS`. The row does not scan this module, so what keeps
+# a subset here from becoming a second memory of the budget is that it is passed to the arm that consumes it.
+G3_CONTRAST_RUBRIC_FIELDS = ("alpha", "beta", "delta", "seed")
 # What `verify` re-derives of the severity shape, named here for the same reason as the set list: one
 # owner, read by the gate and by the test that counts it. `direction` is on the list although the
 # publication table also declares it -- the artefact states the rule it claims to be, and both statements
@@ -786,6 +795,12 @@ PUBLISHED_DOCS = (
     # artefact is read through `load_published`, so an absent or wrong-shaped document is exit 4 -- no
     # argument selected that path, the table did.
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
+    # G3's contrast document, same shape as the row above and for the same reason: rendered from the committed
+    # artefact, whose two rows the arm below re-measures over the committed records. Beside `docs/SEVERITY.md`
+    # rather than folded into it because the severity document renders ONE certificate and states so in its
+    # refusal if the table grows a second row; the contrast is about two gates, and a section appended to a
+    # document that quotes one artefact would put the second gate's figures under that document's promise.
+    (G3_CONTRAST_MD, lambda inv, records: _render_g3_contrast_doc()),
     (RESPLIT_MD, lambda inv, records: _render_resplit_doc()),
     (SLICE_MD, lambda inv, records: _render_slice_doc()),
     # G4's contamination gap, same shape again: rendered from the committed artefact, whose numbers the arm
@@ -805,6 +820,19 @@ PUBLISHED_DOCS = (
     # formatting choice here -- it decides which failure a reader is told about.
     (REPORT_MD, lambda inv, records: _render_techreport_doc(inv, records)),
 )
+
+
+def _render_g3_contrast_doc() -> str:
+    """G3's contrast document, from the committed artefact and nothing else.
+
+    Same posture as `_render_severity_doc`: the artefact is read through `load_published`, so an absent or
+    wrong-shaped contrast is the named refusal at exit 4 -- no argument selected that path, the table did --
+    and the bytes come from the producer's own renderer, so the document a command emits and the document the
+    gate expects cannot be two different readings of the same file.
+    """
+    doc = load_published(G3_CONTRAST_JSON, "report.G3_CONTRAST_JSON",
+                         lambda path: read_g3_contrast(path, G3_CONTRAST_RUBRIC_FIELDS))
+    return render_g3_contrast(doc)
 
 
 def _render_drift_doc() -> str:
@@ -988,6 +1016,11 @@ def cmd_verify(args) -> int:
     # the ordinal guarantee exactly as the corpus-present one does.
     rederive_severity(expect, expect_rubric, SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS,
                       rubric=rubric, stamp=lambda cert: _stamp(cert, digest))
+    # G3's contrast, measured again over the same committed records: the multiclass set gate's refusal beside
+    # the one-sided certificate, field by field. The records file is committed, so the corpus-less lane
+    # re-derives the refusal exactly as the corpus-present one does, and a contrast that stopped matching its
+    # producer is a named `DRIFT:` line rather than a document nobody re-read.
+    rederive_g3_contrast(expect, expect_rubric, G3_CONTRAST_RUBRIC_FIELDS, rubric=rubric)
     # G1's empirical violation-rate column. The experiment itself is six minutes of re-splitting and belongs
     # to `tools/resplit_experiment.py`; the gate checks what the committed artefact says about itself, and
     # that the rubric it recorded is the rubric this freeze promised.

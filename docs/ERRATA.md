@@ -2644,3 +2644,154 @@ removed, so both lane denominators hold and were printed again at STEP 8: `re-de
 corpus absent and `810 /810` with it present, plain and `--protocol`, all at rc 0. `docs/G5.md` therefore stays
 the transcript of `73e3a63` and needs no re-export: the rule this branch now enforces is that a re-export is owed
 when the comparisons move, not when a sentence is repaired.
+
+## 2026-10-20 — G3's contrast was a printout, and a gate that refuses publishes nothing (#119, eighteenth emission)
+
+Spec §2 states G3 as ">=1 ordinal guarantee that multiclass CP cannot express" and measures it by the negative
+test: if vanilla multiclass set CP reproduces the one-sided bound, the criterion fails. `tests/test_g3_contrast.py`
+answered that question -- and the answer went against the row's original wording -- but every figure it produced
+lived only inside that run: computed, asserted, printed, published nowhere. `claims.G3.note` said so in its own
+sentence ("a number `tests/test_g3_contrast.py`'s builder computes in memory and prints, not a value any artefact
+under `data/` publishes"). Honest, and still a defect, because a set-gate **refusal** writes no certificate: before
+this round no committed byte anywhere recorded that this repository's multiclass gate publishes nothing on the very
+population its severity certificate is built from. G1's ceiling (#97), G4's `delta_hat` (#107) and the drift
+envelope (#110) had each already moved from "a test checks it" to "an artefact publishes it and the gate re-derives
+it"; G3 was the last criterion whose evidence was only in-memory.
+
+`tools/g3_contrast.py` now emits `data/g3_contrast.json` -- the population, the `autorate.certify_score` row
+(`feasible: false`, `reason: empty_feasible_set`, and the five headline bounds published as explicit `null`s rather
+than omitted, so a reader can tell "the gate answered and the answer was no bound" from "this build does not know
+that field's name"), and the `autorate.severity` row beside it, over the same committed records at the same freeze.
+`report.render_g3_contrast` owns `docs/G3.md`, that document joined `cli.PUBLISHED_DOCS`, and `verify` re-measures
+both rows through `report.rederive_g3_contrast`, which calls the producer's own `report.build_g3_contrast` with the
+records path and the `direction` handed in from `report.SEVERITY_CERTS` rather than read back off the artefact. The
+arm is table-driven in the same way `rederive_severity` is: emptying the ordinal table removes its rows too, which
+`tests/test_severity_surface.py`'s delta row now measures against the arm's own field lists. The document's first
+draft stated each gate's verdict in its own words and printed Python's `None`/`False` beside sentences about `null`;
+both were folded back into existing owners before the commit -- `report._verdict_text`, which `_verdict_cell`
+delegates to and which `docs/RESULTS.md` and `docs/SEVERITY.md` already read, and one value formatter that spells
+absent and boolean fields the way the JSON bytes do. No figure moved, so no denominator or digest changed.
+
+**Two guards decided shape, not the author.** (a) The artefact first carried a `meta.protocol_digest`.
+`t96/restamp.py` scans `data/*.json` for that key and refuses one no publication table names; it exited 4 with
+`DECLARED BY NO TABLE: g3_contrast.json carries meta.protocol_digest but no publication table names it, so a
+re-stamp would either miss it or invent a producer for it -- register it in the table it belongs to, or drop the
+digest if it is not published`. Measured before deciding: the files under `data/` that carry that key are exactly
+the seven certificates the tables name -- the ceiling, the envelope, the probe, the slice run and this contrast do
+not -- because a certificate's `meta` is a record of the run that produced it while a measurement artefact publishes
+the budget it was measured at. The stamp is gone; the artefact's freeze coverage is its four rubric rows. The set
+equality is policed rather than remembered -- `test_only_certificate_tables_publish_a_protocol_digest` walks the
+directory and refuses a stamped file no certificate table declares -- because a counted sentence here was false the
+moment this round added a file, which is how a remembered figure goes stale (rule 6). (b) The rubric field
+names moved to `cli.py` beside `SEVERITY_RUBRIC_FIELDS`, because
+`test_the_rubric_field_names_have_one_owner_inside_the_module_that_owns_them` allows one literal of the published
+names per module and `report.py`'s is `PUBLISHED_RUBRIC_FIELDS`. Four fields, not five: `certify_severity` takes no
+`beta` and `certify_score` takes no `method`, so publishing either against this artefact would state a rule that
+never ran.
+
+**An rc 1 escape happened in this round's own code, and the emission found it before a test did.** When the stamp
+was dropped, `cmd_verify` kept passing `digest=` into the arm; `verify` raised
+`TypeError: rederive_g3_contrast() got an unexpected keyword argument 'digest'` and exited **1** -- the one code the
+published contract forbids -- in both lanes and on both arms, and STEP 8 of the emission printed a traceback where
+a denominator belongs. The call site was fixed and all four lane runs re-taken. The rows that assert `verify`'s
+exit codes would have caught it, and they had not been run against this tree at that moment; the witness here was
+the emission step, which is recorded rather than smoothed over.
+
+**The denominators moved, so a re-export is owed.** Printed by the passing lane runs: `re-derived 804 /804 values`
+with the corpus absent and `re-derived 841 /841 values` with it present, plain and `--protocol protocol.json`, all
+four at rc 0. The thirty-one added rows are the twenty-six field comparisons, the four rubric rows, and the
+`docs/G3.md` byte row; the inter-lane gap is unchanged at 37 because nothing in the arm reads the corpus. README's
+lane paragraphs moved from 773/810 to 804/841 and its byte-for-byte document list names `docs/G3.md`. Those are
+current-truth sentences; the dated rows above -- including the one that recorded 734/771 to 773/810 -- stay exactly
+as they were written, and this entry is an addition, not an edit.
+
+**The emission.** `protocol.json` re-emitted at `frozen_at` 2026-10-20 with digest
+`670cead84431600031ffe6b8b6a3e16391efbbec442d61221df9d5a9b436f304`; the emission is a fixed point (a second run
+byte-identical) and stayed stable against the re-emitted artefacts. The seven stamped artefacts were re-emitted by
+their own commands and re-stamped, the slice run and the feasibility ceiling re-run by their producers, every
+published document re-rendered from `cli.PUBLISHED_DOCS`, and the contrast re-emitted after the re-stamp and
+compared byte for byte against its pre-stamp run -- which is the proof that it reads the committed records and the
+freeze's budget and nothing else. `docs/G5.md` is NOT re-exported by this commit and says so: it still records the
+previous freeze's `773 /773` and `810 /810`, so a transcript-quoter guard is red on this tree by design -- a
+transcript is a record of the run whose comparisons it names, and this round added comparisons, which is exactly
+the condition the rule says owes a re-export. The re-export is the next commit in this round, runs
+`tools/g5_export.sh` on the export of this commit, and adds no comparison of its own; nothing is pushed before it
+and the gates are green at the tip.
+
+**The review of this round, and what it changed before the commit.** A reviewer read the package and returned two
+blocking findings, five major and nine minor. The first blocker was about this document: a draft of the paragraph
+above wrote the `docs/G5.md` re-export as an act already done while the committed transcript still carries the
+previous freeze's two denominators -- an ERRATA row describing a re-export that has not happened is exactly the
+transcription this file exists to prevent, so the sentence is rewritten as an obligation the next commit
+discharges. The second was in the producer: its write sat outside the refusals, so an unwritable `--out` escaped
+as an rc-1 traceback on the input `tools/g1_feasibility.py` answers with 2; the write moved inside a guard and a
+row plants a read-only destination. Of the majors, three were code: the document asserted "every headline bound is
+`null`" without reading the row, so a certifying population printed a figure under a denial (the sentence is now
+derived, and a row feeds a certifying gate row to prove the branch); the shape check bounded the `rubric` keys only
+on the extra side, so a block missing `beta` reached a lookup and escaped as a `KeyError` at rc 1 -- the guard the
+first rc 1 of this round lacked, which is the difference between fixing a call site and closing a class; and the
+contrast's document stayed in the publication table in the arm-delta row while its arm had nothing left to
+measure, so it drops with the ordinal table now. The fifth major argued that `not_measured` under-claims once the
+measured half is published; `docs/G3.md` answers in prose rather than by moving the status, because the
+measurement that decides the criterion is still the generator's and the direction it would move in is `not_met`,
+not `met`. The minors were counts and ownerships: a typed "fifteen artefacts, seven stamped" that this round's
+own new file falsified, replaced by a row that states the set relation; a "three repeats" digit now divided out
+of the published population; a bound described by the budget it sits inside rather than by its own published
+figure; three paths restated as literals inside the renderer that owns their constants; a guard's comment that
+claimed it scans per module when it reads one module; a count in README with no owner; the new artefact and
+document missing from the absence battery; and a guard name typed without a space. One finding was about the
+review, not the tree: the package it was handed predated the stamped-set row this round added.
+
+**What this does not claim.** The artefact publishes only populations whose records are committed. The narrowing
+half of the G3 note -- the `shift = 0`, `error_rate = 0` corner where the set gate *does* certify, and the one-sided
+count taken on it -- is generated from the knobs rather than read from a file, so its digits keep naming
+`tests/test_g3_contrast.py` and its generator as producer, and `docs/G3.md` states that limit instead of repeating
+the figure. `claims.G3.status` stays `not_measured`: the criterion is worded as the wider claim, this round makes
+the measured half re-derivable, and the row is not quietly re-defined to fit the evidence.
+
+**A third review of the same round: the quoter, the slack in both directions, and a sentence with its middle
+missing.** The two reviewers that read this round's package after the fixes were applied found one blocker and
+four majors, and all five were consumed before the commit that carries them.
+
+*The blocker was about ordering, not arithmetic.* README opened its G5 bullet by reciting the transcript's two
+lanes as `804/804` and `841/841` -- the numbers this tree prints today -- while the document it was describing,
+`docs/G5.md`, still recorded the pair from the commit it names. A README that paraphrases a transcript has to
+copy what that transcript says, so the quoter went back to `773/773` and `810/810` for this commit and moves to
+the new pair inside the re-export commit, which is the same rule this file's fourteenth round wrote after a
+frozen note left one sentence citing the old commit while another cited the new. The transcript's pair is now
+stated with its own denominator named, so the two numbers in the same README section no longer read as a
+contradiction.
+
+*The `rubric` bound was slack in both directions at once.* `check_g3_contrast` subtracted the published
+superset from the block, which admits a key the arm never consumes and cannot refuse a key it does. A block
+missing `alpha` survived the reader and reached the builder and the renderer, which read that name directly --
+the rc-1 class again, guarded only at the arm, so any path that renders without the arm (a corrupted artefact
+read straight by the document table) still escaped. A block carrying `method` survived too, and it is the
+quieter half: `method` is inside the superset, the renderer prints every published name it finds, and
+`docs/G3.md` would have published a rule statement that no comparison covers -- a figure with no owner, in the
+one artefact whose two `summary` lines already quote the rule verbatim. The reader now takes the consumed
+subset from its caller and requires the two sets to agree, both loads go through it, and the arm's duplicate
+check was removed rather than left beside it: a branch no input can reach is prose, not a guard.
+
+*The plant battery was reading its own lists.* It looped over `report.G3_CONTRAST_*_FIELDS` and expected a
+count summed from the same three tuples, so deleting `summary` or `module` from a list deleted its witness and
+the row kept passing -- five of twenty-six fields planted, and the five chosen by the list that was being
+tested. The battery now iterates a literal of twenty-six pairs written in the test, and two further rows tie
+that literal back to the code: the pairs must equal the field lists, and the count is `26`, so a rename or a
+silently-dropped field reddens here instead of narrowing what gets planted.
+
+*README over-claimed the refusal.* It said the set gate publishes "no error bound of any kind" beside a
+document whose `set_gate.summary` states the best candidate's exact case-level upper bound against the budget.
+The number is a measurement of a candidate the gate rejected, not a bound the repository stands behind, and the
+sentence now says which of the two it is rather than denying the figure exists.
+
+*The defect all this exposed was in a published document.* `docs/G3.md` had shipped, since an earlier bulk
+edit in this same round, a sentence with its middle clause gone: it read "... printed above -- not the budget
+it sits" and the next line began "is the half a membership bound cannot carry". Every value in it was present
+and correct, which is why no digit row, no byte comparison, and no `null`-spelling row could see it -- the byte
+comparison re-renders the same broken prose from the same renderer, so a document that agrees with its own
+producer can still be unreadable. The renderer now states the bound and both prices inside one complete
+sentence, each figure read from the artefact, and the document row pins the clause (`are the always-report
+rule's cost, which is`) and the absence of the fragment. Re-emitting through the producer left
+`data/g3_contrast.json` byte-identical -- the change is prose-only and lives in the renderer, and the `md5`
+before and after is the witness.
