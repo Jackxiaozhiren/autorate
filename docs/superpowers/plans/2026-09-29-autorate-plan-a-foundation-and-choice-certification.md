@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-10-20): executed.** This plan's tasks are implemented, reviewed and fixed; the
+> per-task record is the matching ledger under `.superpowers/sdd/<plan>/progress.md` (rulings `R-*`)
+> and `git log`, not the checkboxes below -- they were written as a worker's to-do list and were never
+> ticked during execution, so an unchecked box here is not evidence that the step is outstanding. The
+> published numbers and their owners are in `README.md`, `docs/REPORT.md` and `protocol.json`.
+
 **Goal:** Ship an offline, model-free tool that turns archived decision-API responses into a finite-sample-bounded **automation certificate** for `choice` questions — and makes `NOT_CERTIFIABLE` (too few samples, no feasible threshold, vacuous quantile) a returned value rather than an absent number.
 
 **Architecture:** Three layers from the spec: L1 reads decision-API responses into one flat `Record` contract (no model, no network — the only v1 corpus is the upstream `feishu_zh` archive, which holds 384 paired `laya` and 384 `jev-1.13.0` real responses); L2 is pure-Python conformal machinery (APS set predictor → singleton automation rule → two-way joint bound, Angelopoulos, Bates, Candès, Jordan & Lei, arXiv 2110.01052 §3.2); L3 exposes `Certificate` + `Gate`. Certification is computed on **archived** records, so every published number is re-derivable by `autorate verify` without a GPU, a checkpoint, or an API key.

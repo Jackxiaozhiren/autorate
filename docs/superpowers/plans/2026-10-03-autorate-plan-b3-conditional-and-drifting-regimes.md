@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-10-20): executed.** This plan's tasks are implemented, reviewed and fixed; the
+> per-task record is the matching ledger under `.superpowers/sdd/<plan>/progress.md` (rulings `R-*`)
+> and `git log`, not the checkboxes below -- they were written as a worker's to-do list and were never
+> ticked during execution, so an unchecked box here is not evidence that the step is outstanding. The
+> published numbers and their owners are in `README.md`, `docs/REPORT.md` and `protocol.json`.
+
 **Goal:** Deliver spec §2's G4 -- worst-slice certification that **refuses** rather than averages -- plus the simultaneous multiple-testing correction across slices, the drift envelope flag, and the contamination-stratified certification of §9 that the technical report leads with.
 
 **Architecture:** Group-conditional quantiles over the producer-declared slice keys, computed by the same certifiers that Plan B1/B2 built rather than beside them: a new `groups.py` supplies per-group calibration and the correction, and the certifiers gain a `groups=` parameter. Every guarantee states the condition it is valid under, in the certificate's envelope, and refuses to publish a worst-of-N number that the correction does not license.

@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-10-20): executed.** This plan's tasks are implemented, reviewed and fixed; the
+> per-task record is the matching ledger under `.superpowers/sdd/<plan>/progress.md` (rulings `R-*`)
+> and `git log`, not the checkboxes below -- they were written as a worker's to-do list and were never
+> ticked during execution, so an unchecked box here is not evidence that the step is outstanding. The
+> published numbers and their owners are in `README.md`, `docs/REPORT.md` and `protocol.json`.
+
 **Goal:** Produce per-case decision records with complete probability distributions from a pinned, offline checkpoint, and use them to obtain spec §2's G1 -- a certified `autorate(alpha=0.05)` with an upper risk bound on at least three decision tasks, checked by a 200-resplit Monte-Carlo violation rate.
 
 **Architecture:** A build step outside the test path (fetch → verify digests → score → write records) produces committed JSONL; the existing L2 certifiers consume it unchanged. The build refuses to emit records unless it reproduces the upstream published row it claims comparability with, so the artifact carries its own parity proof.

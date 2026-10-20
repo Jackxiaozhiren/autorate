@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-10-20): executed.** This plan's tasks are implemented, reviewed and fixed; the
+> per-task record is the matching ledger under `.superpowers/sdd/<plan>/progress.md` (rulings `R-*`)
+> and `git log`, not the checkboxes below -- they were written as a worker's to-do list and were never
+> ticked during execution, so an unchecked box here is not evidence that the step is outstanding. The
+> published numbers and their owners are in `README.md`, `docs/REPORT.md` and `protocol.json`.
+
 **Goal:** Make `autorate` able to certify a *threshold* rule as well as a set rule, use that to reproduce G2 on real archived third-party responses, and state which confidence scale each backend actually publishes — then close the four contract items the whole-branch review ruled into Plan B.
 
 **Architecture:** Everything here stays in L2 (pure Python, torch-free, offline). The set-gate path (`certify_choice`) gains a sibling (`certify_threshold`) that shares its case-level counting, so one rule cannot be certified by one implementation and deployed by another. The audit reads `data/records_feishu.jsonl`, which is committed, so every number this plan publishes is re-derivable by CI without the vendored corpus.

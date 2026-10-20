@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-10-20): executed.** This plan's tasks are implemented, reviewed and fixed; the
+> per-task record is the matching ledger under `.superpowers/sdd/<plan>/progress.md` (rulings `R-*`)
+> and `git log`, not the checkboxes below -- they were written as a worker's to-do list and were never
+> ticked during execution, so an unchecked box here is not evidence that the step is outstanding. The
+> published numbers and their owners are in `README.md`, `docs/REPORT.md` and `protocol.json`.
+
 **Goal:** Give `autorate` the ordinal `score` primitive -- **nested modal-anchored chain sets** (ruling R-68: *not* the "minimum-length interval whose mass ≥ q" family this line originally named, which measures as non-nested; see Task 1), a one-sided severity certificate `P(Y > â(X)) ≤ α`, and a tolerance band -- and demonstrate **G3**: a guarantee that multiclass set prediction cannot express.
 
 **Architecture:** A pure ordinal layer (`ordinal.py`) supplies the set construction and the nonconformity; `certify_score.py` consumes it exactly the way `certify_choice.py` consumes `conformal.py`, sharing the split and the case-level counting that Plan B1 extracted. The severity certificate is a separate one-sided family because its loss is a different monotone function of a different parameter, not a variant of the set gate.
