@@ -5,6 +5,8 @@ certificate was built with, so a refusal propagates as a refusal.
 """
 from __future__ import annotations
 
+import math
+
 from .certificate import Certificate
 from .conformal import classify_set, conformal_set
 
@@ -18,7 +20,16 @@ class Gate:
         # Gate holding a fresh feasible Certificate with the new qhat and the old
         # statistics, which serialized as a certificate claiming an automation rate
         # measured at a threshold nobody ran.
-        self.qhat_override = None if qhat_override is None else float(qhat_override)
+        if qhat_override is None:
+            self.qhat_override = None
+        else:
+            try:
+                candidate = float(qhat_override)
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("qhat override must be a finite number in [0,1]") from exc
+            if not math.isfinite(candidate) or not 0.0 <= candidate <= 1.0:
+                raise ValueError("qhat override must be a finite number in [0,1]")
+            self.qhat_override = candidate
 
     @property
     def threshold(self):
@@ -69,13 +80,20 @@ class Gate:
             action, why, label = "escalate", "empty certified set", None
         else:
             action, why, label = "escalate", "certified set has %d labels" % len(C), None
+        # A threshold override is an explicit operating choice, not the point
+        # whose automation/error rate was evaluated. Preserve the operator's
+        # action, but never attach the original numerical guarantee or label
+        # the new action certified. A prose-only warning was insufficient:
+        # downstream callers can read certified/error_bound without envelope.
+        overridden = self.qhat_override is not None
         return {
-            # `bound` used to hold alpha -- the coverage level -- next to `beta`, which
-            # is not a bound on anything either. The number that bounds an automated
-            # decision is the certificate's conditional error bound, so it is on the row.
-            "action": action, "certified": True, "coverage_alpha": self.cert.alpha,
-            "error_bound": self.cert.conditional_error_bound,
-            "beta": self.cert.beta, "why": why, "set": C, "label": label,
+            "action": action, "certified": not overridden,
+            "coverage_alpha": None if overridden else self.cert.alpha,
+            "error_bound": None if overridden else self.cert.conditional_error_bound,
+            "beta": None if overridden else self.cert.beta,
+            "reason": "operating_override_not_certified" if overridden else None,
+            "why": why + (" (uncertified threshold override)" if overridden else ""),
+            "set": C, "label": label,
             "u": record.u, "method": self.method, "qhat": self.threshold,
             "envelope": envelope,
         }
