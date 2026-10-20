@@ -144,3 +144,39 @@ def test_a_success_missing_a_bound_is_a_readable_error_not_a_typeerror():
         kw[field] = None
         with pytest.raises(ValueError, match="must carry"):
             Certificate(**kw)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid"),
+    [
+        ("qhat", float("nan")),
+        ("qhat", float("inf")),
+        ("qhat", -0.01),
+        ("conditional_error_bound", float("nan")),
+        ("conditional_error_bound", -0.01),
+        ("marginal_error_bound", float("nan")),
+        ("marginal_error_bound", -0.01),
+        ("mean_set_size", float("nan")),
+        ("mean_set_size", -0.01),
+        ("autorate", float("nan")),
+    ],
+)
+def test_feasible_certificate_rejects_invalid_headline_statistics(field_name, invalid):
+    with pytest.raises(ValueError, match=field_name):
+        _ok(**{field_name: invalid})
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [(-0.1, 0.7), (0.5, 1.2), (float("nan"), 0.7), (0.5, float("nan"))],
+)
+def test_feasible_certificate_rejects_invalid_automation_interval(interval):
+    with pytest.raises(ValueError, match="autorate_ci"):
+        _ok(autorate_ci=interval)
+
+
+def test_deserialized_certificate_cannot_bypass_numeric_checks():
+    d = _ok().to_dict()
+    d["conditional_error_bound"] = float("nan")
+    with pytest.raises(ValueError, match="conditional_error_bound"):
+        Certificate.from_dict(d)
