@@ -2838,3 +2838,35 @@ rubric-row expectation was generated from the same list the arm iterates, which 
 refuses, so it is a literal now with a row tying it to the code; and the README prose census was keyed to
 `a 804 run`, so repairing the article reddened the row on an empty set rather than a wrong digit -- the
 pattern accepts either article now and the assertion behind it is unchanged.
+
+**The twentieth emission, and what chasing one round's denominators costs.** `freeze20.sh` emitted the protocol
+at 2026-10-21, digest `4b172bac1bc42a65b8c0ef5d4d17ced7c37c9fbab7696b35cfaa47bba4b681af`, proved a fixed point on
+a second emission, re-stamped seven certificates in `meta.protocol_digest` and nowhere else, and re-rendered every
+document from its producer; both lanes were printed again at STEP 8 -- `re-derived 805 /805 values` with the
+corpus absent and `842 /842` with it present, plain and `--protocol`, all at rc 0. The round's numbers therefore
+moved three times in one day: 773/810 as the previous emission left them, 804/841 when the contrast arm joined
+`verify`, 805/842 when the artefact's `producer` became a compared field rather than a self-description.
+
+Each move is a re-export, because `docs/G5.md` is a record of the run whose comparisons it names: it cannot be
+written before the commit that contains them and cannot stay true after the comparisons change. That is why this
+round lands as three commits -- the widening, the fixes with the nineteenth emission, the re-export with the
+twentieth -- instead of one, and why nothing was pushed until the tip carried all three. A single squashed commit
+would have shipped a document misquoting its own source, which is the defect class `tests/test_g5_transcript.py`
+and the note-digit row exist to catch; the intermediate commits are green except for the one transcription the
+next commit discharges, and the state of each is named in the commit that leaves it rather than smoothed over.
+
+`docs/G3.md` and `data/g3_contrast.json` re-emitted byte-identically across both emissions, which is the check
+that separates an artefact that reads the committed records from one that reads its own stamps: STEP 4b compares
+the contrast before and after the re-stamp and refuses if it moved. The contrast publishes no
+`meta.protocol_digest` and its four budget rows are compared against the freeze, so the digest moving twice did
+not touch it -- and the twenty-seventh comparison, `contrast ordinal.producer`, re-derives the field that names
+the program that wrote the file.
+
+**Two README sentences the same round had to retract.** The G5 bullet first quoted `804/804` and `841/841` as
+what the transcript records while the committed transcript still said `773/810`; that is a quoter moving ahead of
+its source, and it went back to the source's own pair for the commit that carried the arm, then forward again with
+the document it describes. The prose census in `tests/test_verify_protocol.py` was keyed to the string
+`a 804 run` -- the article the document had wrong -- so correcting the grammar reddened the row on an empty
+census rather than a wrong digit, and the pattern now accepts either article with its assertion unchanged. Both
+were measured, not argued: the pair in the note, in README and in the transcript is the pair the guard derives
+from the run.

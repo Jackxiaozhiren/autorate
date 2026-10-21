@@ -14,7 +14,7 @@ byte-comparable -- in the corpus-present lane and in the corpus-absent one alike
 - reported level `ahat`: 3, over a rubric of 5 levels
 - records calibration/evaluation: 600/600, cases calibration/evaluation: 200/200
 - denominators: 600 calibration records over 200 distinct cases: `bound`, `price_bound` and `override_bound` divide by `n_cal_cases` (the calibration split's case count); `measured_violation` divides by `n_eval_cases` (the evaluation split's case count); both are 200 in this population, so which denominator a figure uses is stated here rather than left to be inferred from two counts that happen to agree
-- produced under the frozen protocol: `meta.protocol_digest` = `97590b7089122e3203ee1dfd2c5c3fb792884d35d3f34deba47a9de5faa52238`
+- produced under the frozen protocol: `meta.protocol_digest` = `4b172bac1bc42a65b8c0ef5d4d17ced7c37c9fbab7696b35cfaa47bba4b681af`
 
 ## Verbatim summary
 
