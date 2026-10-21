@@ -1144,3 +1144,36 @@ def test_the_readme_lane_gap_breakdown_names_every_term_the_owner_counts():
         % (digests, keys, contamination, gap, expected))
     assert "those %d do not run" % (digests + keys) not in text.replace("  ", " "), (
         "README still calls the two-term sum the thing a corpus-less run skips")
+
+
+def test_every_claim_row_s_artefact_pointer_is_a_path_that_exists():
+    """A claim's `artefacts` is a pointer set, and every pointer in it is policed -- not only G3's.
+
+    `tests/test_g3_contrast_artefact.py` refuses a phantom path in the G3 row; #119 added that row because the
+    note claimed bytes the tree did not have. The same defect in one of the other four rows was invisible: no
+    census enumerated all five rows, so a rename under `docs/` or `tools/` would leave a frozen claim naming a
+    path that no longer exists while `verify` went on agreeing with itself. The enumeration comes from the
+    freeze rather than from a list of claim ids this file maintains -- a row that iterates five remembered ids
+    cannot see a sixth -- and the id set and the pointer count are independent literals, so a pointer dropped
+    from a claim reddens here instead of quietly shrinking the census.
+
+    GREEN on arrival, and proved able to fail by the plant: the predicate runs over a forged row set and must
+    name the phantom and nothing else.
+    """
+    def miss(rows, root):
+        found = []
+        for claim in rows:
+            for artefact in claim["artefacts"]:
+                if not (root / artefact.split("::")[0]).exists():
+                    found.append((claim["id"], artefact))
+        return sorted(found)
+
+    claims = json.loads((REPO / "protocol.json").read_text())["claims"]
+    pointers = [(c["id"], a) for c in claims for a in c["artefacts"]]
+    assert {cid for cid, _ in pointers} == {"G1", "G2", "G3", "G4", "G5"}, sorted(pointers)
+    assert len(pointers) == 25, len(pointers)
+    assert miss(claims, REPO) == [], miss(claims, REPO)
+
+    forged = [dict(c, artefacts=list(c["artefacts"]) + ["data/never_emitted.json"])
+              for c in claims if c["id"] == "G2"]
+    assert miss(forged, REPO) == [("G2", "data/never_emitted.json")], miss(forged, REPO)
