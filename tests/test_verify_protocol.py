@@ -18,6 +18,8 @@ import io
 import json
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1177,3 +1179,53 @@ def test_every_claim_row_s_artefact_pointer_is_a_path_that_exists():
     forged = [dict(c, artefacts=list(c["artefacts"]) + ["data/never_emitted.json"])
               for c in claims if c["id"] == "G2"]
     assert miss(forged, REPO) == [("G2", "data/never_emitted.json")], miss(forged, REPO)
+
+
+def test_the_producer_writes_the_pair_or_writes_neither(tmp_path):
+    """A refusal that reaches only the document must not leave a new artefact beside a stale document.
+
+    The write used to be two sequential `write_text` calls, so an `--out` that landed and a `--doc` that then
+    failed left the published pair describing different runs while the handler printed "nothing was written"
+    over a file that had just been written (review MAJOR, fourth round). Both blobs are now serialised before
+    either destination is touched and moved with `os.replace`. This plant drives the other half of that fix:
+    `data/` accepts the artefact's scratch file and `docs/` refuses its document's, and the run must answer 2,
+    print "nothing was written" without the word PARTIAL, leave `data/g3_contrast.json` absent, clean up its
+    own scratch file, and leave the document holding the bytes it had before.
+
+    Staged in a copy of the four inputs the producer reads, and blocked at the *directory* rather than the
+    file: an atomic rename takes its permission from the directory, so `chmod` on `docs/G3.md` would not
+    refuse anything, and putting a read-only `docs/` in the repository itself would be a hazard to every
+    other row running in this tree. What this row does NOT plant is the other refusal below that handler --
+    a scratch file that lands and a `os.replace` that then fails, which prints `PARTIAL WRITE`. That needs a
+    target the rename itself rejects, and the cheap candidates (a directory in the way, a cross-device move)
+    both change what the code is doing, so the branch stays covered by reading rather than by a witness.
+    """
+    for relative in (str(cli.PROTOCOL_JSON), report.G3_CONTRAST_JSON,
+                     report.SEVERITY_CERTS[report.SEVERITY_LABEL][0],
+                     report.SEVERITY_CERTS[report.SEVERITY_LABEL][1]):
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((REPO / relative).read_text())
+    docs = tmp_path / "docs"
+    docs.mkdir(exist_ok=True)
+    (docs / "G3.md").write_text("stale\n")
+    artefact = tmp_path / report.G3_CONTRAST_JSON
+    artefact.unlink()
+    docs.chmod(0o500)
+    try:
+        result = subprocess.run([sys.executable, str(REPO / "tools/g3_contrast.py"),
+                                 "--out", report.G3_CONTRAST_JSON,
+                                 "--doc", str(report.G3_CONTRAST_MD)],
+                                capture_output=True, text=True, cwd=str(tmp_path))
+    finally:
+        docs.chmod(0o700)
+    assert result.returncode == cli.EXIT_USAGE, (result.returncode, result.stdout, result.stderr)
+    # The mechanism, not just the code: the argument pre-checks refuse with `Nothing was written` about a
+    # flag, so this names the error the *write* phase raised. Without it the row would also pass if the run
+    # had been stopped before measuring anything.
+    assert "PermissionError" in result.stderr, result.stderr
+    assert "nothing was written" in result.stderr, result.stderr
+    assert "PARTIAL" not in result.stderr, result.stderr
+    assert not artefact.exists(), "the artefact landed while its document was refused"
+    assert not (tmp_path / "data" / "g3_contrast.json.tmp").exists(), "a scratch file was left behind"
+    assert (docs / "G3.md").read_text() == "stale\n", "the refused run overwrote the document"
