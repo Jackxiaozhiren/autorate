@@ -1229,3 +1229,50 @@ def test_the_producer_writes_the_pair_or_writes_neither(tmp_path):
     assert not artefact.exists(), "the artefact landed while its document was refused"
     assert not (tmp_path / "data" / "g3_contrast.json.tmp").exists(), "a scratch file was left behind"
     assert (docs / "G3.md").read_text() == "stale\n", "the refused run overwrote the document"
+
+
+README_STATUS_RX = re.compile(r"^- \*\*(G[1-5]),(.*?)\.\*\*", re.M | re.S)
+
+
+def readme_claim_statuses(text):
+    """`{claim id: the status word README states for it}`, read out of the criterion bullets.
+
+    The five headers are the only place the published document states a status per criterion, and each one
+    carries the word in backticks -- `` **G4, worst-slice certification refusing rather than averaging:
+    `not_met`.**``. A line scan for ``G[1-5]`` alone would also indict the prose mentions in the section's
+    opening paragraph, so the census takes the bullet headers, which is where the claim is actually made.
+    """
+    found = {}
+    for gid, head in README_STATUS_RX.findall(text):
+        words = [word for word in re.findall(r"`([a-z_]+)`", head)]
+        if words:
+            found[gid] = words[0]
+    return found
+
+
+def test_readme_s_five_criterion_statuses_are_the_freeze_s_and_not_a_second_memory():
+    """README says what `protocol.json` says, for all five criteria, and a rename cannot pass one side.
+
+    The section's own sentence promises it "reads its statuses off that document instead of keeping a second
+    copy of them", and `claims.G2.status` has already been renamed once on this branch -- so the promise is a
+    claim about a transcription, which is what this file polices everywhere else (the lane denominators, the
+    unpublished-surface list, the transcript's commit token). Nothing policed it until now: the row below
+    covers README's *path* pointers and the `not yet published as evidence` list, and a status word that
+    drifted from the freeze would have been caught by no test at all.
+
+    The set of ids is asserted to be exactly the freeze's, so a sixth criterion added to the protocol reddens
+    this row rather than going unquoted, and the plant proves the predicate conditional in both directions --
+    a renamed status in a copied claim set is named, and the real pair is not.
+    """
+    claims = {claim["id"]: claim["status"]
+              for claim in json.loads((REPO / "protocol.json").read_text())["claims"]}
+    stated = readme_claim_statuses((REPO / "README.md").read_text())
+    assert set(stated) == set(claims), (sorted(stated), sorted(claims))
+    drift = sorted(gid for gid in claims if stated[gid] != claims[gid])
+    assert not drift, ["README states %r where protocol.json says %r" % (stated[g], claims[g]) for g in drift]
+
+    renamed = dict(claims)
+    renamed["G4"] = "refused"
+    planted = sorted(gid for gid in renamed if stated[gid] != renamed[gid])
+    assert planted == ["G4"], planted
+    assert stated["G4"] == "not_met", stated
