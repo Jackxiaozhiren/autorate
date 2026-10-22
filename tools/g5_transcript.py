@@ -38,7 +38,8 @@ LEAK_RX = re.compile(r"/(?:Users|home|var/folders|private/tmp|private/var|tmp)/\
 MASK = "<export-dir>"
 STEPS = ("lane_absent", "lane_present")
 LANE_COUNT_RX = re.compile(r"re-derived (\d+) /(\d+) values")
-FALSIFICATIONS = ("tamper_protocol", "swap_records", "wrong_shape_snapshot", "tamper_artefact_digest")
+FALSIFICATIONS = ("tamper_protocol", "swap_records", "wrong_shape_snapshot", "tamper_artefact_digest",
+                  "tamper_contrast_figure")
 HEX64 = re.compile(r"[0-9a-f]{64}")
 
 # The exit codes this repository documents (`cli.py`: 0 certified, 2 usage, 3 not certifiable, 4 drift).
@@ -269,10 +270,10 @@ def render(flat: dict) -> str:
     outcomes = [(s["rc"], s["output"].split(" -- ")[0].strip()) for s in plants]
     if len(set(outcomes)) != len(outcomes):
         raise TranscriptRefusal(
-            "two planted defects answered with the same code and the same first clause (%r): four plants that"
-            " cannot be told apart are not four checks, and this transcript would publish one symptom as the"
-            " evidence for four -- the run before this one did exactly that, with plant 3 reporting plant 1's"
-            " rubric error" % (next(o for o in outcomes if outcomes.count(o) > 1),))
+            "two planted defects answered with the same code and the same first clause (%r): plants that"
+            " cannot be told apart are not separate checks, and this transcript would publish one symptom as"
+            " the evidence for more than one -- the run before this one did exactly that, with plant 3"
+            " reporting plant 1's rubric error" % (next(o for o in outcomes if outcomes.count(o) > 1),))
     restored = sum(1 for s in plants if s["restored"] and RESTORE_OK in s["restored"])
     lines += [
         "## The falsifications",

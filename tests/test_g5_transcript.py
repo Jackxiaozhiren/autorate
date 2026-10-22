@@ -346,7 +346,7 @@ def test_the_recorder_files_themselves_carry_no_path_shape():
 
 
 def test_each_plant_block_is_followed_by_a_restore_line_naming_its_own_file(text):
-    """The restore evidence is read here, not just rendered: four plants, four files, four receipts.
+    """The restore evidence is read here, not just rendered: one plant, one file, one receipt.
 
     Review M5: the emitter printed "Each file is restored byte-identically afterwards" from a template while
     the restore lines themselves came in through `.get`, so a run interrupted between plant and restore -- or
@@ -355,7 +355,7 @@ def test_each_plant_block_is_followed_by_a_restore_line_naming_its_own_file(text
     did get written has to carry, under each plant block, the restore line FOR THAT PLANT'S OWN FILE, named
     by the same path the block's label names.
 
-    Plant: delete one restore line, or hand-write the same line under all four blocks -- both fail.
+    Plant: delete one restore line, or hand-write the same line under every block -- both fail.
     """
     from tools.g5_transcript import FALSIFICATIONS
 
@@ -373,14 +373,14 @@ def test_each_plant_block_is_followed_by_a_restore_line_naming_its_own_file(text
     assert len(set(targets)) == len(targets), targets
 
 
-def test_the_four_plant_blocks_carry_four_distinct_outcomes(text):
-    """Four defects, four different refusals -- a collapse is the symptom this round already shipped once.
+def test_the_plant_blocks_carry_distinct_outcomes(text):
+    """One refusal per defect -- a collapse is the symptom this round already shipped once.
 
     Review M7(ii): no row required the plant blocks to differ, and the run before this one published plant 3
     answering with plant 1's rubric error (and an earlier one put plants 2 and 3 on the same raise site). rc
-    alone is not the claim: plants 2, 3 and 4 are all 4, and what distinguishes them is the clause the refusal
-    states before it starts explaining itself. The two lanes are compared too, because a plant that quietly
-    became "the gate ran fine" is a plant that did not fire.
+    alone is not the claim: every plant but the first answers 4, and what distinguishes them is the clause the
+    refusal states before it starts explaining itself. The two lanes are compared too, because a plant that
+    quietly became "the gate ran fine" is a plant that did not fire.
 
     Plant: make two blocks print the same rc and the same first clause.
     """
@@ -401,6 +401,39 @@ def test_the_four_plant_blocks_carry_four_distinct_outcomes(text):
 # do carry is a plant each, and the ordering is disclosed here rather than left for a reader to assume. The
 # transcript rows above were written first and watched to fail with `docs/G5.md` absent.
 
+def _plant_rows() -> dict:
+    """One receipt per plant, keyed by the name the recorder writes, and covering the tuple or refusing.
+
+    The fixture used to spell the four prefixes out inside `_minimal_record`, so widening `FALSIFICATIONS`
+    reddened every emitter row at once -- including rows that ask about a doubled space or a missing value --
+    and none of those failures named the tuple. Keying this table on the same owner the emitter iterates, and
+    asserting the two agree here, makes the next plant cost one row in this table instead of a suite of
+    unrelated-looking failures.
+
+    The values are the refusals each plant actually gives, and the outcomes stay distinct because the emitter
+    refuses two plants that answer alike: plant 4 drifts one stamped field and plant 5 drifts the contrast's
+    figure plus the document that quotes it, so their last lines differ by two comparisons, not by nothing.
+    """
+    from tools.g5_transcript import FALSIFICATIONS
+
+    rows = {
+        "tamper_protocol": ("alpha moved", "4", "RUBRIC MISMATCH", "protocol.json",
+                            "protocol.json restored byte-identical"),
+        "swap_records": ("records swapped", "4", "DRIFT", "data/records_feishu.jsonl",
+                         "data/records_feishu.jsonl restored byte-identical"),
+        "wrong_shape_snapshot": ("snapshot []", "4", "PUBLISHED ARTEFACT UNAVAILABLE", "data/inventory.md.json",
+                                 "data/inventory.md.json restored byte-identical"),
+        "tamper_artefact_digest": ("one hex digit changed in a stamped digest", "4",
+                                   "re-derived 241 /242 values", "data/cert_laya.json",
+                                   "data/cert_laya.json restored byte-identical"),
+        "tamper_contrast_figure": ("one published figure moved in the G3 contrast", "4",
+                                   "re-derived 240 /242 values", "data/g3_contrast.json",
+                                   "data/g3_contrast.json restored byte-identical"),
+    }
+    assert sorted(rows) == sorted(FALSIFICATIONS), (sorted(rows), sorted(FALSIFICATIONS))
+    return rows
+
+
 def _minimal_record(**over) -> str:
     """A complete record with one field replaced, so each row's failure is the one it names.
 
@@ -413,6 +446,7 @@ def _minimal_record(**over) -> str:
 
     from autorate.cli import corpus_only_comparisons
     from autorate.protocol import load_protocol, protocol_digest
+    from tools.g5_transcript import FALSIFICATIONS
 
     gap = corpus_only_comparisons(json.loads((REPO / "data" / "inventory.md.json").read_text()))
     base = {
@@ -425,23 +459,11 @@ def _minimal_record(**over) -> str:
         "lane_absent.rc": "0", "lane_absent.output": "re-derived 242 /242 values",
         "lane_present.command": "verify --protocol protocol.json (corpus present)",
         "lane_present.rc": "0", "lane_present.output": "re-derived %d /%d values" % (242 + gap, 242 + gap),
-        "tamper_protocol.command": "alpha moved", "tamper_protocol.rc": "4",
-        "tamper_protocol.output": "RUBRIC MISMATCH",
-        "tamper_protocol.target": "protocol.json",
-        "tamper_protocol.restored": "protocol.json restored byte-identical",
-        "swap_records.command": "records swapped", "swap_records.rc": "4", "swap_records.output": "DRIFT",
-        "swap_records.target": "data/records_feishu.jsonl",
-        "swap_records.restored": "data/records_feishu.jsonl restored byte-identical",
-        "wrong_shape_snapshot.command": "snapshot []", "wrong_shape_snapshot.rc": "4",
-        "wrong_shape_snapshot.output": "PUBLISHED ARTEFACT UNAVAILABLE",
-        "wrong_shape_snapshot.target": "data/inventory.md.json",
-        "wrong_shape_snapshot.restored": "data/inventory.md.json restored byte-identical",
-        "tamper_artefact_digest.command": "one hex digit changed in a stamped digest",
-        "tamper_artefact_digest.rc": "4",
-        "tamper_artefact_digest.output": "re-derived 241 /242 values",
-        "tamper_artefact_digest.target": "data/cert_laya.json",
-        "tamper_artefact_digest.restored": "data/cert_laya.json restored byte-identical",
     }
+    for prefix in FALSIFICATIONS:
+        command, rc, output, target, restored = _plant_rows()[prefix]
+        base.update({"%s.command" % prefix: command, "%s.rc" % prefix: rc, "%s.output" % prefix: output,
+                     "%s.target" % prefix: target, "%s.restored" % prefix: restored})
     base.update(over)
     for key in list(base):
         if base[key] is None:
@@ -670,7 +692,7 @@ def test_two_plants_answering_identically_are_refused(tmp_path):
 
     Review M7(ii) measured the run where plant 3 published plant 1's rubric error: same class of outcome,
     different defect, one symptom counted twice. The document row
-    (`test_the_four_plant_blocks_carry_four_distinct_outcomes`) reads the published blocks; this row is the
+    (`test_the_plant_blocks_carry_distinct_outcomes`) reads the published blocks; this row is the
     same rule at emit time, so the record cannot produce a document that the row would later have to redden.
 
     Plant: give `swap_records` the answer `tamper_protocol` gave -- same rc, same first clause.

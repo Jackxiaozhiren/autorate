@@ -12,7 +12,7 @@
 #     and a deliberate fetch that has to fail), because "no model" and "no network" are properties, not
 #     intentions;
 #   * both lanes run, so the two denominators and the gap between them are printed rather than described;
-#   * four falsifications are planted, each checked that it actually moved the bytes it aimed at, and each
+#   * five falsifications are planted, each checked that it actually moved the bytes it aimed at, and each
 #     restored with the restore checked rather than assumed, because a green that cannot go red is not
 #     evidence and a defect that never fired is not a falsification;
 #
@@ -114,7 +114,7 @@ AUTORATE_FEISHU_ROOT="$CORPUS" step lane_present \
 
 # --- the falsifications, each restored byte-identically --------------------------------------------------
 #
-# Four plants, and the first one is a finding rather than a demonstration: moving a rubric value inside the
+# Five plants, and the first one is a finding rather than a demonstration: moving a rubric value inside the
 # export's `protocol.json` answers `rc=2` from `load_protocol`, which refuses an internally inconsistent
 # freeze BEFORE any published number is compared. That is earlier and stronger than the `rc=4` drift this step
 # was written to show, so the drift half is planted separately, at step four, on a value the loader cannot
@@ -176,6 +176,31 @@ AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir step tamper_artefact_digest \
   "change one hex digit of data/cert_laya.json meta.protocol_digest (expect rc 4 as drift on the stamped meta)" \
   "$BIN" verify --protocol protocol.json
 restore_check tamper_artefact_digest "$WORK/cert.orig" data/cert_laya.json
+
+# The fifth plant is the published contrast -- `data/g3_contrast.json`, whose arm re-measures both gates -- and
+# it is planted on a *measured figure*, not on a stamp: the stamped-digest plant above cannot cover this
+# artefact, because the contrast deliberately carries no `meta.protocol_digest`. Moving one published number is
+# the only defect shape that should reach the gate here, and the receipt is the drift line naming the gate and
+# the field, which is what `tests/test_cli.py`'s in-process plant does not prove -- this one runs the shipped
+# command inside a `git archive` export.
+cp data/g3_contrast.json "$WORK/contrast.orig"
+$PY3 - <<'INNER' || put tamper_contrast_figure.note "plant setter failed (heredoc rc nonzero)"
+import json, pathlib
+target = pathlib.Path("data/g3_contrast.json")
+doc = json.loads(target.read_text())
+doc["severity_gate"]["bound"] = round(doc["severity_gate"]["bound"] + 0.01, 12)
+target.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+INNER
+plant_check tamper_contrast_figure "$WORK/contrast.orig" data/g3_contrast.json
+AUTORATE_FEISHU_ROOT=/nonexistent-corpus-dir step tamper_contrast_figure \
+  "move data/g3_contrast.json severity_gate.bound by 0.01 (expect rc 4 as drift naming the gate and the field)" \
+  "$BIN" verify --protocol protocol.json
+if printf '%s' "$LAST_OUTPUT" | grep -q Traceback; then
+  put tamper_contrast_figure.note "a TRACEBACK escaped -- the exit-code contract was not held"
+else
+  put tamper_contrast_figure.note "no traceback in the refusal"
+fi
+restore_check tamper_contrast_figure "$WORK/contrast.orig" data/g3_contrast.json
 
 # --- the transcript --------------------------------------------------------------------------------------
 "$PY3" "$REPO/tools/g5_transcript.py" --record "$RECORD" --out "$REPO/docs/G5.md"
