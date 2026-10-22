@@ -2870,3 +2870,49 @@ the document it describes. The prose census in `tests/test_verify_protocol.py` w
 census rather than a wrong digit, and the pattern now accepts either article with its assertion unchanged. Both
 were measured, not argued: the pair in the note, in README and in the transcript is the pair the guard derives
 from the run.
+
+## 2026-10-22 — a published figure the falsification battery had never touched (#121, twenty-first emission)
+
+`tools/g5_export.sh` planted four defects and the fifth row of that battery is new. The gap was not cosmetic:
+plant four moves one hex digit inside a stamped `meta.protocol_digest`, and `data/g3_contrast.json` -- the
+artefact whose verify arm carries thirty-one comparisons and whose bytes are what `docs/G3.md` is rendered
+from -- publishes no stamped digest at all, by the convention `tools/t96/restamp.py` and
+`test_only_certificate_tables_publish_a_protocol_digest` exist to keep. So a published bound in that file had
+never been seen to disagree inside a `git archive` export, which is exactly the claim the G5 row is written to
+support.
+
+**Measured before the plant was committed, not after.** `laya-evidence/task2/t121/probe-plant5.sh` unpacked
+`53ace1b`, ran the shipped command, and reported the baseline at rc=0 with the lane's full denominator; then
+moved `severity_gate.bound` and reported rc=4 with exactly two `DRIFT:` lines -- the first naming
+`contrast ordinal.severity_gate.bound` (recomputed against the published value), the second naming
+`docs/G3.md byte-identical` -- and no traceback. The second line is the half that matters: the document is
+rendered from the artefact's bytes, so a plant that moved the figure and left the quoting document agreeing
+would have shown an arm that re-measures nothing anyone publishes. Because the emitter refuses two plants that
+answer with the same code and the same last line, this ordering was the only honest sequence -- running the
+twenty-minute export to discover a collision would have paid for the discovery twice.
+
+**Two collateral defects, both of the same species: a list summarised by a literal.**
+- `tests/test_g5_transcript.py`'s record fixture spelled its four plant keys out beside the tuple. Widening
+  `FALSIFICATIONS` reddened eight rows, four of which ask about a doubled space, a missing value and a restore
+  receipt -- none of them about the battery -- and no failure named the tuple. The receipts now live in one
+  table keyed on the same owner the emitter iterates, with a coverage assertion that says which list is behind.
+  The two rows that stayed red are the ones that read the committed document, and they are the owed state the
+  re-export discharges.
+- The emitter's refusal said "four plants ... four checks" from a typed literal. It was not renumbered; the
+  count was removed, because the sentence is about answers that cannot be told apart and this document has
+  already recorded two counts that lagged the lists they summarised. The rendered sentence keeps deriving from
+  `len(FALSIFICATIONS)`: that one is policed, by `test_the_defect_count_in_the_prose_is_the_count_of_blocks_rendered`.
+
+**Ordering, second time and for the same reason.** `docs/G5.md` was re-exported from `53ace1b`, a tools-only
+commit that leaves `protocol.json` byte-identical, so the transcript prints the digest of the freeze its own
+export unpacked. The twenty-first emission (digest `95ea6cb5e327`) is what rewrites the G5 note to say five,
+and it re-stamps the seven certificates that carry a digest. The contrast and `docs/G3.md` came through the
+re-stamp byte-identical, which is the check that separates an artefact derived from the committed records from
+one derived from its own stamps.
+
+**What moved in the published prose.** The frozen G5 note: `Four falsifications` to `Five`, a fifth mechanism
+clause naming the artefact and why the stamped-digest plant cannot cover it, and the commit the export unpacked
+(`9f49fb6` to `53ace1b`). `README.md`'s G5 bullet: the same three, with the exit-code list now `(rc=2, 4, 4, 4,
+4)`. The lane denominators did not move -- a plant is a run of the same gate, not a new comparison -- so
+`805/805` absent and `842/842` present are transcribed unchanged, and the corpus-only gap stays owned by
+`cli.corpus_only_comparisons`.

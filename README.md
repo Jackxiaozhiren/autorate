@@ -260,13 +260,13 @@ second place to keep them.
   0.477. Every non-empty slice is above the 0.050 budget, and none of the four certifies.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**
-  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `9f49fb6` into a scratch
+  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `53ace1b` into a scratch
   directory with its own HOME and runs `autorate verify --protocol protocol.json` there --
   `805/805` values with the corpus absent at rc=0 and `842/842` with
   it present at rc=0 -- the pair the transcript records, read from its own two lane blocks, and the same pair
   this tree's `verify` prints above, because a transcript is re-exported from the commit that moved the
-  comparisons rather than remembered across one -- and four planted defects that each come back inside the documented
-  exit-code contract (rc=2, 4, 4, 4) and are restored byte-identically with the restore
+  comparisons rather than remembered across one -- and five planted defects that each come back inside the documented
+  exit-code contract (rc=2, 4, 4, 4, 4) and are restored byte-identically with the restore
   checked. `tests/test_g5_transcript.py` refuses the file if a recorded code escapes the contract, if a
   lane's two halves disagree, if the digest printed is not the digest of the commit the transcript names,
   if the sentence counting the plants disagrees with the number of plant blocks, or if a single line still
