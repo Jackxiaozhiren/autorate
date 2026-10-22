@@ -112,3 +112,83 @@ def test_the_runner_fetches_the_history_the_transcript_rows_need():
     assert checkouts, "the workflow no longer checks the repository out, so the transcript rows have no runner"
     shallow = [lines[i].strip() for i in checkouts if "fetch-depth: 0" not in "\n".join(lines[i:i + 8])]
     assert not shallow, "checkout steps without full history: %s" % shallow
+
+
+JOB_RX = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
+SHELL_RX = re.compile(r"^\s*shell:\s*(\S+)")
+
+
+def _job_blocks(text):
+    """The workflow's job bodies, split on the two-space keys under `jobs:`.
+
+    A YAML parse is not available here -- the project's runtime floor is the standard library plus numpy, and a
+    test-only dependency would have to be justified in `pyproject.toml` and `uv.lock` for one file -- so the
+    scan is line-shaped, like the rows above it. It is keyed on indentation rather than on a list of job names,
+    because a guard that enumerates two jobs cannot see a third.
+    """
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line == "jobs:")
+    except StopIteration:
+        raise AssertionError("the workflow has no `jobs:` mapping, so nothing here can be censused")
+    blocks, name = [], None
+    for line in lines[start + 1:]:
+        keyed = JOB_RX.match(line)
+        if keyed:
+            name, body = keyed.group(1), []
+            blocks.append((name, body))
+        elif name is not None and not line.startswith(" " * 4) and line.strip():
+            name = None                                  # dedented back to a workflow-level key
+        elif name is not None:
+            blocks[-1][1].append(line)
+    return blocks
+
+
+def piped_steps_without_pipefail(text):
+    """Jobs whose `run:` steps pipe a gate into a consumer while the job never asks for a failing pipeline.
+
+    GitHub's `shell: bash` runs `bash -e -o pipefail`; its documented default for `run` is `bash -e`, which
+    reports the *last* command's status -- so `pytest | tee /tmp/pytest.log` on the default shell is green on a
+    red suite. Every gate step in this workflow pipes its output to a log, so the workflow's ability to fail
+    lives in those `defaults.run.shell: bash` declarations, and a comment saying so is not a guard.
+    """
+    offenders = []
+    for name, body in _job_blocks(text):
+        shell = {m.group(1) for line in body for m in [SHELL_RX.match(line)] if m}
+        if "bash" in shell:
+            continue
+        pipes = [cmd for cmd in (STEP_RX.match(line) for line in body)
+                 if cmd and "|" in cmd.group(1).strip()]
+        if pipes:
+            offenders.append((name, len(pipes)))
+    return offenders
+
+
+def test_no_ci_job_pipes_a_gate_without_declaring_the_shell_that_makes_it_fail():
+    """Every job that pipes a gate to a log must declare `shell: bash`, or its exit code is `tee`'s.
+
+    GREEN on arrival: both jobs (`offline`, `cross-libc-verify`) carry the declaration, and the row above the
+    first one records it as a deliberate choice with a comment. It is proved able to fail by the plant below,
+    which runs the same predicate over a workflow with a piped step and no `defaults` block, and by the second
+    plant, which shows the predicate is not a pipe-detector that indicts every job -- a job with no pipes is
+    not named even without the declaration.
+    """
+    text = WORKFLOW.read_text()
+    blocks = _job_blocks(text)
+    assert sorted(name for name, _body in blocks) == ["cross-libc-verify", "offline"], blocks
+    assert any(any("|" in (STEP_RX.match(line).group(1) if STEP_RX.match(line) else "") for line in body)
+               for _name, body in blocks), "no step pipes anywhere, so this row guards nothing"
+    assert piped_steps_without_pipefail(text) == [], piped_steps_without_pipefail(text)
+
+    bare = ("jobs:\n"
+            "  sneaky:\n"
+            "    steps:\n"
+            "      - run: uv run --frozen pytest | tee /tmp/pytest.log\n"
+            "      - run: uv run --frozen autorate verify --protocol protocol.json | tee /tmp/verify.log\n")
+    assert piped_steps_without_pipefail(bare) == [("sneaky", 2)], piped_steps_without_pipefail(bare)
+
+    quiet = ("jobs:\n"
+             "  nopipes:\n"
+             "    steps:\n"
+             "      - uses: actions/checkout@v4\n")
+    assert piped_steps_without_pipefail(quiet) == [], piped_steps_without_pipefail(quiet)
