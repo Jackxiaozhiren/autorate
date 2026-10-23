@@ -50,10 +50,14 @@ BACKENDS = ("laya", "jev")
 # here rather than in a list inside each caller -- two lists that can disagree about what was certified is
 # the defect this table exists to prevent, not a formatting choice. `massive/km` joined on task #68's round:
 # spec §2's G4 column names Khmer as the collapsed slice the worst-slice certification must refuse, and a
-# criterion whose example is not in the evidence is a criterion nobody checked.
+# criterion whose example is not in the evidence is a criterion nobody checked. `massive/es` joined on
+# 2026-10-22 because G1's refusal was being read as a four-language accident: it is the fifth measured slice,
+# the second one that automates NOTHING (like `de`, no single-label set at coverage 0.950), and the file that
+# carries the witness that a re-scored `en` came out byte-identical to the committed one.
 MASSIVE_CERTIFICATES = {
     "massive/de": ("data/records_massive_de.jsonl", "data/cert_massive_de_laya.json"),
     "massive/en": ("data/records_massive_en.jsonl", "data/cert_massive_en_laya.json"),
+    "massive/es": ("data/records_massive_es.jsonl", "data/cert_massive_es_laya.json"),
     "massive/km": ("data/records_massive_km.jsonl", "data/cert_massive_km_laya.json"),
     "massive/sw": ("data/records_massive_sw.jsonl", "data/cert_massive_sw_laya.json"),
 }
@@ -66,7 +70,7 @@ MASSIVE_CERTIFICATES = {
 #
 # The records file is SYNTHETIC ORDINAL DATA WITH KNOWN ANSWERS, and that is a measured constraint, not a
 # stylistic one: none of the five committed records files in this checkout carries a single
-# `qtype="score"` record (`data/records_feishu.jsonl` is `choice`+`noul`, the four MASSIVE files are all
+# `qtype="score"` record (`data/records_feishu.jsonl` is `choice`+`noul`, the five MASSIVE files are all
 # `choice`), and `severity.certify_severity` refuses a population with no ordinal record by name. So no
 # corpus this repository can see produces a severity certificate, and the ordinal guarantee is published
 # over the population `tests/_records.build_ordinal` owns -- the same population `tests/test_severity.py`
@@ -633,6 +637,7 @@ SLICE_BACKEND = "laya"
 # same length -- the trio this tuple carried until task #68 is the set a fixture must not get to freeze.
 SLICE_RECORDS = ("data/records_massive_de.jsonl",
                  "data/records_massive_en.jsonl",
+                 "data/records_massive_es.jsonl",
                  "data/records_massive_km.jsonl",
                  "data/records_massive_sw.jsonl")
 SLICE_RUBRIC_FIELDS = PUBLISHED_RUBRIC_FIELDS

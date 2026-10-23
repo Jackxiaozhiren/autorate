@@ -125,15 +125,15 @@ upstream `SOURCE.json` digests and the inventory snapshot are transcribed from
 that can see the corpus, where a stale key goes red.
 
 Those two environments are not two speeds of the same gate, and the denominators `verify`
-prints say so: `re-derived 805 /805 values` where the corpus is absent, `re-derived 842 /842
+prints say so: `re-derived 875 /875 values` where the corpus is absent, `re-derived 912 /912
 values` where it is present. Both exit 0, both are green, and they are not the same claim.
 
 The corpus is not a committed file. It is the sibling `laya*/research/benchmarks/feishu_zh`
 checkout, which lives outside this repository, so a runner that checks out this repository
-alone can never reach the 842: every CI run is an 805 run, on both of its arms. Green CI is
+alone can never reach the 912: every CI run is an 875 run, on both of its arms. Green CI is
 therefore evidence about the transcribed lane and nothing else.
 
-An 805 run proves a lot inside that lane. Every published number that is a function of a
+An 875 run proves a lot inside that lane. Every published number that is a function of a
 committed input re-derives there -- all seven published certificates, each from the committed
 records it was actually made from, G4's slice run from the four committed MASSIVE record files
 it names inside itself, the whole
@@ -141,14 +141,14 @@ of `docs/RESULTS.md` byte for byte, `data/inventory.md` byte for byte, `docs/AUD
 for byte, `docs/SEVERITY.md` byte for byte, `docs/G3.md` byte for byte, `docs/RESPLIT.md` byte for byte, `docs/SLICES.md` byte
 for byte, `docs/CONTAMINATION.md` byte for byte, `docs/FEASIBILITY.md` byte for byte, `docs/DRIFT.md` byte
 for byte, `docs/REPORT.md` byte for byte, and the MASSIVE rows
-from their committed pin. What an 805 run
+from their committed pin. What an 875 run
 cannot prove is what its own disclosure says in so many words --
 `this run cannot see whether that snapshot went stale`. The gap is exactly 37
 checks: the 9 upstream `SOURCE.json` digests, the 26 snapshot keys a corpus-present run
 recomputes instead of reading back, and the 2 corpus-only re-digest checks the contamination
 arm makes against the upstream results file. On a machine without the archive those 37 do not
 run at all; the figures they would test exist there only as the transcription, so a snapshot
-that had drifted from the corpus would agree with itself and report 805 /805.
+that had drifted from the corpus would agree with itself and report 875 /875.
 
 So the corpus-present run is not a slower, fussier version of the CI job; it is the only one
 in which the transcription has an owner, and it is a local obligation, run before a push,
@@ -254,15 +254,17 @@ second place to keep them.
   stratum errs less and the interval is clear of zero. `verify` re-pools it (29 quantities plus 4 budget
   values in both lanes, and re-digests the upstream file where the corpus is visible), and the artefact's
   `claim` is false: the strata are different suites, so task difficulty is confounded with the flag and a gap
-  between aggregate rates is a diagnostic, not a proof of leakage. The four marginal certificates, read from their own `detail`, are the at-a-glance version of
-  the same evidence: `de` automates 0 of 1,487 cases (no singleton at that coverage, so nothing to bound);
+  between aggregate rates is a diagnostic, not a proof of leakage. The five marginal certificates, read from their own `detail`, are the at-a-glance version of
+  the same evidence: `de` automates 0 of 1,487 cases (no singleton at that coverage, so nothing to bound),
+  and `es` likewise automates 0 of 1,487 -- while its 338 automated records carry 47 wrong, which is the
+  reading a record denominator would have published and the case denominator refuses;
   `en` automates 709 with 43 wrong, upper bound 0.078; `km` 11 with 5 wrong, 0.729; `sw` 39 with 13 wrong,
-  0.477. Every non-empty slice is above the 0.050 budget, and none of the four certifies.
+  0.477. Every non-empty slice is above the 0.050 budget, and none of the five certifies.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**
   `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `53ace1b` into a scratch
   directory with its own HOME and runs `autorate verify --protocol protocol.json` there --
-  `805/805` values with the corpus absent at rc=0 and `842/842` with
+  `875/875` values with the corpus absent at rc=0 and `912/912` with
   it present at rc=0 -- the pair the transcript records, read from its own two lane blocks, and the same pair
   this tree's `verify` prints above, because a transcript is re-exported from the commit that moved the
   comparisons rather than remembered across one -- and five planted defects that each come back inside the documented

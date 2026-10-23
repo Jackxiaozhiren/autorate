@@ -77,7 +77,7 @@
       "largest_certifiable_error_rate": 0.04304,
       "n": 2974,
       "required_observed_accuracy": 0.95696,
-      "size_from": "n_eval + n_cal of data/cert_massive_de_laya.json, data/cert_massive_en_laya.json, data/cert_massive_km_laya.json, data/cert_massive_sw_laya.json"
+      "size_from": "n_eval + n_cal of data/cert_massive_de_laya.json, data/cert_massive_en_laya.json, data/cert_massive_es_laya.json, data/cert_massive_km_laya.json, data/cert_massive_sw_laya.json"
     }
   ],
   "rows": [
@@ -232,6 +232,44 @@
       "row_refusal": null,
       "table": "report.MASSIVE_CERTIFICATES",
       "task": "massive/en"
+    },
+    {
+      "artefact": "data/cert_massive_es_laya.json",
+      "automated_cases": 0,
+      "automated_records": 338,
+      "bound_width_cases": 0.0704,
+      "bound_width_records": 0.0704,
+      "closest_attempt_published": true,
+      "cp_k_max_cases": null,
+      "cp_k_max_plus_1_cases": null,
+      "cp_k_max_plus_1_records": 0.053293847998,
+      "cp_k_max_records": 0.049667294737,
+      "errors_cases": 0,
+      "errors_records": 47,
+      "feasible": false,
+      "feasible_at_0.10_cases": true,
+      "feasible_at_0.10_records": true,
+      "feasible_at_0.25_cases": true,
+      "feasible_at_0.25_records": true,
+      "grid_alpha": 0.11,
+      "k_max_cases": null,
+      "k_max_records": 10,
+      "missing_pool_input": "meta.errors_among_automated counts the errors INSIDE the automated set, not the errors of the evaluated pool; no published field of this certificate gives the pool count, so the oracle ceiling is not computable from these bytes",
+      "n_cal_cases": 1487,
+      "n_cal_records": 1487,
+      "n_eval_cases": 1487,
+      "n_eval_records": 1487,
+      "oracle_ceiling_cases": null,
+      "oracle_ceiling_records": null,
+      "pool_is_automated_set": false,
+      "published_case_bound": null,
+      "published_closest_bound": 0.173856190853,
+      "reason": "empty_feasible_set",
+      "recomputed_case_bound": null,
+      "recomputed_closest_bound": 0.173856190853,
+      "row_refusal": null,
+      "table": "report.MASSIVE_CERTIFICATES",
+      "task": "massive/es"
     },
     {
       "artefact": "data/cert_massive_km_laya.json",

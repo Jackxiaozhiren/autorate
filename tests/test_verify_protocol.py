@@ -1173,7 +1173,11 @@ def test_every_claim_row_s_artefact_pointer_is_a_path_that_exists():
     claims = json.loads((REPO / "protocol.json").read_text())["claims"]
     pointers = [(c["id"], a) for c in claims for a in c["artefacts"]]
     assert {cid for cid, _ in pointers} == {"G1", "G2", "G3", "G4", "G5"}, sorted(pointers)
-    assert len(pointers) == 25, len(pointers)
+    from autorate.protocol import published_certificates
+    table_owned = sorted(str(p) for p, _cert in published_certificates())
+    g1_pointers = sorted(p for cid, p in pointers if cid == "G1")
+    assert g1_pointers == table_owned, (g1_pointers, table_owned)
+    assert len(pointers) == len(table_owned) + 19, (len(pointers), len(table_owned))
     assert miss(claims, REPO) == [], miss(claims, REPO)
 
     forged = [dict(c, artefacts=list(c["artefacts"]) + ["data/never_emitted.json"])

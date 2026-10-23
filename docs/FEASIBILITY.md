@@ -7,7 +7,7 @@ refuses the artefact at exit 4 if it is absent or unreadable. The document carri
 and no machine path, so the two lanes byte-compare the same bytes.
 
 G1 asks for at least three decision tasks certified at `autorate(alpha)` for the freeze's
-published alpha. This tree scores 6 and certifies none; `data/resplit_200.json` shows no seeded split certifying for any of them. The stronger statement -- that **no automated size
+published alpha. This tree scores 7 and certifies none; `data/resplit_200.json` shows no seeded split certifying for any of them. The stronger statement -- that **no automated size
 certifies on this evidence base at this budget** -- lived in an untracked scratch probe until
 this arm, and by this repository's own ruling (`docs/G5.md` is that ruling's artefact) a
 simulation performed and deleted is not evidence. Everything below is re-derived from committed
@@ -15,7 +15,7 @@ bytes on every `verify` run.
 
 - rubric the ceiling is measured at: alpha=0.05 beta=0.05 delta=0.05 method `aps`, seed 7
 - producer: `tools/g1_feasibility.py`
-- scored decision tasks read from their certificates: 6; corpora carried as refusals: 1
+- scored decision tasks read from their certificates: 7; corpora carried as refusals: 1
 - tasks that certify at their published size: none
 
 The gate's own pass condition, as the committed refusals were produced by it: a task certifies
@@ -44,7 +44,7 @@ Sizes and where each one comes from (`size_from`, read, not remembered):
 - `n = 192` -- n_eval + n_cal of data/cert_laya.json
 - `n = 300` -- declared by report.G1_FEASIBILITY_SIZES (the probe's scale)
 - `n = 1000` -- declared by report.G1_FEASIBILITY_SIZES (the probe's scale)
-- `n = 2974` -- n_eval + n_cal of data/cert_massive_de_laya.json, data/cert_massive_en_laya.json, data/cert_massive_km_laya.json, data/cert_massive_sw_laya.json
+- `n = 2974` -- n_eval + n_cal of data/cert_massive_de_laya.json, data/cert_massive_en_laya.json, data/cert_massive_es_laya.json, data/cert_massive_km_laya.json, data/cert_massive_sw_laya.json
 
 The widths and the two bars are `inventory.py`'s own currency: `bound_width(n)` from
 `tails.bound_width` at four decimals, and `feasible_at_0.10` / `feasible_at_0.25` from
@@ -93,6 +93,15 @@ automates 628 of 1,487 records but 709 of 1,487 cases.
 - records unit (diagnostic `meta.closest_attempt`, grid alpha 0.04): 628 of 1487 evaluated (1487 calibration), 30 errors; k_max at that size = 22
 - cases unit (the certificate's own unit, R-44): 709 of 1487 evaluated (1487 calibration), 43 errors; k_max at that size = 25
 - the diagnostic bounds reproduce from the artefact's own digits at the certificate's stored precision: records 0.064239163974 (recomputed 0.064239163974), cases 0.077514686246 (recomputed 0.077514686246) -- diagnostic values beside a refusal, NOT certificate bounds; the certificate published null
+- inventory bars at this task's own sizes: records bound_width=0.0704 feasible@0.10=True @0.25=True; cases bound_width=0.0704 feasible@0.10=True @0.25=True
+- oracle ceiling: null records, null cases -- null, because meta.errors_among_automated counts the errors INSIDE the automated set, not the errors of the evaluated pool; no published field of this certificate gives the pool count, so the oracle ceiling is not computable from these bytes
+
+### `massive/es` (data/cert_massive_es_laya.json, report.MASSIVE_CERTIFICATES)
+
+- published verdict: feasible=False, reason=`empty_feasible_set` -- the certificate issued no bound
+- records unit (diagnostic `meta.closest_attempt`, grid alpha 0.11): 338 of 1487 evaluated (1487 calibration), 47 errors; k_max at that size = 10
+- cases unit (the certificate's own unit, R-44): 0 of 1487 evaluated (1487 calibration), 0 errors; k_max at that size = null
+- the diagnostic bounds reproduce from the artefact's own digits at the certificate's stored precision: records 0.173856190853 (recomputed 0.173856190853), cases null (recomputed null) -- diagnostic values beside a refusal, NOT certificate bounds; the certificate published null
 - inventory bars at this task's own sizes: records bound_width=0.0704 feasible@0.10=True @0.25=True; cases bound_width=0.0704 feasible@0.10=True @0.25=True
 - oracle ceiling: null records, null cases -- null, because meta.errors_among_automated counts the errors INSIDE the automated set, not the errors of the evaluated pool; no published field of this certificate gives the pool count, so the oracle ceiling is not computable from these bytes
 
