@@ -2916,3 +2916,40 @@ clause naming the artefact and why the stamped-digest plant cannot cover it, and
 4)`. The lane denominators did not move -- a plant is a run of the same gate, not a new comparison -- so
 `805/805` absent and `842/842` present are transcribed unchanged, and the corpus-only gap stays owned by
 `cli.corpus_only_comparisons`.
+
+## 2026-10-22 — G1's refusal was four languages deep, so a fifth was scored (#124, twenty-second emission)
+
+G1 published `not_certifiable` from four MASSIVE certificates, and the objection that a fifth language might
+certify was answered by arithmetic before it was answered by bytes. Both are now in the tree, and the byte half
+cost an offline scoring run through `tools/build_records.py` in the vendored interpreter.
+
+**What `massive/es` measured.** 0 of 1,487 evaluation cases automate at coverage 0.950 -- no case keeps a
+single-label set -- which is the same refusal shape as `de`. Beside it, 338 automated RECORDS carry 47 errors,
+and the feasibility table's own columns say what that means: `k_max_records = 10` with
+`cp_k_max_records = 0.049667294737`, i.e. the budget is reachable at ten errors and not at the forty-seven this
+slice produced. The certificate answers rc=3, `reason=empty_feasible_set`, and rc 3 is a published result here,
+not a failure.
+
+**The reproducibility witness, with its limits stated.** The same run re-scored `en` from the pinned cache and
+its 2,974 lines came out byte-identical to the committed `data/records_massive_en.jsonl`, checked line by line
+before anything was written. That is evidence that this pipeline reproduces its own artefact across independent
+runs on one device, one checkpoint and one regime pair. It is not a cross-library claim: a
+`transformers`-minor-version difference remains unattributable, exactly where ruling R-108 left it, and a
+parity gate that spans two interpreters would still be measuring the wrong thing.
+
+**Why the notes moved four digits and the lanes moved by 70.** Adding a row to `report.MASSIVE_CERTIFICATES` and
+`report.SLICE_RECORDS` widened every arm that counts from those tables: the G4 note's field comparisons 92 to
+108, its slice count four to five, its case total 11,896 to 14,870; the G1 note's resplit quantities 37 to 42
+and its decision-task count six to seven. Both lane denominators moved (805/842 to 875/912) and the transcript
+guard refused the stale pair until `docs/G5.md` was re-exported from the widening commit `2c427d8` and the note
+was re-emitted to name it. The digest chain across the round is
+`95ea6cb5e327 -> c8f9cc40130b -> f3706d272041 -> 9788429a2ec2 -> ade512d65bb0 -> 3776cd48abaf`; five emissions in
+one day is the price of correcting a frozen sentence one digit at a time, which is the same cost the transcript
+round pays for a comparison count.
+
+**Two reds that were mine, not the tree's.** `AUTORATE_TRACKED_FILES` was exported into a local suite run, and
+two `tests/test_cli.py` guards then treated a newline-joined manifest as one filename and died with
+`File name too long`; unsetting it for local runs cleared both. And the claim-pointer census was pinned as the
+literal `25`, so a legitimate fifth certificate reddened a count instead of hunting a phantom. G1's pointers are
+now compared against `protocol.published_certificates()` -- the owner the producer already reads -- and only the
+four literally-written rows keep a hand sum, so a pointer dropped from those remains a deliberate edit.

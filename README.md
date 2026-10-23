@@ -262,7 +262,7 @@ second place to keep them.
   0.477. Every non-empty slice is above the 0.050 budget, and none of the five certifies.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**
-  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `53ace1b` into a scratch
+  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `2c427d8` into a scratch
   directory with its own HOME and runs `autorate verify --protocol protocol.json` there --
   `875/875` values with the corpus absent at rc=0 and `912/912` with
   it present at rc=0 -- the pair the transcript records, read from its own two lane blocks, and the same pair
