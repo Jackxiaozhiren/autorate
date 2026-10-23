@@ -289,7 +289,11 @@ def test_the_committed_split_is_the_partition_the_tool_proved(tmp_path):
         by_lang[lang] = {r["case_id"].rsplit("/", 1)[1] for r in rows}
     assert len({frozenset(ids) for ids in by_lang.values()}) == 1, \
         "the languages cover different cases: %s" % sorted(by_lang)
-    assert sorted(by_lang) == ["de", "en", "km", "sw"], sorted(by_lang)
+    # The file list above is the one hand-written census; this projection is derived from it, so a third
+    # literal cannot go stale beside the first. A file whose name parses to no language, or a language that
+    # came from no file, still reddens here -- just not by being retyped.
+    assert sorted(by_lang) == sorted(f.name[len("records_massive_"):-len(".jsonl")] for f in files), \
+        (sorted(by_lang), [f.name for f in files])
     all_ids = [json.loads(line)["id"] for path in files for line in path.read_text().splitlines()]
     assert len(all_ids) == len(set(all_ids)), "one id appears in two language files"
 
