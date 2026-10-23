@@ -264,12 +264,13 @@ def test_the_committed_split_is_the_partition_the_tool_proved(tmp_path):
     publication has to be edited into, so that adding or dropping a language is a decision somebody
     took in the open rather than a set that quietly re-formed. Task #68 made it four, because
     `data/records_massive_km.jsonl` is now published evidence and the partition claim covers it like it
-    covers the other three -- and the four-way case-index identity below is the measured answer to
-    "is Khmer the same 2,974 utterances", which is the precondition for putting it in the same run.
+    covers the others -- and #124 made it five with `records_massive_es.jsonl`, whose case ids the
+    identity check below proves are the same 2,974 utterances, not a fifth translation somebody hoped
+    would line up.
     """
     files = sorted((REPO / "data").glob(DEFAULT_NAME_FORMAT.format(lang="*")))
     assert [f.name for f in files] == ["records_massive_de.jsonl", "records_massive_en.jsonl",
-                                       "records_massive_km.jsonl",
+                                       "records_massive_es.jsonl", "records_massive_km.jsonl",
                                        "records_massive_sw.jsonl"], files
     by_lang = {}
     for path in files:
@@ -330,7 +331,7 @@ def _drift_labels(report_module, fields, table=None):
 
 
 def test_the_committed_certificates_rederive_from_the_committed_records(monkeypatch):
-    """G1's four artefacts must be a function of the bytes committed beside them, field by field.
+    """G1's published MASSIVE artefacts must be a function of the bytes committed beside them, field by field.
 
     Counting and reporting those comparisons is `cmd_verify`'s job, and `cli.py` is not this lane's file
     (see the report's `OUT-OF-FENCE` note), so the arm is run here directly instead of left unguarded:
@@ -345,7 +346,11 @@ def test_the_committed_certificates_rederive_from_the_committed_records(monkeypa
     monkeypatch.chdir(REPO)
     assert _drift_labels(report_module, CERT_COMPARE_FIELDS) == [], "published drift"
     published = massive_certificates()
-    assert sorted(published) == ["massive/de", "massive/en", "massive/km", "massive/sw"], \
+    # A census pin, not a duplicate of the line below it: the next assertion proves the table and the bytes
+    # agree with EACH OTHER, which stays true if both lose a language. Adding `massive/es` had to change a
+    # number here on purpose, so a slice that silently leaves G1's published set reddens this row instead
+    # of shrinking the arm's coverage in a green run.
+    assert sorted(published) == ["massive/de", "massive/en", "massive/es", "massive/km", "massive/sw"], \
         sorted(published)
     assert sorted(MASSIVE_CERTIFICATES) == sorted(published), "the table and the artefacts disagree"
     for label, (records, cert) in published.items():
@@ -355,7 +360,8 @@ def test_the_committed_certificates_rederive_from_the_committed_records(monkeypa
         assert len(records) == 2974, (label, len(records))
         assert cert.n_cal == cert.n_eval == 1487, (label, cert.n_cal, cert.n_eval)
         assert cert.backend == "laya" and cert.meta["n_eval_cases"] == 1487, label
-        # The verdict is G1's result, so it is asserted as stored, not paraphrased: three refusals.
+        # The verdict is G1's result, so it is asserted as stored, not paraphrased: every published slice
+        # refuses, and the loop is over the census above, so a slice that started certifying fails here.
         assert cert.feasible is False, (label, cert.feasible)
         assert cert.reason == "empty_feasible_set", (label, cert.reason)
         # ...and the budgets it refuses at are the pre-registered ones. A re-certification at a looser
