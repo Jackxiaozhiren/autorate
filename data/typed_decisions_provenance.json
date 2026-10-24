@@ -1,0 +1,124 @@
+{
+  "build": {
+    "ci": "never -- this corpus is scored with torch and transformers, which are not runtime dependencies of this build",
+    "export_command": "uv run --with pyarrow --with torch --with transformers python3 tools/export_typed_decisions.py --parquet all/test-00000-of-00001.parquet --out typed-decisions-export.jsonl",
+    "export_stage": "stage 1, documented in tools/build_typed_decisions.py and deliberately outside CI",
+    "records_command": "python3 tools/build_typed_decisions.py --source <export> --pin data/typed_decisions_provenance.json --out data/records_typed_decisions_urgency.jsonl",
+    "tool": "tools/build_typed_decisions.py"
+  },
+  "clamp": {
+    "affects": "the `choice` question type at key `11+`, one entry of the checkpoint's own temperature table",
+    "clamped_to": 0.5,
+    "disclosed_by": "the scoring run's load-time warning, quoted in the certificate document",
+    "stated": "confidence on the affected entries is not calibrated",
+    "warning": "this checkpoint ships an illegal `choice:11+` temperature, which upstream's loader clamps to 0.5 at load time, so confidence on affected entries is not calibrated"
+  },
+  "corpus": {
+    "cases": 400,
+    "config": "all",
+    "dataset": "LocalLLaMA/typed-decisions",
+    "decisions": 2000,
+    "split": "test"
+  },
+  "decisions_by_type": {
+    "choice": 600,
+    "noul": 600,
+    "score": 800
+  },
+  "export": {
+    "committed": false,
+    "n_records": 400,
+    "note": "the scoring export is not a committed file: it is stage 1's output, and this digest is what the build layer refuses a mismatch on. The committed bytes are `records.path`; their own identity is pinned beside them.",
+    "sha256": "00a17550a874b6be020590fc6089b216546117ccce5d1bafb5e25ef21129ab60"
+  },
+  "fetch": {
+    "date": "2026-10-24",
+    "http_code": 200,
+    "note": "huggingface.co answered this endpoint with a valid chain on 2026-10-24; an earlier probe on 2026-10-09 recorded the dataset as absent locally and the host as intercepted. The difference is an environment fact, not a code change.",
+    "ssl_verify_result": 0,
+    "tls": "verified, no bypass, no --insecure, no proxy bypass"
+  },
+  "main_revision": {
+    "fact": "all five typed-decisions files are absent from the cached `main` revision",
+    "status": "incomplete cache",
+    "use_instead": "the hub id must not be used for this measurement; `source.revision_used` is the revision that was scored"
+  },
+  "questions": {
+    "churn_risk": {
+      "decisions": 100,
+      "levels": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "type": "score"
+    },
+    "discrepancy_severity": {
+      "decisions": 100,
+      "levels": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "type": "score"
+    },
+    "risk": {
+      "decisions": 100,
+      "levels": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "type": "score"
+    },
+    "severity": {
+      "decisions": 100,
+      "levels": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "type": "score"
+    },
+    "urgency": {
+      "decisions": 400,
+      "levels": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "published": "data/records_typed_decisions_urgency.jsonl",
+      "type": "score"
+    }
+  },
+  "records": {
+    "n_cases": 400,
+    "n_records": 400,
+    "path": "data/records_typed_decisions_urgency.jsonl",
+    "sha256": "b5a6aad006b923eb409ede86df3fabb275b48389f00e785a4cfa2992b8ed842c"
+  },
+  "scoring": {
+    "checkpoint": "convaiinnovations/laya",
+    "dropped": 0,
+    "engine": "upstream research/scripts/bench_local.py (to_internal, score_cases, softmax_t, temp_for), copied verbatim for parity",
+    "subfolder": "typed-decisions",
+    "throughput_decisions_per_second": 7.0,
+    "wall_seconds": 286
+  },
+  "source": {
+    "bytes": 222140,
+    "config": "all",
+    "dataset": "LocalLLaMA/typed-decisions",
+    "file": "all/test-00000-of-00001.parquet",
+    "revision_used": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "sha256": "4f294f218ea1da27f3efef936359389c62ea4d3973a41457732990f1d31b647c",
+    "split": "test",
+    "url": "https://huggingface.co/datasets/LocalLLaMA/typed-decisions/resolve/main/all/test-00000-of-00001.parquet"
+  }
+}

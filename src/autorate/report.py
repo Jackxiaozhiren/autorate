@@ -495,6 +495,282 @@ def render_severity(label: str, cert: SeverityCertificate) -> str:
     return "\n".join(lines)
 
 
+# --- Plan E: the first real-corpus ordinal certificate, published and re-derived --------------------
+
+# The population this arm certifies over is REAL scored decisions, and the artefact beside
+# `data/records_ordinal_synthetic.jsonl` is the reason the two live in separate tables rather than in one:
+# `docs/SEVERITY.md` renders one certificate and `published_severity()` refuses the moment
+# `SEVERITY_CERTS` grows a second row, which is the guard that keeps that document's promise about its own
+# subject. A second table costs one arm and buys the promise back.
+#
+# The row is a three-tuple for the same reason `SEVERITY_CERTS`' is: the third element is the rule the
+# PUBLICATION declares, and `rederive_ordinal_real` re-derives at it instead of reading it off the bytes it is
+# checking. `tools/certify_ordinal_real.py` is the only writer of the artefact and the document.
+TYPED_DECISIONS_PIN = "data/typed_decisions_provenance.json"
+ORDINAL_REAL_RECORDS = "data/records_typed_decisions_urgency.jsonl"
+ORDINAL_REAL_CERT_JSON = "data/cert_severity_typed_decisions.json"
+ORDINAL_REAL_MD = Path("docs/ORDINAL_REAL.md")
+ORDINAL_REAL_LABEL = "urgency"
+ORDINAL_REAL_PRODUCER = "tools/certify_ordinal_real.py"
+ORDINAL_REAL_CERTS = {ORDINAL_REAL_LABEL: (ORDINAL_REAL_RECORDS, ORDINAL_REAL_CERT_JSON, "under")}
+
+# The set gate's refusal, stored inside the ordinal certificate's `meta`. It is a measurement of a DIFFERENT
+# gate, so the key says so and carries the budget it ran at: the criterion's negative test is answered on this
+# population by that refusal, and a claim that lives only in prose can be rewritten by whoever remembers it.
+# `verify` re-measures it (see `rederive_ordinal_real`), so the block is compared -- not transcribed.
+ORDINAL_REAL_SET_FIELDS = ("module", "feasible", "reason", "summary", "budget")
+ORDINAL_REAL_SET_BUDGET_FIELDS = ("alpha", "beta", "delta", "seed")
+
+
+def read_typed_decisions_pin(path) -> dict:
+    """The corpus identity file, read as the mapping this build's tables name and nothing looser.
+
+    Shape checks are the artefact's, not the caller's taste: the pin owns two digests this repository cannot
+    recompute (the parquet's and the scoring export's) and the one it can (the records file's is compared by
+    `tests/test_ordinal_real.py`), so a pin that lost a block would silently stop being the identity of
+    anything. Absence and unreadable bytes are `load_published`'s refusal at exit 4.
+    """
+    doc = json.loads(Path(path).read_text())
+    if not isinstance(doc, dict):
+        raise ValueError("the typed-decisions pin is a JSON %s, not an object" % type(doc).__name__)
+    missing = sorted(block for block in ("source", "export", "records", "questions", "clamp",
+                                         "main_revision", "decisions_by_type", "fetch")
+                     if block not in doc)
+    if missing:
+        raise ValueError("the typed-decisions pin is missing %s" % missing)
+    for block in ("source", "export", "records"):
+        if not isinstance(doc[block], dict):
+            raise ValueError("the typed-decisions pin's `%s` is a %s, not a block of identity fields"
+                             % (block, type(doc[block]).__name__))
+    return doc
+
+
+def ordinal_real_population(pin: dict) -> str:
+    """The label the real certificate discloses as its population, built out of the pin.
+
+    One owner for the sentence, read by the producer that writes it into `meta` and by the arm that re-derives
+    it: a label typed twice is a label that can disagree with itself inside one artefact. It names dataset,
+    config, split and the checkpoint revision -- identity by label and digest, never by a location on the
+    machine that scored the rows.
+    """
+    source = pin["source"]
+    return ("%s (config `%s`, split `%s`, file `%s`) scored by %s@%s, subfolder `%s`"
+            % (source["dataset"], source["config"], source["split"], source["file"],
+               pin["scoring"]["checkpoint"], source["revision_used"],
+               pin["scoring"]["subfolder"]))
+
+
+def ordinal_real_certificates() -> dict:
+    """`{label: (records, stored certificate, published direction)}` for every real ordinal artefact."""
+    out = {}
+    for label, (records_path, cert_path, direction) in sorted(ORDINAL_REAL_CERTS.items()):
+        stored = load_published(cert_path, "report.ORDINAL_REAL_CERTS", read_severity_certificate)
+        rows = load_published(records_path, "report.ORDINAL_REAL_CERTS", load_records)
+        out[label] = (rows.get(stored.backend, []), stored, direction)
+    return out
+
+
+def build_ordinal_real_refusal(rows, budget: dict) -> dict:
+    """The multiclass set gate's answer over these records, as the fields the artefact will store.
+
+    Called by the producer that writes the block and by the arm that compares it, so the stored refusal is a
+    re-measurement rather than a transcription. `budget` names the four values the set gate consumes -- the
+    ordinal gate publishes no `beta`, and inventing one in the CERTIFICATE would state a rule that never ran,
+    which is why it travels inside this block instead.
+    """
+    from .certify_score import certify_score
+
+    score = certify_score(rows, alpha=budget["alpha"], beta=budget["beta"], delta=budget["delta"],
+                          seed=budget["seed"])
+    return {"module": "autorate.certify_score", "feasible": score.feasible, "reason": score.reason,
+            "summary": score.summary(), "budget": dict(budget)}
+
+
+def rederive_ordinal_real(expect, expect_rubric, fields, rubric_fields, rubric=None, stamp=None) -> None:
+    """Re-derive Plan E's published certificate from its committed records, field by field.
+
+    `rederive_severity`'s discipline, on the second ordinal artefact: the direction comes from the table and
+    not from the bytes, every published field gets its own comparison, the rubric rows go to `expect_rubric`
+    (re-export versus re-freeze are different repairs), and the population disclosure is re-built from the pin
+    so an artefact that renamed its own corpus drifts instead of agreeing with itself.
+
+    The set gate's refusal is re-measured over the same records and compared inside `meta`, which is compared
+    whole: a stored `feasible: true` here would be a rewritten G3 claim, and this is the arm that makes that
+    a drift line rather than an edit.
+    """
+    pin = load_published(TYPED_DECISIONS_PIN, "report.TYPED_DECISIONS_PIN", read_typed_decisions_pin)
+    population = ordinal_real_population(pin)
+    for label, (records, stored, direction) in ordinal_real_certificates().items():
+        chosen = rubric or {"alpha": stored.alpha, "delta": stored.delta,
+                            "seed": stored.meta.get("seed", SEED)}
+        for name in rubric_fields:
+            published = stored.meta.get("seed") if name == "seed" else getattr(stored, name)
+            expect_rubric("cert %s.%s" % (label, name), published, chosen[name])
+        fresh = certify_severity(records, alpha=chosen["alpha"], delta=chosen["delta"],
+                                 direction=direction, seed=chosen["seed"], population=population)
+        stored_budget = stored.meta.get("set_gate_refusal", {}).get("budget", {})
+        budget = ({name: chosen[name] for name in ORDINAL_REAL_SET_BUDGET_FIELDS} if rubric is not None
+                  else dict(stored_budget))
+        fresh = replace(fresh, meta={**fresh.meta,
+                                     "set_gate_refusal": build_ordinal_real_refusal(records, budget)})
+        if rubric is not None:
+            # The producer echoes `alpha`/`delta`/`seed` into `meta` and this gate compares `meta` whole, so a
+            # caller handing in a protocol keeps the three in step. Same belt as `rederive_severity`'s: the
+            # branch is the identity today, and it stays because a producer that stopped echoing would go red
+            # here rather than at every frozen tree reading the artefact.
+            fresh = replace(fresh, meta={**fresh.meta, "alpha": chosen["alpha"],
+                                         "delta": chosen["delta"], "seed": chosen["seed"]})
+        if stamp is not None:
+            fresh = stamp(fresh)
+        for field in fields:
+            expect("cert %s.%s" % (label, field), getattr(fresh, field), getattr(stored, field))
+        expect("cert %s.summary" % label, fresh.summary(), stored.summary())
+
+
+def render_ordinal_real(label: str, cert: SeverityCertificate, pin: dict) -> str:
+    """`docs/ORDINAL_REAL.md`, written entirely out of the certificate, the pin and the table row.
+
+    Derived prose, the same rule B1 Task 2d states for every document in this tree: each figure below is read
+    off `cert` or off `pin`, and a value neither carries is not written here. No timestamp, no machine path --
+    both lanes byte-compare this file, and the records it describes are committed, so the corpus-absent lane
+    re-derives the real-corpus guarantee exactly as the corpus-present one does.
+    """
+    records_path, cert_path, direction = ORDINAL_REAL_CERTS[label]
+    meta = cert.meta
+    refusal = meta["set_gate_refusal"]
+    question = pin["questions"][label]
+    lines = [
+        "# Published ordinal guarantee over a real corpus (Plan E)",
+        "",
+        "Every number in this file is emitted by `python3 %s` and re-checked by" % ORDINAL_REAL_PRODUCER,
+        "`python -m autorate.cli verify`, which re-derives the certificate from the records file named below",
+        "and re-measures the set gate's refusal over the same rows. None of them is typed, and the document",
+        "carries no timestamp, so a re-run is byte-comparable -- in the corpus-present lane and in the",
+        "corpus-absent one alike, because nothing here reads the vendored archive.",
+        "",
+        "## The population",
+        "",
+        "- dataset `%s`, config `%s`, split `%s`" % (pin["source"]["dataset"], pin["source"]["config"],
+                                                     pin["source"]["split"]),
+        "- shard `%s`, %d bytes, sha256 `%s`" % (pin["source"]["file"], pin["source"]["bytes"],
+                                                 pin["source"]["sha256"]),
+        "- scored with `%s` revision `%s`, subfolder `%s`; the `main` revision is `%s` (%s), so the hub id "
+        "is not used here" % (pin["scoring"]["checkpoint"], pin["source"]["revision_used"],
+                              pin["scoring"]["subfolder"], pin["main_revision"]["status"],
+                              pin["main_revision"]["fact"]),
+        "- fetched %s: http %s, `ssl_verify_result` %s, %s"
+        % (pin["fetch"]["date"], pin["fetch"]["http_code"], pin["fetch"]["ssl_verify_result"],
+           pin["fetch"]["tls"]),
+        "- decisions by type: %s" % ", ".join("`%s` %d" % kv for kv in sorted(
+            pin["decisions_by_type"].items())),
+        "- this question is `%s` over %d levels (%s), %d decisions, %d cases, one record per case"
+        % (label, len(question["levels"]), ", ".join("`%s`" % level for level in question["levels"]),
+           question["decisions"], pin["records"]["n_cases"]),
+        "- records file `%s`, sha256 `%s`; the scoring export it was built from is `%s` and is pinned by "
+        "sha256 `%s` (%s)" % (records_path, pin["records"]["sha256"], pin["export"]["note"].split(":")[0],
+                              pin["export"]["sha256"], "not a committed file"),
+        "",
+        "This is the first population this repository publishes an ordinal certificate over that is not",
+        "generator output: the certificate beside it (`data/cert_severity_ordinal.json`) is measured on the",
+        "synthetic population `tests/_records.build_ordinal` owns, and its own envelope says so. The two",
+        "artefacts are separate rows of separate tables because the two populations are not the same subject.",
+        "",
+        "## The one-sided certificate",
+        "",
+        "- artefact: `%s`, direction `%s` (the publication names the rule, and `verify` re-derives at it"
+        " rather than reading it back out of the artefact)" % (cert_path, direction),
+        "- verdict: %s" % _verdict_cell(cert),
+        "- risk target `alpha`: %.3f, tested at `delta`: %.3f, split `seed`: %s"
+        % (cert.alpha, cert.delta, meta.get("seed")),
+        "- reported level `ahat`: %s, over a rubric of %s levels" % (cert.ahat, meta.get("rubric_levels")),
+        "- records calibration/evaluation: %d/%d, cases calibration/evaluation: %s/%s"
+        % (cert.n_cal, cert.n_eval, meta.get("n_cal_cases"), meta.get("n_eval_cases")),
+        "- denominators: %s" % meta["unit_note"],
+        "- the certified figure is `bound` = `%.12f`, which is the one-sided Clopper-Pearson upper on %d"
+        " evaluation violations out of `n_eval_cases` = %s cases, and the measured held-out violation rate"
+        " printed below is `measured_violation` = %s over that same denominator"
+        % (cert.bound, meta.get("eval_violating_cases"), meta.get("n_eval_cases"),
+           cert.measured_violation),
+        "- the always-report rule's cost, beside the bound: `price_bound` = `%.12f`, `override_bound` ="
+        " `%.12f`" % (cert.price_bound, cert.override_bound),
+        "- produced under the frozen protocol: `meta.protocol_digest` = `%s`" % meta["protocol_digest"],
+    ]
+    if meta.get("degenerate_end"):
+        # The one reading of this certificate that a reader must not have to infer from `ahat` equalling the
+        # top of the rubric: the certified rule answers a constant, so the guarantee is about the severity
+        # distribution of the task and not about what the model judged. `certify_severity` already states it
+        # in the envelope; the body says it in the plainest words the numbers allow, derived from the same
+        # meta counters rather than paraphrased.
+        lines.append("- what `ahat` = %s over a %d-level rubric means: the certified rule reports the TOP"
+                     " level on every case and reads no ballot, so the guarantee holds because nothing can"
+                     " exceed the top -- `%d of %d` calibration cases have their own level replaced by it,"
+                     " and that is the price, not a rounding"
+                     % (cert.ahat, meta.get("rubric_levels"), meta.get("override_cases"),
+                        meta.get("n_cal_cases")))
+    lines += [
+        "",
+        "## The multiclass set gate over these same records",
+        "",
+        "- `%s`: verdict %s, `reason` = `%s`" % (refusal["module"], _verdict_text(refusal["feasible"],
+                                                                                  refusal["reason"]),
+                                                 _published_value(refusal["reason"])),
+        "- measured at `alpha` %.3f, `beta` %.3f, `delta` %.3f, `seed` %s -- the four values the set gate"
+        " consumes, recorded inside the certificate's own `meta.set_gate_refusal` so the refusal is a stored"
+        " fact and `verify` re-measures it rather than restating it"
+        % (refusal["budget"]["alpha"], refusal["budget"]["beta"], refusal["budget"]["delta"],
+           refusal["budget"]["seed"]),
+        "",
+        "The gate's own verdict, verbatim:",
+        "",
+        "> %s" % refusal["summary"],
+        "",
+        "A set-gate refusal on this population does not discharge the criterion's negative test, and it is"
+        " not a near miss toward `met`; the refusal is published because it is a result, and the sentence"
+        " above it is the reason `claims.G3.status` stays where it is.",
+        "",
+        "## The disclosure that travels with the scores",
+        "",
+        "%s" % pin["clamp"]["warning"],
+        "- affected: %s; clamped to `%s` at load time" % (pin["clamp"]["affects"],
+                                                          pin["clamp"]["clamped_to"]),
+        "- consequence: %s. Confidence on the affected entries is not calibrated, so a certificate over this"
+        " checkpoint's probabilities carries that limit whether or not the bound holds."
+        % pin["clamp"]["stated"],
+        "",
+        "## What this does NOT move",
+        "",
+        "This does not move `G3`. `claims.G3.status` stays `not_measured`, and this document does not",
+        "describe progress toward `met`.",
+        "The criterion is `>=1 ordinal guarantee that multiclass CP cannot express`, and its measurement is",
+        "the negative test: if vanilla multiclass set CP reproduces the one-sided bound, the criterion fails.",
+        "What exists here is a one-sided bound that multiclass set CP did not produce on this population,",
+        "because that gate refused -- and a refusal reproduces nothing, so it cannot answer the test either",
+        "way. The test is answered only on a population where the set gate CERTIFIES, and the corner of the",
+        "generator where that happens is not committed as records the gate re-derives; until those bytes",
+        "exist, moving the row would be the over-claim this repository exists to refuse. The row's pointer",
+        "list names this artefact as evidence of the measured half, and its status names the missing half:",
+        "those two statements are not the same claim, and the frozen note is where the difference lives.",
+        "",
+        "## Verbatim summary",
+        "",
+        "```",
+        cert.summary(),
+        "```",
+        "",
+        "## Envelope",
+        "",
+    ]
+    lines += ["- %s" % line for line in cert.envelope]
+    lines += [
+        "",
+        "Re-produce: `python3 %s --records %s --out %s --doc %s --force`."
+        % (ORDINAL_REAL_PRODUCER, records_path, cert_path, ORDINAL_REAL_MD),
+        "Re-check: `python -m autorate.cli verify`.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 RESPLIT_JSON = "data/resplit_200.json"
 RESPLIT_MD = Path("docs/RESPLIT.md")
 # The rubric keys the experiment records and the gate compares, one list so the arm and the denominator that

@@ -22,19 +22,21 @@ from .report import (CERTS, CONTAMINATION_CORPUS_ONLY_CHECKS, CONTAMINATION_JSON
                      DRIFT_JSON, DRIFT_MD,
                      G1_FEASIBILITY_JSON,
                      G1_FEASIBILITY_MD, G3_CONTRAST_JSON, G3_CONTRAST_MD, INVENTORY_JSON,
+                     ORDINAL_REAL_CERTS, ORDINAL_REAL_LABEL, ORDINAL_REAL_MD,
                      PublishedArtefactUnavailable, RECORDS, RESPLIT_JSON,
                      RESPLIT_MD, SEVERITY_CERTS,
                      SEVERITY_LABEL, SEVERITY_RECORDS, SLICE_JSON, SLICE_MD,
+                     TYPED_DECISIONS_PIN,
                      build_report, certify_all, load_published,
                      load_records, published_severity, read_certificate, read_contamination,
-                     read_drift, read_g1_feasibility, read_g3_contrast,
-                     read_inventory_snapshot,
-                     read_resplit, read_slices, rederive_g1_feasibility, rederive_massive,
+                     read_drift, read_g1_feasibility, read_g3_contrast, read_inventory_snapshot,
+                     read_resplit, read_slices, read_severity_certificate, read_typed_decisions_pin,
+                     rederive_g1_feasibility, rederive_massive, rederive_ordinal_real,
                      rederive_resplit, rederive_severity,
                      rederive_contamination, rederive_drift, rederive_g3_contrast, rederive_slices,
                      render_contamination,
-                     render_drift, render_g1_feasibility, render_g3_contrast, render_resplit,
-                     render_severity, render_slices, write_report)
+                     render_drift, render_g1_feasibility, render_g3_contrast, render_ordinal_real,
+                     render_resplit, render_severity, render_slices, write_report)
 from .severity import DIRECTIONS, certify_severity
 from .techreport import REPORT_MD, load_inputs, render_report
 
@@ -795,6 +797,11 @@ PUBLISHED_DOCS = (
     # artefact is read through `load_published`, so an absent or wrong-shaped document is exit 4 -- no
     # argument selected that path, the table did.
     (SEVERITY_MD, lambda inv, records: _render_severity_doc()),
+    # Plan E's real-corpus document, same posture as the row above: rendered from the committed certificate
+    # and the committed pin, never from a fresh re-derivation (the arm below is what catches a stale
+    # artefact), so the prose cannot drift from the bytes it quotes. Its own table, its own row, because
+    # `docs/SEVERITY.md` promises one certificate and refuses a table that grows a second.
+    (ORDINAL_REAL_MD, lambda inv, records: _render_ordinal_real_doc()),
     # G3's contrast document, same shape as the row above and for the same reason: rendered from the committed
     # artefact, whose two rows the arm below re-measures over the committed records. Beside `docs/SEVERITY.md`
     # rather than folded into it because the severity document renders ONE certificate and states so in its
@@ -915,6 +922,20 @@ def _render_severity_doc() -> str:
     return render_severity(label, cert)
 
 
+def _render_ordinal_real_doc() -> str:
+    """What `docs/ORDINAL_REAL.md` should hold: the real-corpus certificate and the pin beside it.
+
+    Both inputs are read through `load_published`, so an absent or wrong-shaped artefact or pin is the named
+    refusal at exit 4 -- no argument selected either path, the tables did -- and the bytes come from
+    `report.render_ordinal_real`, which is the producer's own renderer. A second copy of the prose in this
+    file would be a document the tool and the gate disagree about.
+    """
+    _records_path, _cert_path, _direction = ORDINAL_REAL_CERTS[ORDINAL_REAL_LABEL]
+    cert = load_published(_cert_path, "report.ORDINAL_REAL_CERTS", read_severity_certificate)
+    pin = load_published(TYPED_DECISIONS_PIN, "report.TYPED_DECISIONS_PIN", read_typed_decisions_pin)
+    return render_ordinal_real(ORDINAL_REAL_LABEL, cert, pin)
+
+
 def _verify_protocol(args):
     """Resolve the freeze `verify` enforces: the flag selects a document, the tree supplies the default.
 
@@ -1016,6 +1037,13 @@ def cmd_verify(args) -> int:
     # the ordinal guarantee exactly as the corpus-present one does.
     rederive_severity(expect, expect_rubric, SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS,
                       rubric=rubric, stamp=lambda cert: _stamp(cert, digest))
+    # Plan E's real-corpus certificate, from its own table and the same field list: a second ordinal
+    # artefact over a second population, and the shape is the severity shape, so the published fields are
+    # named once (`SEVERITY_COMPARE_FIELDS`) rather than recopied. The records and the pin are committed,
+    # so this arm re-derives the real-corpus guarantee -- and re-measures the set gate's refusal stored
+    # inside its `meta` -- in either lane, exactly as the synthetic arm does.
+    rederive_ordinal_real(expect, expect_rubric, SEVERITY_COMPARE_FIELDS, SEVERITY_RUBRIC_FIELDS,
+                          rubric=rubric, stamp=lambda cert: _stamp(cert, digest))
     # G3's contrast, measured again over the same committed records: the multiclass set gate's refusal beside
     # the one-sided certificate, field by field. The records file is committed, so the corpus-less lane
     # re-derives the refusal exactly as the corpus-present one does, and a contrast that stopped matching its

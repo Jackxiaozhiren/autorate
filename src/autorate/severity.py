@@ -71,18 +71,22 @@ named another one, whose ledger row is ``ordinal-cp-aistats2023``, and the paper
 the mathematics, and G3 is void if a systematic search starting from those two rows finds the
 statement already made.
 
-Evidence boundary. The offline archive carries no `score` answers at all -- measured across the four
-committed records files: `data/records_feishu.jsonl` is `choice`+`noul`, and the three MASSIVE files are
-`choice`, so not one of them holds an ordinal record and `certify_severity` refuses such a population by
-name. Every figure this project demonstrates with this gate is therefore a function of synthetic ordinal
-data with known answers: seeded, re-derivable, and not a measurement of any shipped model. The gate cannot
-see provenance and claims none; a caller who hands in real records gets the same arithmetic over different
-data, and the envelope says so. What Task 72 changed is REACH, not evidence: `autorate severity` produces
-this artefact, `autorate verify` re-derives it in both lanes, and `docs/SEVERITY.md` renders it. The
-published certificate is certified over the population `tests/_records.build_ordinal` owns, and
-`test_the_committed_ordinal_records_file_is_the_owner_generator_output` pins the committed records byte for
-byte against that generator -- which is also why the ordinal rows survive the corpus-absent lane: nothing in
-them reads the vendored archive.
+Evidence boundary, as of Plan E. The vendored offline archive still carries no `score` answers at all --
+measured across the committed records files that came from it: `data/records_feishu.jsonl` is
+`choice`+`noul` and the five MASSIVE files are `choice`, so none of them holds an ordinal record and
+`certify_severity` refuses such a population by name. What Plan E adds is a committed records file the
+archive is not the source of: `data/records_typed_decisions_urgency.jsonl` holds 400 real scored decisions,
+so "every figure demonstrated with this gate is synthetic" stopped being true, and a gate that asserts a
+population it cannot see was the defect. `population` is therefore the caller's declaration, carried in
+`meta` and printed in the envelope and the summary; the undeclared default keeps the historical synthetic
+sentence, which is still exactly right of `data/records_ordinal_synthetic.jsonl` (the population
+`tests/_records.build_ordinal` owns, pinned byte for byte against that generator by
+`test_the_committed_ordinal_records_file_is_the_owner_generator_output`). The gate reads no provenance to
+check a label against, and both disclosures say so. What Task 72 changed is REACH, not evidence: `autorate
+severity` produces the synthetic artefact, `autorate verify` re-derives it in both lanes, and
+`docs/SEVERITY.md` renders it; `tools/certify_ordinal_real.py` produces the real one and
+`docs/ORDINAL_REAL.md` renders that. Neither ordinal row reads the vendored archive, so both survive the
+corpus-absent lane.
 
 The automation-rate shape, so no sentence here leans on the wrong monotonicity (R-124). The severity
 path IS monotone in its risk target, for a structural reason: the rule answers every case, so there is
@@ -122,14 +126,54 @@ SEVERITY_N_CLAIMS = N_CLAIMS
 # `alpha` on this gate is a RISK target, not a confidence. `delta` is the level each published bound is
 # tested at, and `SEVERITY_N_CLAIMS` of them are made, so the joint confidence is
 # `correction.joint_level(rubric={delta, delta}, n_groups=1, n_claims=3)`.
-_BASE_ENVELOPE = (
+_BASE_ASSUMPTIONS = (
     "exchangeability within group assumed; no group conditioning applied",
     "marginal certificate only - not group-conditional",
     "certified on the records handed in; no upstream provenance is checked here, and live traffic "
     "shift is not covered",
-    "the offline archive carries no `score` answers: every figure demonstrated with this gate is "
-    "synthetic ordinal data with known answers",
 )
+
+# What this gate may say about the rows it was handed, when its caller said nothing. It is a statement about
+# THIS CHECKOUT, not about conformal prediction: measured across the committed records files, no corpus this
+# repository can see carries a `score` answer, so every unnamed population it has certified is generator
+# output. Plan E makes that claim conditional -- `data/records_typed_decisions_urgency.jsonl` is a committed
+# records file of real scored decisions, and a certificate over it that still printed this sentence would be
+# a published artefact describing the wrong population. `population_envelope` is therefore the branch a
+# caller selects, and the default is the historical one, byte for byte.
+SYNTHETIC_POPULATION_CLAIM = ("the offline archive carries no `score` answers: every figure demonstrated "
+                              "with this gate is synthetic ordinal data with known answers")
+
+
+def population_envelope(population: Optional[str]) -> str:
+    """The envelope line that names the population, given what the caller was willing to claim.
+
+    A declared population is labelled by the CALLER and read by no digest here: this gate cannot see
+    provenance, so the honest sentence says the label is a claim about where the rows came from rather than a
+    fact the certificate verified. The undeclared branch keeps the historical words exactly, because the
+    published synthetic artefact, `docs/SEVERITY.md`, `docs/G3.md` and `docs/REPORT.md` all quote them and
+    `verify` compares each of those bytes.
+    """
+    if population is None:
+        return SYNTHETIC_POPULATION_CLAIM
+    return ("the population is `%s`, named by the caller and read from committed records: this gate "
+            "checks no upstream provenance, so the label states where the rows came from according to the "
+            "publication, not what this certificate verified" % population)
+
+
+def population_claim(population: Optional[str]) -> str:
+    """The same disclosure in the summary's shorter register, one branch, one owner."""
+    if population is None:
+        return ("synthetic ordinal data with known answers (the offline archive carries no `score` "
+                "answers)")
+    return "the population the caller names: `%s`" % population
+
+
+def _base_envelope(population: Optional[str]) -> tuple:
+    """The four assumption lines every severity certificate carries, population line included."""
+    return _BASE_ASSUMPTIONS + (population_envelope(population),)
+
+
+_BASE_ENVELOPE = _base_envelope(None)
 
 # Which way each family moves, and which end of the feasible set is the informative one. The two
 # fields are one fact: a risk that falls as the parameter rises is searched from the small end, and
@@ -431,15 +475,34 @@ def _intake(records: Sequence, alpha: float, delta: float, direction: str, seed:
 
 
 def _refused(reason: Reason, run: dict, alpha: float, delta: float, direction: str, detail: str,
-             meta: Optional[dict] = None) -> "SeverityCertificate":
+             meta: Optional[dict] = None,
+             population: Optional[str] = None) -> "SeverityCertificate":
+    """A refusal carrying the same population disclosure its feasible sibling would print.
+
+    `meta` keeps the original precedence -- the caller's mapping replaces the run's, and the one call site
+    that passes it already spreads `run["meta"]` into it -- so threading `population` is the only behaviour
+    change here: an undeclared refusal gets the historical envelope line and no `population` key.
+    """
+    stated = dict(run["meta"] if meta is None else meta)
+    if population:
+        stated["population"] = population
     return SeverityCertificate.refused(reason, alpha=alpha, delta=delta, direction=direction,
                                        n_cal=len(run["cal"]), n_eval=len(run["ev"]), detail=detail,
-                                       meta=meta or run["meta"], backend=run["backend"])
+                                       meta=stated, backend=run["backend"], population=population)
 
 
 def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
-                     direction: str = "under", seed: int = 0) -> "SeverityCertificate":
+                     direction: str = "under", seed: int = 0, *,
+                     population: Optional[str] = None) -> "SeverityCertificate":
     """Certify ``P(Y > ahat(X)) <= alpha`` (or the over-call mirror) at confidence ``1 - delta``.
+
+    `population` is what the caller is prepared to say about the rows it hands in, and nothing more: the gate
+    reads no digest, no cache and no provenance file to check it against, so an undeclared run keeps this
+    module's historical sentence (true of every population this repository certified before Plan E, and of
+    `data/records_ordinal_synthetic.jsonl`, which is generator output), and a declared one prints the label
+    the publication owns instead. Leaving the default as the only possible claim would have made
+    `data/cert_severity_typed_decisions.json` assert it was built on synthetic data, which is false in the
+    direction that matters least and a defect all the same.
 
     The search is §6.2's; the unit is the CASE; the operating point is a calibration-half fact, chosen
     at the requested budgets and never swept on the evaluation half (R-28, which the set gates carry in
@@ -467,16 +530,21 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
     """
     alpha = _budget("alpha", alpha)
     delta = _budget("delta", delta)
+    if population is not None and (not isinstance(population, str) or not population.strip()):
+        # A disclosure is a published sentence, so an empty or non-text one is a caller bug and not a
+        # fallback: defaulting it back to the synthetic claim would print a false statement about the
+        # population for the sake of an argument somebody mistyped.
+        raise ValueError("population must be a non-empty label or None, got %r" % (population,))
     run = _intake(records, alpha, delta, direction, seed)
     k, cal_cases, ev_cases = run["k"], run["cal_cases"], run["ev_cases"]
     n_case, n_ev_case = len(cal_cases), len(ev_cases)
     if not (run["cal"] or run["ev"]):
         return _refused(Reason.NO_GOLD_LABELS, run, alpha, delta, direction,
-                        "no labelled %s records to calibrate on" % SUBJECT)
+                        "no labelled %s records to calibrate on" % SUBJECT, population=population)
     if len(run["cal"]) < MIN_CAL or len(run["ev"]) < MIN_EVAL:
         return _refused(Reason.N_BELOW_MIN, run, alpha, delta, direction,
                         "need %d/%d records, have %d/%d" % (MIN_CAL, MIN_EVAL, len(run["cal"]),
-                                                            len(run["ev"])))
+                                                            len(run["ev"])), population=population)
     counts = [_case_count(cal_cases, a, lambda r, a: _loss(r, a, direction)) for a in range(k)]
     _require_monotone(counts, direction, n_case)
     bounds = _bounds(counts, n_case, delta)
@@ -490,7 +558,8 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
             "and a rule that never errs is still bounded only by 1 - delta**(1/n) = %.6f, so the "
             "sample is short and the task is not on trial" % (
                 k, alpha, n_case, best, bounds.index(best), counts[bounds.index(best)], n_case, best),
-            meta={**run["meta"], "family_floor_bound": best, "n_cal_cases": n_case})
+            meta={**run["meta"], "family_floor_bound": best, "n_cal_cases": n_case},
+            population=population)
     ahat = index
     bound = bounds[ahat]
     price_cases = _case_count(cal_cases, ahat, lambda r, a: _price(r, a, direction))
@@ -500,7 +569,7 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
     measured_cases = _case_count(ev_cases, ahat, lambda r, a: _loss(r, a, direction))
     measured = measured_cases / n_ev_case
     degenerate = (direction == "under" and ahat == k - 1) or (direction == "over" and ahat == 0)
-    envelope = _BASE_ENVELOPE + (
+    envelope = _base_envelope(population) + (
         "rule: report %s; the guarantee is %s <= alpha=%.3f, measured on %d evaluation cases as "
         "%.6f (%d violating), which is the empirical check G1 asks for and not the bound" % (
             "max(modal level, ahat)" if direction == "under" else
@@ -553,8 +622,12 @@ def certify_severity(records: Sequence, alpha: float = 0.05, delta: float = 0.05
               "n_cal_cases": n_case, "n_eval_cases": n_ev_case, "violating_cases": counts[ahat],
               "price_cases": price_cases, "override_cases": override_cases,
               "eval_violating_cases": measured_cases, "degenerate_end": degenerate,
-              "rule": JOINT_LEVEL_RULE,
-              "unit_note": unit_note},
+              "rule": JOINT_LEVEL_RULE, "unit_note": unit_note,
+              # The disclosure travels inside the artefact, not only in its envelope: `summary()` reads it
+              # back from here, so a stored certificate cannot be re-printed with a population claim its own
+              # bytes do not carry. Absent means the historical synthetic claim, which is what the published
+              # ordinal artefact states.
+              **({"population": population} if population else {})},
     )
 
 
@@ -609,7 +682,7 @@ def over_call_bound(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
 
 
 def tolerance_band(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
-                   seed: int = 0) -> dict:
+                   seed: int = 0, *, population: Optional[str] = None) -> dict:
     """The smallest integer `d` with ``P(|Y - ahat(X)| > d) <= alpha`` (spec §6.3), as a dict.
 
     "Given â" is this module's own under-direction certificate at the same `alpha`, `delta` and `seed`,
@@ -634,7 +707,8 @@ def tolerance_band(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
     """
     alpha = _budget("alpha", alpha)
     delta = _budget("delta", delta)
-    cert = certify_severity(records, alpha=alpha, delta=delta, direction="under", seed=seed)
+    cert = certify_severity(records, alpha=alpha, delta=delta, direction="under", seed=seed,
+                            population=population)
     if not cert.feasible:
         return {"feasible": False, "reason": cert.reason, "alpha": alpha, "delta": delta,
                 "seed": seed, "direction": "under", "n_cal": cert.n_cal, "n_eval": cert.n_eval,
@@ -663,7 +737,8 @@ def tolerance_band(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
             Reason.N_BELOW_MIN, alpha, delta, seed, ahat, k, run, n_case, n_ev_case, missing_cases,
             "no band in the %d-candidate family meets the target alpha=%.3f: the tightest bound these "
             "%d calibration cases can state is %.6f, so the sample is short and not the task" % (
-                k, alpha, n_case, best))
+                k, alpha, n_case, best),
+            population=population)
     if d == k - 1:
         return _band_refusal(
             Reason.NO_AUTOMATION_AT_COVERAGE, alpha, delta, seed, ahat, k, run, n_case, n_ev_case,
@@ -673,7 +748,8 @@ def tolerance_band(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
             "alpha=%.3f, so d=%d -- `the answer is off by at most the rubric' -- contains every level "
             "whatever the data said and automates nothing. More data would not change this verdict: "
             "the obstruction is the mass at maximal error, not 1 - delta**(1/n)" % (
-                ahat, counts[k - 2], n_case, k - 1, bounds[k - 2], alpha, k - 1))
+                ahat, counts[k - 2], n_case, k - 1, bounds[k - 2], alpha, k - 1),
+                population=population)
     bound = bounds[d]
     measured_cases = _case_count(ev_cases, d, miss)
     return {
@@ -685,7 +761,7 @@ def tolerance_band(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
         "n_cal_cases": n_case, "n_eval_cases": n_ev_case,
         "measured_violation": measured_cases / n_ev_case,
         "n_claims": 1, "level": joint_level({"alpha": delta, "beta": delta}, n_groups=1, n_claims=1),
-        "envelope": _BASE_ENVELOPE + (
+        "envelope": _base_envelope(population) + (
             "rule: |Y - ahat(X)| > d, with ahat(X) = max(modal level, %d) from the under-direction "
             "certificate at the same alpha/delta/seed; the band is the smallest d whose exact "
             "one-sided upper bound on %d calibration CASES is <= alpha=%.3f, and the search is the "
@@ -703,12 +779,13 @@ def tolerance_band(records: Sequence, alpha: float = 0.05, delta: float = 0.05,
 
 
 def _band_refusal(reason: Reason, alpha: float, delta: float, seed: int, ahat: int, k: int, run: dict,
-                  n_case: int, n_ev_case: int, missing_cases: int, detail: str) -> dict:
+                  n_case: int, n_ev_case: int, missing_cases: int, detail: str,
+                  population: Optional[str] = None) -> dict:
     """A band refusal: the budgets, the counts, and no number a reader could automate on."""
     return {"feasible": False, "reason": reason.value, "alpha": alpha, "delta": delta, "seed": seed,
             "direction": "under", "ahat": ahat, "rubric_levels": k, "n_cal": len(run["cal"]),
             "n_eval": len(run["ev"]), "n_cal_cases": n_case, "n_eval_cases": n_ev_case,
-            "missing_cases": missing_cases, "detail": detail, "envelope": _BASE_ENVELOPE + (
+            "missing_cases": missing_cases, "detail": detail, "envelope": _base_envelope(population) + (
                 "no band is published, so no tolerance travels with any answer",
                 "the refusal names %r: %s" % (reason.value, _REASON_MEANING[reason]),)}
 
@@ -854,11 +931,13 @@ class SeverityCertificate:
     @classmethod
     def refused(cls, reason: Reason, alpha: float, delta: float, direction: str, n_cal: int,
                 n_eval: int, detail: str, meta: Optional[dict] = None,
-                backend: Optional[str] = None) -> "SeverityCertificate":
+                backend: Optional[str] = None,
+                population: Optional[str] = None) -> "SeverityCertificate":
         return cls(feasible=False, reason=reason.value, direction=direction, alpha=alpha,
                    delta=delta, backend=backend, ahat=None, bound=None, price_bound=None,
                    override_bound=None, measured_violation=None, n_cal=n_cal, n_eval=n_eval,
-                   envelope=_BASE_ENVELOPE + ("no certificate exists, so no action is certified",),
+                   envelope=_base_envelope(population)
+                   + ("no certificate exists, so no action is certified",),
                    meta={"detail": detail, **(meta or {})})
 
     def to_dict(self) -> dict:
@@ -960,20 +1039,22 @@ class SeverityCertificate:
     def summary(self) -> str:
         side = _SIDE[self.direction]
         if self.feasible:
+            # The population clause is read out of this certificate's own `meta`, so a summary printed from
+            # stored bytes can only repeat the claim those bytes carry -- it cannot reinstate the synthetic
+            # sentence over a real population, and it cannot drop it over one that is synthetic.
             return ("%s severity certificate, direction=%s: %s <= %.6f at ahat=%s, tested at "
                     "delta=%.3f on %d calibration cases (alpha=%.3f is the risk target, not a "
                     "confidence); the price is %s <= %.6f at the same rule and the rule replaces the "
                     "model's own level on <= %.6f of cases; measured on %d held-out cases: %.6f; "
                     "joint level %.2f over %d claims at delta=%.3f; n_cal=%d n_eval=%d; "
-                    "synthetic ordinal data with known answers (the offline archive carries no `score` "
-                    "answers), and the construction is prior art -- Dey et al. NeurIPS 2023, Zhang et "
+                    "%s, and the construction is prior art -- Dey et al. NeurIPS 2023, Zhang et "
                     "al. AAAI-26, Xu-Guo-Wei UAI 2023 (PMLR 216:2346-2355), ours being %s"
                     % (_KIND[self.direction], self.direction, side, self.bound, self.ahat, self.delta,
                        self.meta.get("n_cal_cases", -1), self.alpha, _OTHER_SIDE[self.direction],
                        self.price_bound, self.override_bound,
                        self.meta.get("n_eval_cases", -1), self.measured_violation, self.level,
                        SEVERITY_N_CLAIMS, self.delta, self.n_cal, self.n_eval,
-                       _DELTA_CLAIM[self.direction]))
+                       population_claim(self.meta.get("population")), _DELTA_CLAIM[self.direction]))
         return ("NOT_CERTIFIABLE: reason=%s for direction=%s at alpha=%.3f, delta=%.3f; n_cal=%d "
                 "n_eval=%d; %s" % (self.reason, self.direction, self.alpha, self.delta, self.n_cal,
                                    self.n_eval, self.meta.get("detail", "")))
