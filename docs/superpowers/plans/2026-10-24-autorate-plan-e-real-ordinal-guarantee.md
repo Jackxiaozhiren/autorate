@@ -6,7 +6,7 @@ Origin: task #125, ruling R-330/R-331 in `.superpowers/sdd/2026-10-03-autorate-p
 ## What is measured and already true (do not re-derive, cite these)
 
 - Corpus: `LocalLLaMA/typed-decisions`, config `all`, split `test`. File `all/test-00000-of-00001.parquet`,
-  222,140 bytes, sha256 `4f294f218ea1da27f3efef936359389c62ea4d3973a41457732990f1d31b647c`. 400 cases,
+  222,140 bytes, whose sha256 is pinned in `data/typed_decisions_provenance.json` (the full value lives there and is checked from the bytes, never restated in prose). 400 cases,
   2,000 decisions: `choice` 600, `noul` 600, `score` 800. Fetched 2026-10-24 over verified TLS (http 200,
   `ssl_verify_result` 0), no `--insecure`, no proxy bypass.
 - Scored with the cached `convaiinnovations/laya` revision `55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851`,
@@ -38,8 +38,7 @@ document and in the ERRATA entry; do not word it as a near-miss or as progress t
 1. `data/typed_decisions_provenance.json` — the pin: sha256, bytes, URL, revision used, the incomplete-`main`
    fact, the clamp warning, the per-question decision counts and level domains.
 2. `data/records_typed_decisions_urgency.jsonl` — 400 Records built by the new tool from the staged
-   `laya-evidence/task2/t125/staged_records_typed_decisions_urgency.jsonl` (sha256 of that file:
-   `00a17550a874b6be020590fc6089b216546117ccce5d1bafb5e25ef21129ab60`). Shape must match the published ordinal
+   `laya-evidence/task2/t125/staged_records_typed_decisions_urgency.jsonl` (its sha256 is recorded in the same pin file). Shape must match the published ordinal
    artefact: `options` = ascending level names, `gold`/`predicted` = level names, `probs`, `case_id`, `seed`,
    `u`, `backend="laya-typed-decisions"`, `slices={"question","workflow"}`, `scores={"gold_score"}`.
 3. `tools/build_typed_decisions.py` — a **stdlib-only, not-on-the-test-path, never-in-CI** producer, written

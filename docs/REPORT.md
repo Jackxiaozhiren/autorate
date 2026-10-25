@@ -7,7 +7,7 @@ date here was computed by this run -- every date is a transcription of a committ
 date, the freeze's `frozen_at` and the claim ledger's `opened` column -- and no absolute machine
 path appears, so a machine that never saw the corpus produces exactly these bytes.
 
-- protocol described: version 1, frozen 2026-10-22, digest `3776cd48abaf8407fcb1d8a8504617edaaedbda1553c2c7da033cfe420f3b58a` (the file is `cli.PROTOCOL_JSON`)
+- protocol described: version 1, frozen 2026-10-24, digest `545e104a932562fb5526564aa5b056a06fda5665cacd7c0d44d24abf15ceea49` (the file is `cli.PROTOCOL_JSON`)
 - record contract: shape 2, primitives `choice`, `score`, `noul`
 - rubric: `alpha`=0.05, `beta`=0.05, `delta`=0.05, `seed`=7, `method`=aps, `unit`=case, `n_claims`=3, `min_cal`=60, `min_eval`=60
 - diagnostic grid: 29 points, 0.01 to 0.29 -- evidence only, nothing on it was certified
@@ -258,7 +258,7 @@ and no corpus: every input is a committed file, and the two lanes the command ca
 different denominators on purpose -- the corpus-absent lane transcribes the inventory snapshot it
 cannot contradict and says so in its own disclosure line.
 
-- documents `verify` byte-compares (`cli.PUBLISHED_DOCS`, 11 of them, this file among them): `docs/RESULTS.md`, `data/inventory.md`, `docs/AUDIT.md`, `docs/SEVERITY.md`, `docs/G3.md`, `docs/RESPLIT.md`, `docs/SLICES.md`, `docs/CONTAMINATION.md`, `docs/FEASIBILITY.md`, `docs/DRIFT.md`, `docs/REPORT.md`
+- documents `verify` byte-compares (`cli.PUBLISHED_DOCS`, 12 of them, this file among them): `docs/RESULTS.md`, `data/inventory.md`, `docs/AUDIT.md`, `docs/SEVERITY.md`, `docs/ORDINAL_REAL.md`, `docs/G3.md`, `docs/RESPLIT.md`, `docs/SLICES.md`, `docs/CONTAMINATION.md`, `docs/FEASIBILITY.md`, `docs/DRIFT.md`, `docs/REPORT.md`
 - the records every table above is built on: `data/records_feishu.jsonl` (jev=959 rows, laya=960 rows)
 - the inventory the document arm read: `data/inventory.md.json`
 - digests the freeze named in advance, which are the two checks in that gate that are not fixed

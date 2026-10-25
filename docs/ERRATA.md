@@ -2953,3 +2953,51 @@ two `tests/test_cli.py` guards then treated a newline-joined manifest as one fil
 literal `25`, so a legitimate fifth certificate reddened a count instead of hunting a phantom. G1's pointers are
 now compared against `protocol.published_certificates()` -- the owner the producer already reads -- and only the
 four literally-written rows keep a hand sum, so a pointer dropped from those remains a deliberate edit.
+
+## 2026-10-24 -- the first real-corpus ordinal arm answered, and its answer is a refusal (#125, twenty-third emission)
+
+G3's contrast had been measured on a synthetic ordinal population only, so route A bought a real one: the
+pinned `laya` checkpoint's `typed-decisions` task, scored offline into
+`data/records_typed_decisions_urgency.jsonl` (400 cases, backend `laya-typed-decisions`), certified by
+`tools/certify_ordinal_real.py` into `data/cert_severity_typed_decisions.json`, rendered by
+`docs/ORDINAL_REAL.md`, re-derived by `verify` in both lanes. The lane denominators move 875 to 895 absent and
+912 to 932 present; the 37-check gap between them is unchanged, because nothing the new arm reads is
+corpus-only. The digest chain across this round is a single emission, `3776cd48abaf -> 545e104a9325`.
+
+**What it measured, and why that is not a guarantee.** The one-sided severity bound over the real population
+selects `ahat` at the TOP level of the 0-3 rubric, so `P(Y > ahat) <= 0.014867` holds by construction -- there
+is no level above the reported one for a ballot to violate -- and `measured_violation` is 0.0. The arithmetic is
+right: the value is exactly `clopper_pearson_upper(0, 200, 0.05)`, checked independently of this repository. What
+would have been wrong is publishing it as a guarantee, which is why the arm's own disclosure carries it:
+`meta.degenerate_end` and the envelope line that says the top of the rubric reports a constant answer and reads
+no ballot. `claims.G3` stays `not_measured` and `claims.G1` stays `not_certifiable` -- a population that cannot
+falsify a bound does not discharge a criterion, and `certify_score` refuses on these same records.
+
+**A stale copy the guards never looked at.** Round 22 widened the slice run and moved the frozen G4 note (92 to
+108 field comparisons, four slices to five, 11,896 cases to 14,870, `0.05 / 4 = 0.0125` to `0.05 / 5 = 0.01`),
+and left the same quantities hand-typed in `README.md`'s G4 bullet at their old values -- including "the four
+committed MASSIVE record files", which is now a false statement about the directory. The transcription guard
+owns the G5 pair and the note digits; nothing owned a third prose copy of the slice run, so the README could
+contradict the artefact and stay green. This round corrects all eight positions, and the hole is recorded rather
+than papered over: a guard that reads `data/slices_language.json` and asserts the README's G4 digits against it
+is owed, and is deliberately NOT smuggled into an emission round -- it belongs to its own round with its own
+red-first test, because a gate added while the tree is otherwise moving cannot be proven to have been able to
+fail.
+
+**Two witnesses that had each other's blind spot.** `tools/g5_export.sh`'s plant battery was widened in the
+previous round; the re-stamp witness (`laya-evidence/task2/t96/restamp.py`) refused this round's artefact with
+`DECLARED BY NO TABLE` because it enumerates publication tables by hand, while the in-repo guard
+`test_every_published_certificate_carries_the_committed_freeze` passed for the same reason -- it too listed its
+tables. The guard now discovers them by suffix over `report` (`_CERTS` / `_CERTIFICATES`) and refuses to certify
+anything if the discovery returns nothing, so a fourth table joins both censuses by itself. The witness gained a
+producer-aware row: an artefact whose producer is a tool rather than a CLI subcommand is re-emitted through that
+tool, not through `autorate`.
+
+**Five refused driver attempts, all mine.** `freeze23b` through `freeze23f` each died before the emission
+completed: the witness's table census (above), `DIGESTS DISAGREE ON DISK` after a partial write, and one that got
+further than the rest -- registering the new certificate as a CLI row made the CLI its producer, and the CLI
+writes no `meta.set_gate_refusal`, so `emit-docs` died with `KeyError: 'set_gate_refusal'`. That last one is
+the important one: it is an rc-1-class crash, it was caught locally before anything was pushed, and it is why the
+row now names the tool. The driver's `ALLOW` write-surface regexes also refused the new document -- a
+legitimate path the surface did not name yet -- and the allowlist gained it rather than the guard being loosened. `README.md` was edited through a script that asserts each anchor appears exactly once and writes only if
+all of them do, after two hand-applied patches aborted on a stale anchor mid-file.

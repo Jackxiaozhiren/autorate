@@ -31,7 +31,8 @@ artefacts are separate rows of separate tables because the two populations are n
 - denominators: 200 calibration records over 200 distinct cases: `bound`, `price_bound` and `override_bound` divide by `n_cal_cases` (the calibration split's case count); `measured_violation` divides by `n_eval_cases` (the evaluation split's case count); both are 200 in this population, so which denominator a figure uses is stated here rather than left to be inferred from two counts that happen to agree
 - the certified figure is `bound` = `0.014867039232`, which is the one-sided Clopper-Pearson upper on 0 evaluation violations out of `n_eval_cases` = 200 cases, and the measured held-out violation rate printed below is `measured_violation` = 0.0 over that same denominator
 - the always-report rule's cost, beside the bound: `price_bound` = `0.725019771719`, `override_bound` = `0.739194103550`
-- produced under the frozen protocol: `meta.protocol_digest` = `3776cd48abaf8407fcb1d8a8504617edaaedbda1553c2c7da033cfe420f3b58a`
+- produced under the frozen protocol: `meta.protocol_digest` = `545e104a932562fb5526564aa5b056a06fda5665cacd7c0d44d24abf15ceea49`
+- what `ahat` = 3 over a 4-level rubric means: the certified rule reports the TOP level on every case and reads no ballot, so the guarantee holds because nothing can exceed the top -- `137 of 200` calibration cases have their own level replaced by it, and that is the price, not a rounding
 
 ## The multiclass set gate over these same records
 
@@ -48,11 +49,12 @@ A set-gate refusal on this population does not discharge the criterion's negativ
 
 this checkpoint ships an illegal `choice:11+` temperature, which upstream's loader clamps to 0.5 at load time, so confidence on affected entries is not calibrated
 - affected: the `choice` question type at key `11+`, one entry of the checkpoint's own temperature table; clamped to `0.5` at load time
-- consequence: confidence on the affected entries is not calibrated. Confidence on the affected entries is not calibrated, so a certificate over this checkpoint's probabilities carries that limit whether or not the bound below holds.
+- consequence: confidence on the affected entries is not calibrated. Confidence on the affected entries is not calibrated, so a certificate over this checkpoint's probabilities carries that limit whether or not the bound holds.
 
 ## What this does NOT move
 
-`claims.G3.status` stays `not_measured`, and this document does not describe progress toward `met`.
+This does not move `G3`. `claims.G3.status` stays `not_measured`, and this document does not
+describe progress toward `met`.
 The criterion is `>=1 ordinal guarantee that multiclass CP cannot express`, and its measurement is
 the negative test: if vanilla multiclass set CP reproduces the one-sided bound, the criterion fails.
 What exists here is a one-sided bound that multiclass set CP did not produce on this population,

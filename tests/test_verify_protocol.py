@@ -295,8 +295,18 @@ def test_every_published_certificate_carries_the_committed_freeze(tmp_path, in_r
     Those are checked against the filesystem and against the tables, which are different sources.
     """
     digest = protocol_digest(load_protocol(REPO / "protocol.json"))
-    declared = sorted(cli.CERTS.values()) + sorted(path for _, path in report.MASSIVE_CERTIFICATES.values())
-    declared += sorted(cert for _label, (_records, cert, _direction) in report.SEVERITY_CERTS.items())
+    # Discovered from the module rather than listed: this row's own failure mode was a fourth table nobody
+    # added here, and a hand-written list of table names re-enacts it. Every certificate table maps a label
+    # to a row whose second element is the artefact path (`CERTS` is the one backend-keyed exception, read
+    # from its own owner because its rows are bare paths).
+    tables = sorted(name for name in vars(report) if name.endswith(("_CERTS", "_CERTIFICATES")))
+    assert tables, "no certificate table is defined in `report`, so this row would certify nothing"
+    declared = sorted(cli.CERTS.values())
+    for name in tables:
+        for row in getattr(report, name).values():
+            assert len(row) > 1, (name, row)
+            declared.append(row[1])
+    declared = sorted(declared)
     assert declared, "the publication tables name no certificate at all, so this row would certify nothing"
     stamped_on_disk = []
     for path in sorted((REPO / "data").glob("cert_*.json")):
