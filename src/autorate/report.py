@@ -519,7 +519,10 @@ ORDINAL_REAL_CERTS = {ORDINAL_REAL_LABEL: (ORDINAL_REAL_RECORDS, ORDINAL_REAL_CE
 # population by that refusal, and a claim that lives only in prose can be rewritten by whoever remembers it.
 # `verify` re-measures it (see `rederive_ordinal_real`), so the block is compared -- not transcribed.
 ORDINAL_REAL_SET_FIELDS = ("module", "feasible", "reason", "summary", "budget")
-ORDINAL_REAL_SET_BUDGET_FIELDS = ("alpha", "beta", "delta", "seed")
+# Derived from the owner rather than re-typed: the refusal block carries the four budgets the set gate
+# consumed, and `method` is this arm's own choice -- the set gate ran none -- so the subset is the published
+# five minus that one name. A second literal here would be a second owner of a list that renames in one place.
+ORDINAL_REAL_SET_BUDGET_FIELDS = tuple(name for name in PUBLISHED_RUBRIC_FIELDS if name != "method")
 
 
 def read_typed_decisions_pin(path) -> dict:

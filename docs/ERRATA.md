@@ -3024,3 +3024,37 @@ from `cli.CERTS` and discovers the rest by table suffix, refusing outright when 
 the corrected census was run against the disk to print nine files at `480c0be1a4b2`. The lesson is the same one
 this round already records twice: every census that names its members by hand is silent about the member nobody
 typed in.
+
+**The push was refused, by the witness that runs the tree as a deploy.** `tail25.sh` runs the corpus-less export
+simulation before it runs either lane, and that simulation -- a `git archive` of the tip into a fresh checkout with
+its own interpreter and a tracked-file manifest instead of a `.git` -- came back with ten red rows, so nothing was
+pushed. All ten were the round's own, and nine of them were the same census hole seen from the other side:
+
+* `tests/test_cli.py`'s `stage_published` copied the published artefacts from a hand-kept list of table names. A
+  scratch tree therefore had no `data/typed_decisions_provenance.json`, and six refusal tests failed on the gate
+  naming that absent file instead of the defect they had planted. The fixture now enumerates every `data/` path
+  `report` declares, by shape, and refuses if the enumeration comes back empty -- the same fix the witness and the
+  driver needed, in the third place that had it.
+* Forcing that fixture made a seventh test's premise vanish: `test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error`
+  was only "without a snapshot" because the fixture forgot the snapshot. It now deletes `report.INVENTORY_JSON`
+  from its own scratch tree, so the premise is stated rather than inherited. A test whose premise a widening of a
+  fixture can silently cancel is worth nothing, and this one had been passing on the cancellation.
+* `test_only_certificate_tables_publish_a_protocol_digest` enumerated three tables by hand and so passed while the
+  external witness refused the very same artefact; it now discovers every `_CERTS`/`_CERTIFICATES` mapping.
+* `report.ORDINAL_REAL_SET_BUDGET_FIELDS` re-typed four of the five published rubric names, which is exactly the
+  second-owner defect the row in `tests/test_cli.py` exists to refuse; it is now derived from
+  `PUBLISHED_RUBRIC_FIELDS` by subtracting the one name that arm does not run.
+* The absent-lane total expectation grew by one term: Plan E's certificate re-derives through the same field list
+  the synthetic severity arm uses, so the count of comparisons is `len(ORDINAL_REAL_CERTS) x` that term, and both
+  lanes print 19 more than they did before the arm joined.
+* And one Global Constraint violation that no local gate would have named: the Plan E dispatch brief in
+  `docs/superpowers/plans/` carried absolute paths of this machine -- the worktree, the interpreter, the evidence
+  directory. `test_no_committed_file_carries_an_absolute_home_path` caught it, and the brief now names those three
+  as `<checkout>`, `<worktree>` and `<evidence>` and says plainly that no tracked file states where they live.
+
+**The order of the witnesses moved; their bar did not.** The second attempt runs the two suites before the export.
+All ten rows reproduce in the worktree itself -- they are test-code and committed-text defects, not properties of
+the archive -- and a suite failure there is a traceback I can act on, while the export spends minutes building a
+fresh interpreter before it prints the same ten. The push still requires all three witnesses green, and an export
+red still refuses it; what changed is only the order in which the round pays for them, which is recorded here
+rather than left as an unexplained difference between the two scripts.

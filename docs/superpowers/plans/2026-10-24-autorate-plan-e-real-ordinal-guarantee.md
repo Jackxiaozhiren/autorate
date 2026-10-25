@@ -79,13 +79,17 @@ document and in the ERRATA entry; do not word it as a near-miss or as progress t
   `git commit -F <file> -- <paths>`; `git status` before any command that can discard work, and never
   `git restore`/`checkout --`/`stash`/`clean` in a dirty tree.
 - Do NOT push, open PRs, flip the repo public, or publish to PyPI. Do NOT run the R-41 simulation or the
-  lanes — the controller does those. Work stays in `/Users/jackson/laya/autorate/.worktrees/freeze13` on
-  branch `plan/freeze13-publication`.
+  lanes — the controller does those. Work stays in the task worktree (`.worktrees/<round>`) on branch
+  `plan/freeze13-publication`.
 - Interpreter for the repo (the worktree has no venv):
-  `PYTHONPATH=<worktree>/src PYTHONDONTWRITEBYTECODE=1 /Users/jackson/laya/autorate/.venv/bin/python3`, with
-  `/Users/jackson/laya/laya-evidence/task2/t118/bin` on PATH for console-script rows, and
+  `PYTHONPATH=<worktree>/src PYTHONDONTWRITEBYTECODE=1 <checkout>/.venv/bin/python3`, with
+  `<evidence>/task2/t118/bin` on PATH for console-script rows, and
   `AUTORATE_TRACKED_FILES` left UNSET for local suite runs (exporting it feeds path guards a whole manifest
-  and they die with "File name too long").
+  and they die with "File name too long"). `<checkout>` is the clone the worktrees hang off, `<worktree>` this
+  round's checkout under it, and `<evidence>` the scratch tree the controller keeps outside the repository; the
+  controller substitutes them, and no tracked file in this repository states where they live -- that is the
+  rule this brief has to obey like every other committed document, even though the substitution is obvious to
+  the person running it.
 - Gate: `ruff check src tests tools --select=E9,F63,F7,F82,F401,F811 --line-length=120`.
 
 ## Report contract

@@ -69,17 +69,37 @@ def stage_published(work):
     `data/contamination_probe.json` before it can reach the defect it was built to plant.
     (`docs/CONTAMINATION.md` itself needs no mention here: `stage_documents` reads it out of
     `cli.PUBLISHED_DOCS`.)
-    """
-    from autorate.cli import PROTOCOL_JSON
-    from autorate.report import (CERTS, CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON,
-                                 G1_FEASIBILITY_JSON, G3_CONTRAST_JSON,
-                                 MASSIVE_CERTIFICATES, RECORDS, RESPLIT_JSON, SEVERITY_CERTS, SLICE_JSON)
 
-    names = ({RECORDS, str(PROTOCOL_JSON), RESPLIT_JSON, SLICE_JSON, G1_FEASIBILITY_JSON,
-              CONTAMINATION_JSON, CONTAMINATION_PIN, DRIFT_JSON, G3_CONTRAST_JSON}
-             | set(CERTS.values())
-             | {p for pair in MASSIVE_CERTIFICATES.values() for p in pair}
-             | {path for row in SEVERITY_CERTS.values() for path in row[:2]})
+    The enumeration is by SHAPE, not by name. Round 23 paid for a hand-kept list three times over in one
+    round: the external re-stamp witness, this fixture, and `tests/test_g3_contrast_artefact.py` each
+    enumerated the publication tables by hand, so the real-corpus certificate reddened a witness, then a
+    fixture, and left the two that had been run looking green. So this walks every module value in `report`
+    and copies anything under `data/` that this checkout can actually open, whether it stands alone
+    (`TYPED_DECISIONS_PIN`), sits in a tuple (`SLICE_RECORDS`) or hides in a table row (`ORDINAL_REAL_CERTS`).
+    `*_PRODUCER` paths are excluded by that scope rather than by a name test: a producer is a program the
+    artefact was made by, not an artefact the gate opens, and a scratch tree that copied it would be proving
+    nothing.
+    """
+    from autorate import report
+    from autorate.cli import PROTOCOL_JSON
+
+    def paths_in(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, (tuple, list, set)):
+            for item in value:
+                yield from paths_in(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from paths_in(item)
+
+    names = {str(PROTOCOL_JSON)}
+    for value in vars(report).values():
+        names.update(rel for rel in paths_in(value)
+                     if rel.startswith("data/") and (REPO / rel).is_file())
+    artefacts = names - {str(PROTOCOL_JSON)}
+    assert artefacts, ("the census of `report` found no published artefact under `data/`, so this fixture "
+                       "would copy nothing and every refusal test below would name its own empty tree")
     for rel in sorted(names):
         shutil.copy(REPO / rel, work / rel)
 
@@ -172,7 +192,8 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                                  G1_FEASIBILITY_ROW_FIELDS, G1_FEASIBILITY_RUBRIC_FIELDS,
                                  G3_CONTRAST_POPULATION_FIELDS,
                                  G3_CONTRAST_SEVERITY_FIELDS, G3_CONTRAST_SET_FIELDS,
-                                 MASSIVE_CERTIFICATES, RESPLIT_JSON, RESPLIT_RUBRIC_FIELDS,
+                                 MASSIVE_CERTIFICATES, ORDINAL_REAL_CERTS, RESPLIT_JSON,
+                                 RESPLIT_RUBRIC_FIELDS,
                                  SEVERITY_CERTS, SLICE_CENSUS_FIELDS, SLICE_COMPARE_FIELDS,
                                  SLICE_GROUP_FIELDS, SLICE_INPUT_FIELDS, SLICE_JSON, SLICE_POOLED_FIELDS,
                                  SLICE_RECORDS, SLICE_RUBRIC_FIELDS, SLICE_WORST_FIELDS,
@@ -203,7 +224,7 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                                                          "docs/AUDIT.md", "docs/SEVERITY.md", "docs/G3.md",
                                                          "docs/RESPLIT.md", "docs/SLICES.md",
                                                          "docs/FEASIBILITY.md", "docs/DRIFT.md",
-                                                         "docs/REPORT.md",
+                                                         "docs/ORDINAL_REAL.md", "docs/REPORT.md",
                                                          "docs/CONTAMINATION.md"}, PUBLISHED_DOCS
     # A published certificate is counted here because its table says it exists, not because a
     # literal remembered it. G1's three MASSIVE artefacts were committed and CI-witnessed while
@@ -251,6 +272,12 @@ def test_verify_runs_and_agrees_where_the_corpus_does_not_exist(tmp_path):
                 + len(CERTS) * len(RUBRIC_FIELDS) + len(CORPUS_DIGESTS)
                 + len(SEVERITY_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
                                          + len(SEVERITY_RUBRIC_FIELDS))
+                # Plan E's real-corpus certificate joins with the same term the synthetic severity arm uses,
+                # because `cli.cmd_verify` hands `rederive_ordinal_real` the very same field list -- the second
+                # ordinal artefact has the severity shape, so its published fields are named once. A row that
+                # changed shape would have to change the arm's call site first, and this term would move with it.
+                + len(ORDINAL_REAL_CERTS) * (len(SEVERITY_COMPARE_FIELDS) + 1
+                                             + len(SEVERITY_RUBRIC_FIELDS))
                 + len(resplit_invariants(read_resplit(REPO / RESPLIT_JSON)))
                 + len(RESPLIT_RUBRIC_FIELDS)
                 + len(SLICE_COMPARE_FIELDS)
@@ -687,6 +714,12 @@ def test_verify_without_a_corpus_or_a_snapshot_is_a_usage_error(tmp_path):
     (work / "data").mkdir(parents=True)
     shutil.copytree(REPO / "docs", work / "docs")
     stage_published(work)
+    # The premise is FORCED, not inherited from a fixture that happened to forget a file. `stage_published`
+    # now enumerates the published artefacts by shape and therefore brings the snapshot; this row is about the
+    # tree that does not have it, so the absence is stated here. A test whose premise a widening of the fixture
+    # can silently cancel is the defect class round 23 hit three times over.
+    from autorate import report
+    (work / report.INVENTORY_JSON).unlink()
     r = run("verify", cwd=work, root=Path("/nonexistent-corpus-dir"))
     assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
     assert "nothing to verify against" in r.stderr, r.stderr

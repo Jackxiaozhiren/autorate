@@ -376,8 +376,19 @@ def test_only_certificate_tables_publish_a_protocol_digest(tmp_path):
                 found[path.name] = meta["protocol_digest"]
         return found
 
-    declared = set(report.CERTS.values()) | {cert for _rec, cert in report.MASSIVE_CERTIFICATES.values()}
-    declared |= {cert for _rec, cert, _dir in report.SEVERITY_CERTS.values()}
+    # The tables are DISCOVERED, not named. This line used to concatenate three tables by hand, which is how
+    # round 23's real-corpus certificate passed here while the external re-stamp witness refused the very same
+    # file: two censuses of one fact, one of them stale. A table row is any value in a `report` mapping whose
+    # name ends in `_CERTS`/`_CERTIFICATES`, and its artefacts are the `.json` paths inside that row -- so a
+    # fourth table, or a row that changes shape, joins this census by itself. An empty discovery is a refusal,
+    # not a green: a census that found nothing would certify nothing.
+    tables = sorted(name for name in vars(report)
+                    if name.endswith(("_CERTS", "_CERTIFICATES")))
+    assert tables, "no certificate table is defined in `report`, so this row would certify nothing"
+    declared = set(report.CERTS.values())
+    for name in tables:
+        for row in getattr(report, name).values():
+            declared.update(item for item in row if isinstance(item, str) and item.endswith(".json"))
     declared_names = {Path(rel).name for rel in declared}
 
     on_disk = stamped_under(REPO)
