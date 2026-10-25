@@ -253,12 +253,12 @@ NON_G1_CLAIMS = (
         "artefacts": ["docs/G5.md", "tools/g5_export.sh", "tools/g5_transcript.py",
                       "tests/test_g5_transcript.py"],
         "note": "measured, and now published as a record rather than as a simulation I perform and "
-                "delete. `tools/g5_export.sh` unpacks a `git archive` of commit 2c427d8 into a scratch "
+                "delete. `tools/g5_export.sh` unpacks a `git archive` of commit 81357a7 into a scratch "
                 "directory with its own HOME, asks that environment what it can see -- `.git` ABSENT, "
                 "torch and transformers answered by the export's own interpreter, a deliberate HTTPS "
                 "fetch failing -- and runs the criterion's literal command in both lanes, which "
-                "`docs/G5.md` transcribes: absent-lane rc=0 at 875/875 values and "
-                "corpus-present rc=0 at 912/912, the 37-check difference "
+                "`docs/G5.md` transcribes: absent-lane rc=0 at 895/895 values and "
+                "corpus-present rc=0 at 932/932, the 37-check difference "
                 "being the upstream digests, the snapshot keys, and the contamination arm's re-digest of "
                 "the results file -- the comparisons only a corpus can recompute. Five "
                 "falsifications are planted in the same export and restored byte-identically with the "

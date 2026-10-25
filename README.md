@@ -268,9 +268,9 @@ second place to keep them.
   0.477. Every non-empty slice is above the 0.050 budget, and none of the five certifies.
 - **G5, reproducible from a commit with no GPU, no network, no model: `certified`, and the proof is a
   committed transcript.**
-  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `2c427d8` into a scratch
+  `docs/G5.md` is the record: `tools/g5_export.sh` unpacks a `git archive` of commit `81357a7` into a scratch
   directory with its own HOME and runs `autorate verify --protocol protocol.json` there --
-  `875/875` values with the corpus absent at rc=0 and `912/912` with
+  `895/895` values with the corpus absent at rc=0 and `932/932` with
   it present at rc=0 -- the pair the transcript records, read from its own two lane blocks, and the same pair
   this tree's `verify` prints above, because a transcript is re-exported from the commit that moved the
   comparisons rather than remembered across one -- and five planted defects that each come back inside the documented
@@ -339,10 +339,14 @@ records. `claim G3` prints `not_measured` beside an artefact that exists, becaus
 wider sentence -- "multiclass conformal prediction *cannot express* a one-sided ordinal guarantee" -- and the
 control that would establish the contrast has now been run and did not go that way: at the corner of the
 generator where the set gate certifies at all, its interval already yields the bound. What survives is
-narrower and measured, and the narrowing lives in the frozen G3 note rather than in a re-worded criterion. Its
-population is synthetic ordinal data with known answers: no committed records file in this checkout carries a
-`qtype="score"` record, and the artefact's own envelope says so, so nothing here is a measurement of a shipped
-model's ordinal risk.
+narrower and measured, and the narrowing lives in the frozen G3 note rather than in a re-worded criterion. The
+population behind that sentence was synthetic ordinal data with known answers, and the sentence the population
+carried -- "no committed records file in this checkout carries a `qtype=\"score\"` record" -- is no longer true of
+this tree: `data/records_typed_decisions_urgency.jsonl` commits 400 real `score` records, scored offline from the
+pinned `laya` checkpoint, and `docs/ORDINAL_REAL.md` certifies them. What the paragraph still states is the
+narrower fact, and it is measured rather than remembered: the synthetic certificate's envelope says what it says,
+and the real population's arm discloses that the level its bound selects is the top of its own rubric -- so
+neither artefact is a falsifiable measurement of a shipped model's ordinal risk.
 
 Not implemented at all: per-ask `noul` budgets. The `noul` question type is read, counted and quarantined
 by the same loaders as the others, and there is no certifier for it.

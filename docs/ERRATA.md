@@ -2962,7 +2962,9 @@ pinned `laya` checkpoint's `typed-decisions` task, scored offline into
 `tools/certify_ordinal_real.py` into `data/cert_severity_typed_decisions.json`, rendered by
 `docs/ORDINAL_REAL.md`, re-derived by `verify` in both lanes. The lane denominators move 875 to 895 absent and
 912 to 932 present; the 37-check gap between them is unchanged, because nothing the new arm reads is
-corpus-only. The digest chain across this round is a single emission, `3776cd48abaf -> 545e104a9325`.
+corpus-only. The digest chain across this round is `3776cd48abaf -> 545e104a9325 -> 480c0be1a4b2`: two
+emissions, because the frozen G5 note quotes the pair the transcript prints and names the commit that moved the
+lanes, and that note can only be re-aimed once the widening commit and its re-export both exist.
 
 **What it measured, and why that is not a guarantee.** The one-sided severity bound over the real population
 selects `ahat` at the TOP level of the 0-3 rubric, so `P(Y > ahat) <= 0.014867` holds by construction -- there
@@ -3001,3 +3003,24 @@ the important one: it is an rc-1-class crash, it was caught locally before anyth
 row now names the tool. The driver's `ALLOW` write-surface regexes also refused the new document -- a
 legitimate path the surface did not name yet -- and the allowlist gained it rather than the guard being loosened. `README.md` was edited through a script that asserts each anchor appears exactly once and writes only if
 all of them do, after two hand-applied patches aborted on a stale anchor mid-file.
+
+**A README sentence the new records made false, and the row that re-scoped it.** The "Published, re-derived, and
+still not the evidence its criterion asks for" paragraph stated that no committed records file in the checkout
+carries a `qtype="score"` record, which is how the synthetic severity population used to be distinguishable from
+everything else in `data/`. `data/records_typed_decisions_urgency.jsonl` is exactly such a file, so the sentence
+was corrected in this round rather than left as history: the claim that survives is the narrower one -- the
+synthetic certificate's envelope still says what its own run showed, and the real arm discloses that its bound
+selects the top level of its rubric -- and neither half is a falsifiable measurement of a shipped model's ordinal
+risk. The count of rows in the new file is read from the file, and the correction names the file it supersedes
+instead of deleting the paragraph, because that paragraph is the reason the guard-less copy in the G4 bullet was
+worth finding at all.
+
+**The driver counted eight while the witness stamped nine.** `freeze23.sh`'s own STEP 4 census -- the check that
+prints `stamped artefacts: N ... all the round: True` -- was a hand-written concatenation of `report.CERTS`,
+`MASSIVE_CERTIFICATES` and `SEVERITY_CERTS`, so it reported eight stamped files and passed while the new
+`ORDINAL_REAL_CERTS` artefact sat outside its count. The witness in `t96/restamp.py` stamped all nine, which is
+why nothing else noticed: a count below the truth printed a green line. The driver now seeds the marginal table
+from `cli.CERTS` and discovers the rest by table suffix, refusing outright when the discovery returns nothing, and
+the corrected census was run against the disk to print nine files at `480c0be1a4b2`. The lesson is the same one
+this round already records twice: every census that names its members by hand is silent about the member nobody
+typed in.

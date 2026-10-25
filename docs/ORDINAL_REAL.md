@@ -31,7 +31,7 @@ artefacts are separate rows of separate tables because the two populations are n
 - denominators: 200 calibration records over 200 distinct cases: `bound`, `price_bound` and `override_bound` divide by `n_cal_cases` (the calibration split's case count); `measured_violation` divides by `n_eval_cases` (the evaluation split's case count); both are 200 in this population, so which denominator a figure uses is stated here rather than left to be inferred from two counts that happen to agree
 - the certified figure is `bound` = `0.014867039232`, which is the one-sided Clopper-Pearson upper on 0 evaluation violations out of `n_eval_cases` = 200 cases, and the measured held-out violation rate printed below is `measured_violation` = 0.0 over that same denominator
 - the always-report rule's cost, beside the bound: `price_bound` = `0.725019771719`, `override_bound` = `0.739194103550`
-- produced under the frozen protocol: `meta.protocol_digest` = `545e104a932562fb5526564aa5b056a06fda5665cacd7c0d44d24abf15ceea49`
+- produced under the frozen protocol: `meta.protocol_digest` = `480c0be1a4b2fee8301f6a92e0dd4a54ef5238c9a2beb8b1dd62f25730934193`
 - what `ahat` = 3 over a 4-level rubric means: the certified rule reports the TOP level on every case and reads no ballot, so the guarantee holds because nothing can exceed the top -- `137 of 200` calibration cases have their own level replaced by it, and that is the price, not a rounding
 
 ## The multiclass set gate over these same records
