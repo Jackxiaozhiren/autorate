@@ -63,6 +63,7 @@ uv run --frozen autorate compare data/cert_laya.json data/cert_jev.json
 uv run --frozen autorate gate data/records_feishu.jsonl --cert data/cert_jev.json --limit 5
 uv run --frozen autorate report --out docs/RESULTS.md   # write the published numbers
 uv run --frozen autorate report --full               # write docs/REPORT.md, one document for a reviewer
+uv run --frozen autorate protocol --frozen-at YYYY-MM-DD   # re-emit the frozen protocol the statuses are read from
 uv run --frozen autorate emit-docs                   # re-render EVERY document the publication table declares
 uv run --frozen autorate verify                          # re-derive them, fail on drift
 ```
@@ -329,6 +330,16 @@ artefacts the G4 row is about, and `verify` recomputes the run from the committe
 A row reads this list against the committed artefacts' own `producer` fields, so a surface cannot stay in
 prose after its evidence lands -- the sentence did exactly that for one freeze, and `report.UNPUBLISHED_SURFACES`
 is now the single owner of it.
+
+Three kinds of markdown sit in this tree, and they are not policed the same way. Whatever `cli.PUBLISHED_DOCS`
+lists is written by the command named beside it and byte-compared by `verify`, so a stale figure there comes back
+as a drift line rather than a typo. `docs/G5.md` is produced too, but by `tools/g5_export.sh` unpacking a
+`git archive` of a named commit: it is a record of a run, and it owns the two lane denominators that `README.md`
+and `protocol.json`'s G5 note only transcribe. The rest is hand-typed and answers to a different rule --
+`docs/ERRATA.md` is append-only, `docs/VERIFICATION.md` dates each row it states, `docs/superpowers/` holds the
+spec and the plans that ordered the work, and `docs/upstream/` holds submissions that stay unsubmitted until the
+human partner approves them. So the question "is this sentence measured?" has a locatable answer: which of these
+three the sentence lives in, and which named row compares it to the artefact it restates.
 
 Published, re-derived, and still not the evidence its criterion asks for: the ordinal one-sided severity
 certificate (`severity.py`), reachable as `autorate severity`, committed as `data/cert_severity_ordinal.json`

@@ -36,9 +36,21 @@ rule the gate enforces.
 5. **One owner per published number, and a number is produced by the command that publishes it.** Derived
    values are not stored. The certification unit is the **case**: a row count is never an independent-case
    count (R-36, R-44), and where both units appear in one artefact each names its own denominator.
-6. **A digit in prose must be re-derived by something.** Every figure in `protocol.json`'s claim notes, in
-   `README.md` or in `docs/*.md` is either produced by an artefact or compared by a named row in
-   `tests/test_verify_protocol.py`, which drives the arm it quotes and counts the comparisons.
+6. **A digit in prose must be re-derived by something, and the row that re-derives it is named by
+   location.** Whatever `cli.PUBLISHED_DOCS` lists is written by the command named beside it and byte-compared by
+   `verify`, so it carries no hand-typed figure. Figures in `protocol.json`'s claim notes are compared by rows in
+   `tests/test_verify_protocol.py` that drive the arm each note quotes and count its comparisons; the
+   corpus-absent/corpus-present pair belongs to `docs/G5.md`, and
+   `test_the_g5_transcript_is_the_only_owner_of_its_digits_and_every_quoter_transcribes_it` in
+   `tests/test_verify_protocol.py` refuses any quoter that disagrees with that transcript. The slice-run figures
+   in `README.md`'s G4 bullet are
+   compared by `tests/test_readme_slices.py` against `data/slices_language.json`; until that row landed this rule
+   asserted a coverage `README.md` did not have, which is how eight positions contradicted the artefact across two
+   rounds and nothing looked at the copy. Two families are still prose without a row: the contamination arm's
+   figures and the five marginal certificates' automation counts. Their owners are
+   `data/contamination_probe.json` and the five `data/cert_massive_*_laya.json` files, and the gap is carried in
+   `docs/ERRATA.md` rather than closed by this sentence -- a rule that claims coverage it does not have is the
+   defect it is written to prevent.
 7. **Corrections go through `docs/ERRATA.md`, which is append-only**, and through a re-freeze when they touch a
    frozen sentence. Never overwrite dated evidence to make it read well now; a moved bound gets a dated row, not
    an edit (the precedent is B1 Task 2b).

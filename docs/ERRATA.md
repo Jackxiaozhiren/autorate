@@ -3092,3 +3092,45 @@ certificates' automation counts, and upstream's own 100-case read. Those have ow
 `data/contamination_probe.json`, the five `data/cert_massive_*_laya.json` files and the pin respectively, and
 none of them is policed here yet. The name of the missing guard is no longer unknown; that is the difference
 between this round and the last one.
+
+## 2026-10-26 -- the constraint file asserted a coverage the tree did not have (#133)
+
+`AGENTS.md`'s rule 6 said that every figure in `protocol.json`'s claim notes, in `README.md` or in `docs/*.md` is
+"either produced by an artefact or compared by a named row in `tests/test_verify_protocol.py`". For `README.md`
+that sentence was false, and it was false in the worst available way: it named an instrument that was not looking.
+The row that compares the G4 bullet's slice-run figures to `data/slices_language.json` is
+`tests/test_readme_slices.py`, which landed a day earlier, and before it there was no row at all -- which is
+exactly how eight positions in that bullet contradicted the artefact across rounds 22 and 23 while every gate stayed
+green. The rule has been rewritten to name the owner per location (publication-table documents: their own command
+plus `verify`'s byte comparison; claim notes: the rows in `tests/test_verify_protocol.py`; the lane pair:
+`docs/G5.md` and the transcript-owner row; the G4 bullet: `tests/test_readme_slices.py`), and it now states the
+families that still have no row -- the contamination arm's figures and the five marginal certificates' automation
+counts -- with the files that own those numbers, instead of claiming a coverage it does not have. A constraint file
+that overstates its own policing is not documentation slack; it is the reason the next person does not go looking.
+
+Two smaller disclosure fixes ride along, both found by measuring the documents rather than reading them. `README.md`
+cited ten of the eleven `autorate` subcommands, and the one it never showed a reader is `autorate protocol` -- the
+command that emits the frozen document the README says the five statuses are read from, so a clone could hold the
+statuses as opinions and had no way to re-derive them; the Commands block now names it with the `--frozen-at`
+operand the operator has to state, because a computed date would make the re-emission the drift check depends on
+impossible. And the README never said the complementary fact about its own tree: the tracked markdown under
+`docs/` that `cli.PUBLISHED_DOCS` does not render is not byte-compared by `verify` either, and a reader can
+enumerate that set instead of trusting a count typed here. The "What is here, and what
+is not" section now splits them -- published-and-compared, produced-as-a-record-of-a-run (`docs/G5.md`, which owns
+the two lane denominators every other document only transcribes), and hand-typed history that answers to
+append-only or dated-row discipline -- so "is this sentence measured?" has a locatable answer instead of a guess.
+
+**Found and deliberately not fixed in this round.** `pyproject.toml` and `uv.lock` state `requires-python >=3.10`
+while `.python-version` says `3.12` and both CI jobs pin `python-version: "3.12"`, so the published metadata
+promises two interpreters nothing has ever run -- the same unowned-claim shape as the bullet above, but its fix
+touches either the lockfile or the CI matrix, so it is put to the human partner rather than folded into a
+documentation commit. Separately, `tools/drift_envelope.py --help` is the only producer whose argparse defaults
+print resolved machine paths (one hit; five producers and the CLI print none) -- a tooling round, since it changes
+a producer's output surface. And the relative-link census across every tracked markdown found two links and zero
+broken ones, which is recorded as a census of two rather than as a health result: a guard over two rows is not
+evidence about navigation.
+
+This round adds no `verify` comparison and touches no artefact, so it owes no re-freeze and no transcript
+re-export. That says something about the round's shape, not about its result: the pre-push gate re-checks that
+`autorate protocol` re-emits `protocol.json` byte-identical and that both lanes print their existing
+denominators, and the gate's own log is where those readings belong rather than in this paragraph.
