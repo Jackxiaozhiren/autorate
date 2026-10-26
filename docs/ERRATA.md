@@ -3058,3 +3058,37 @@ the archive -- and a suite failure there is a traceback I can act on, while the 
 fresh interpreter before it prints the same ten. The push still requires all three witnesses green, and an export
 red still refuses it; what changed is only the order in which the round pays for them, which is recorded here
 rather than left as an unexplained difference between the two scripts.
+
+## 2026-10-26 -- the third copy of the slice run got an owner (#132)
+
+Round 23 corrected eight hand-typed positions in `README.md`'s G4 bullet that round 22 had stale-ified, and
+recorded that the correction was not the fix -- the missing guard was. This round lands that guard, deliberately
+as its own round, because a gate added while an emission is moving cannot be shown to have been able to fail.
+
+`tests/test_readme_slices.py` states each fact the bullet asserts about the slice run as a family: a regex over
+the folded bullet and the value its owner computes. The owners are read, not retyped --
+`data/slices_language.json` for the group count, the certified count, the corrected budget, the joint level, the
+per-file row counts and the Khmer case count, `report.SLICE_RECORDS` for the number of record files, and
+`report.rederive_slices` driven with counting callbacks at `protocol.json`'s rubric for the "N field comparisons
+plus M rubric rows" pair, which is the same measurement `tests/test_verify_protocol.py` already uses against the
+frozen note. Two directions are enforced per family: the owner's value has to be present, and no other value in
+that shape is allowed anywhere in the bullet, so the stale sentence that survived the last widening and a new
+sentence added with a remembered number are both findings. A shape census catches a third case -- a digit before
+a slice-run noun that no owner computes.
+
+Two of the row's own assertions are not about prose: it refuses when the artefact starts carrying a measured
+`autorate` for some slice (the tie-break caveat the bullet states would then be false rather than merely stale),
+and it refuses when `option_count` stops being one value across the committed rows (the bullet's argument that
+the language x option-count cross is the same set of slices rests on that fact).
+
+Proof it can fail, since it passes on the tree it lands in. `test_every_family_this_row_polices_can_go_red`
+forges each family in place and requires the finding to name that family. Separately, the checker was replayed
+against the README of `577e5c7` -- the commit that transcribed round 22's lanes and left the bullet behind --
+and it came back with thirteen findings: nine stale positions, each named by its own family, and four shape-census hits over three distinct digits (`11,896`, `92`, `4`, with the case total appearing twice). That is
+the guard measured against the defect it exists for, rather than a claim about it.
+
+**Scope this row does not take.** The bullet also states the contamination arm's figures and the five marginal
+certificates' automation counts, and upstream's own 100-case read. Those have owners in
+`data/contamination_probe.json`, the five `data/cert_massive_*_laya.json` files and the pin respectively, and
+none of them is policed here yet. The name of the missing guard is no longer unknown; that is the difference
+between this round and the last one.
