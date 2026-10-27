@@ -259,7 +259,8 @@ second place to keep them.
   `in_training` declarations, 27 usable rows and 3 excluded by name because their rounded rate is not a whole
   number of cases -- and publishes `delta_hat` = -0.235208 over [-0.262646, -0.207502], so the in-training
   stratum errs less and the interval is clear of zero. `verify` re-pools it (29 quantities plus 4 budget
-  values in both lanes, and re-digests the upstream file where the corpus is visible), and the artefact's
+  values in both lanes, and 2 further comparisons that re-digest the upstream file where the corpus is visible),
+  and the artefact's
   `claim` is false: the strata are different suites, so task difficulty is confounded with the flag and a gap
   between aggregate rates is a diagnostic, not a proof of leakage. The five marginal certificates, read from their own `detail`, are the at-a-glance version of
   the same evidence: `de` automates 0 of 1,487 cases (no singleton at that coverage, so nothing to bound),

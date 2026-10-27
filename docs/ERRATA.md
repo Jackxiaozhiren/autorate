@@ -3146,13 +3146,28 @@ and excluded row counts, `delta_hat` and the interval endpoints at the producer'
 comparison count measured by driving `report.rederive_contamination` with counting callbacks at this freeze's
 rubric -- the same method the frozen note's size is checked by. The refusal code quoted in the bullet is read from
 `cli.EXIT_NOT_CERTIFIABLE`, not typed. Then the census stopped being a list of shapes and became a token census:
-every number in the bullet must be computed by an owner or excused by a declared exemption, and the one exemption
-(upstream's own Khmer read: `accuracy 0.000 at mean confidence 0.952` on a 100-case read, a document this
-repository publishes no bytes of) is refused the moment its sentence is reworded, so a waiver cannot outlive its
-fact nor be used to park an inconvenient number. `test_the_token_census_catches_a_number_no_family_owns` forges both
-directions; `test_every_family_this_row_polices_can_go_red` forges all twenty-four families; and the rule's wording
-in `AGENTS.md` now states the row's reach as one bullet, because the last two rounds were paid for by a document
-claiming coverage it did not have.
+every number in the bullet must be computed by an owner or excused by a declared exemption. There is one exemption,
+covering three tokens in one sentence -- upstream's own Khmer read, `accuracy 0.000 at mean confidence 0.952` over
+100 cases, a document this repository publishes no bytes of -- and it is refused the moment its sentence is reworded,
+so a waiver can neither outlive its fact nor serve as a place to park an inconvenient number.
+`test_the_token_census_catches_a_number_no_family_owns` forges both of the census's directions and
+`test_every_family_this_row_polices_can_go_red` forges every family in `_families`; no count of the families is
+written down here or in `AGENTS.md`, because a number that a legitimate addition moves is a number that will be
+wrong the next time somebody reads it.
+
+Then the corpus-present lane reddened this guard twice, and it was the guard that was wrong, not the prose it
+polices. Its owner for the contamination arm's size drove `report.rederive_contamination` without pinning the
+corpus, so in the corpus-present lane the arm's two upstream re-digest comparisons fired and the measurement said
+31 where the absent lane said 29 -- one assertion, two answers, and whichever lane ran last decided whether the
+README looked honest. The measurement now pins the corpus invisible, which is the only deterministic lane, and the
+corpus-only extras are taken from `report.CONTAMINATION_CORPUS_ONLY_CHECKS`, the same owner
+`cli.corpus_only_comparisons` uses for the gap between the two denominators. The prose was not blameless either: the
+bullet said "29 quantities plus 4 budget values in both lanes, and re-digests the upstream file where the corpus is
+visible", which described 31 comparisons in one lane as 29 in both, so the sentence now states the extras as a
+count the guard can check against its owner rather than as a clause about a file. Two facts about this round's own
+work, recorded because both were found by a machine and neither by my reading: a guard whose expected value depends
+on which lane invoked it is not a guard, and a count written into prose about a growing list is a defect in
+waiting.
 **The interpreter floor, measured rather than argued.** `pyproject.toml` and `uv.lock` stated
 `requires-python = ">=3.10"` while `.python-version` and both CI jobs pinned 3.12 -- a promise about two
 interpreters nothing had ever run. A clean `git archive` export was synced with `uv sync --frozen` on 3.10.20 and

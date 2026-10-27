@@ -101,12 +101,31 @@ def _languages():
 
 
 def _measured(driver):
-    """Count what an arm actually compares, by driving it with counting callbacks at this freeze's rubric."""
+    """Count what an arm compares in the corpus-ABSENT lane, which is the only lane that is deterministic.
+
+    The corpus-present lane legitimately performs extra comparisons -- `rederive_contamination` re-digests the
+    upstream results file when a checkout is visible -- so measuring without pinning the corpus made this row
+    answer two different questions in two lanes and read the README's single figure as a disagreement. The absent
+    count is therefore what the bullet's "in both lanes" number is compared against, and the corpus-only extras are
+    taken from `report.CONTAMINATION_CORPUS_ONLY_CHECKS`, the owner `cli.corpus_only_comparisons` already uses for
+    the gap between the two denominators.
+    """
+    import os
+
     fields, rubric_rows = [], []
     protocol = json.loads((REPO / "protocol.json").read_text())
-    driver(lambda label, actual, wanted: fields.append(label),
-           lambda label, actual, wanted: rubric_rows.append(label),
-           rubric=protocol["rubric"])
+    previous = os.environ.get("AUTORATE_FEISHU_ROOT")
+    os.environ["AUTORATE_FEISHU_ROOT"] = str(REPO / "no-corpus-visible-here")
+    try:
+        driver(lambda label, actual, wanted: fields.append(label),
+               lambda label, actual, wanted: rubric_rows.append(label),
+               rubric=protocol["rubric"])
+    finally:
+        if previous is None:
+            del os.environ["AUTORATE_FEISHU_ROOT"]
+        else:
+            os.environ["AUTORATE_FEISHU_ROOT"] = previous
+    assert len(set(fields)) == len(fields), "an arm compared the same label twice, so counting is not measuring"
     return len(fields), len(rubric_rows)
 
 
@@ -162,6 +181,7 @@ def _owners():
         "interval": ["%.6f" % value for value in contamination["headline"]["interval"]],
         "contamination_fields": contamination_fields,
         "contamination_rubric": contamination_rubric,
+        "contamination_corpus_only": len(report.CONTAMINATION_CORPUS_ONLY_CHECKS),
         "not_certifiable_rc": cli.EXIT_NOT_CERTIFIABLE,
         "budget": "%0.3f" % languages["en"]["alpha"],
     }
@@ -198,6 +218,8 @@ def _families(o):
          (o["delta_hat"], o["interval"][0], o["interval"][1])),
         ("contamination arm size", r"re-pools it \((\d+) quantities plus (\d+) budget values",
          (str(o["contamination_fields"]), str(o["contamination_rubric"]))),
+        ("contamination corpus-only extras", r"and (\d+) further comparisons that re-digest the upstream file",
+         (str(o["contamination_corpus_only"]),)),
         ("marginal certificate count", r"The (\w+) marginal certificates", (word,)),
         ("nothing certifies", r"none of the (\w+) certifies", (word,)),
         ("budget beside the bounds", r"above the ([\d.]+) budget", (o["budget"],)),
@@ -228,7 +250,7 @@ def _owned_tokens(o):
     values = set()
     for value in (o["total_rows"], o["field_comparisons"], o["rubric_rows"], o["n_groups"], o["certified"],
                   o["km_rows"], o["km_cases"], o["pin_rows"], o["pin_excluded"], o["contamination_fields"],
-                  o["contamination_rubric"], o["not_certifiable_rc"]):
+                  o["contamination_rubric"], o["contamination_corpus_only"], o["not_certifiable_rc"]):
         values.add(f"{value:,}")
         values.add(str(value))
     for value in (o["alpha"], o["corrected_alpha"], o["joint_level"]):

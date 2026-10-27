@@ -48,11 +48,13 @@ rule the gate enforces.
    asserted a coverage `README.md` did not have, which is how eight positions contradicted the artefact across two
    rounds and nothing looked at the copy. The same row now polices that bullet's other two arms too -- the five
    marginal certificates' counts, read out of each certificate's own `meta.detail`, and the contamination arm's
-   rows, bound and interval, with its comparison count measured by driving `report.rederive_contamination` -- and a
-   census over the whole bullet refuses any number token no owner computes, with exactly one live exemption
-   (upstream's quoted Khmer read), which dies if its sentence is reworded. The row's reach is that bullet and no
-   further: figures elsewhere in `README.md`, and the hand-typed ones in `docs/VERIFICATION.md` and the plans, are
-   policed by their own rows or not at all, and a guard is never credited with a reach it does not have.
+   rows, bound and interval, with its comparison count measured by driving `report.rederive_contamination` with the
+   corpus pinned invisible -- the only deterministic lane, since the arm adds two upstream re-digest comparisons
+   when a checkout is visible -- and a census over the whole bullet refuses any number token no owner computes, with
+   one live exemption covering three tokens in one sentence (upstream's quoted Khmer read), which dies if that
+   sentence is reworded. The row's reach is that bullet and no further: figures elsewhere in `README.md`, and the
+   hand-typed ones in `docs/VERIFICATION.md` and the plans, are policed by their own rows or not at all, and a
+   guard is never credited with a reach it does not have.
 7. **Corrections go through `docs/ERRATA.md`, which is append-only**, and through a re-freeze when they touch a
    frozen sentence. Never overwrite dated evidence to make it read well now; a moved bound gets a dated row, not
    an edit (the precedent is B1 Task 2b).
