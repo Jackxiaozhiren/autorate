@@ -16,6 +16,85 @@ def test_package_version_has_one_owner():
     assert autorate.__version__.count(".") == 2
 
 
+def _interpreter_versions(pyproject_text, pinned_text, ci_text, running_text):
+    """The four places this project states which interpreter it runs on, as (source, version) pairs.
+
+    A helper over texts rather than over files so the row below can be shown able to fail: the whole point is
+    that four documents agree, and an agreement checked only against the current bytes proves nothing about a
+    future disagreement.
+    """
+    import re
+
+    floor = re.search(r'requires-python = ">=([0-9]+\.[0-9]+)"', pyproject_text)
+    pinned = re.search(r"^(3\.[0-9]+)\s*$", pinned_text, re.M)
+    ci = re.findall(r'python-version: "?([0-9]+\.[0-9]+)"?', ci_text)
+    running = re.match(r"(3\.[0-9]+)", running_text.strip())
+    found = []
+    if floor:
+        found.append(("pyproject `requires-python` floor", floor.group(1)))
+    if pinned:
+        found.append(("`.python-version`", pinned.group(1)))
+    for index, version in enumerate(ci):
+        found.append(("ci.yml python-version #%d" % index, version))
+    if running:
+        found.append(("the interpreter running this suite", running.group(1)))
+    return found
+
+
+def test_the_declared_python_floor_is_the_interpreter_the_gate_actually_runs():
+    r"""`requires-python` is a published promise, so it cannot name a version nothing has executed.
+
+    Why this row exists, measured rather than argued. A clean `git archive` export was synced with
+    `uv sync --frozen` and ran `autorate verify` on Python 3.10.20 and on 3.11.15. Both installed cleanly, and
+    both refused: rc=4, `re-derived 890 /895 values`, with exactly five `DRIFT: cert massive/<lang>.meta` lines
+    whose difference is the last place of a `diagnostic_curve` `qhat` (``...7806`` against ``...7807``). That is
+    not a bug in the comparison -- the whole `meta` block is compared precisely because a stored meta is a claim
+    about the run -- so an interpreter whose libm rounds differently genuinely cannot reproduce the published
+    artefact, and `>=3.10` was a false statement in the package metadata. The floor is now the version
+    `.python-version`, `ci.yml` and the export all run.
+
+    What the row refuses: any one of the four statements moving away from the others. That is the failure mode
+    this repository keeps recording -- four documents that each restate one fact and drift one at a time -- and
+    `test_the_floor_row_can_fail_for_each_source` forges it rather than asserting it.
+    """
+    found = _interpreter_versions(
+        (ROOT / "pyproject.toml").read_text(),
+        (ROOT / ".python-version").read_text(),
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text(),
+        sys.version,
+    )
+    assert len(found) >= 4, found
+    versions = {version for _source, version in found}
+    assert versions == {"3.12"}, "the interpreter is stated %d times and they disagree: %s" % (
+        len(found), sorted(found))
+
+
+def test_the_floor_row_can_fail_for_each_source():
+    """Forge each of the four statements and require the row to name the one that moved."""
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    pinned = (ROOT / ".python-version").read_text()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    baseline = {version for _s, version in _interpreter_versions(pyproject, pinned, ci, sys.version)}
+    assert baseline == {"3.12"}, baseline
+    for label, forged in (
+            ("pyproject", pyproject.replace('>=3.12', '>=3.10')),
+            (".python-version", pinned.replace("3.12", "3.11")),
+            ("ci.yml", ci.replace('python-version: "3.12"', 'python-version: "3.13"')),
+            ("interpreter", "3.14.0 (main)")):
+        moved = _interpreter_versions(pyproject, pinned, ci, sys.version)
+        if label == "pyproject":
+            moved = _interpreter_versions(forged, pinned, ci, sys.version)
+        elif label == ".python-version":
+            moved = _interpreter_versions(pyproject, forged, ci, sys.version)
+        elif label == "ci.yml":
+            moved = _interpreter_versions(pyproject, pinned, forged, sys.version)
+        else:
+            moved = _interpreter_versions(pyproject, pinned, ci, forged)
+        assert {version for _s, version in moved} != {"3.12"}, (
+            "forging %s did not create a disagreement, so that source is not actually policed: %s" % (
+                label, sorted(moved)))
+
+
 def test_tests_run_on_the_project_interpreter_not_the_path_one():
     # Guards Global Constraint 5: `which pytest` on this host is a Python 3.9 binary.
     assert sys.version_info[:2] == (3, 12), (

@@ -3153,3 +3153,22 @@ fact nor be used to park an inconvenient number. `test_the_token_census_catches_
 directions; `test_every_family_this_row_polices_can_go_red` forges all twenty-four families; and the rule's wording
 in `AGENTS.md` now states the row's reach as one bullet, because the last two rounds were paid for by a document
 claiming coverage it did not have.
+**The interpreter floor, measured rather than argued.** `pyproject.toml` and `uv.lock` stated
+`requires-python = ">=3.10"` while `.python-version` and both CI jobs pinned 3.12 -- a promise about two
+interpreters nothing had ever run. A clean `git archive` export was synced with `uv sync --frozen` on 3.10.20 and
+on 3.11.15: both installed successfully and both refused. `verify` exited 4 with `re-derived 890 /895 values`, and
+the five `DRIFT: cert massive/<lang>.meta` lines differ in exactly two places each -- the last digit of a
+`diagnostic_curve` `qhat`, `...7806` against `...7807`, identical on both interpreters. Nothing about the
+certificates' certified figures moved; what moved is the byte-for-byte identity of the `meta` block, which the gate
+compares whole on purpose, because a `meta` that disagrees with its own run is a claim about a run that did not
+happen. So `>=3.10` was false, the floor is now `3.12`, and `uv.lock` re-resolved to the single numpy it already
+pinned for 3.12 (2.5.3) with the two backport branches for the dropped markers removed -- the lockfile lines that
+made the claim possible in the first place. `test_the_declared_python_floor_is_the_interpreter_the_gate_actually_runs`
+holds the four statements (metadata, `.python-version`, `ci.yml`, the running interpreter) together, and
+`test_the_floor_row_can_fail_for_each_source` forges each one.
+
+**One claim this entry does not make.** That older interpreters round differently is a measured fact about two
+versions on one machine, not a portability audit: no CI lane now runs 3.10/3.11, and none claims to. If the project
+ever wants to support a wider floor, the honest path is the one this round declined for lack of evidence -- make the
+`meta` comparison name the float tolerance it is applying, in a round that can show the guard still catches a real
+drift after the change. That is a spec-level decision, not a documentation fix, and it stays unopened.

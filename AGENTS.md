@@ -66,7 +66,12 @@ rule the gate enforces.
    worktree needs `uv run --frozen --extra dev` once or pytest is simply not installed and the suite reads
    broken.
 10. The interpreter on PATH is `python3`; bare `python` exits 127 here. Never a `pytest` from PATH -- it
-    resolves to a different interpreter than the project's.
+    resolves to a different interpreter than the project's. `requires-python` is a published promise and cannot
+    name a version nothing has executed: `3.10` and `3.11` were run on a clean `git archive` export, both synced
+    with `uv sync --frozen`, and both refused at rc=4 over a last-place difference in a certificate `meta`, so the
+    floor is the version the gate runs, and
+    `test_the_declared_python_floor_is_the_interpreter_the_gate_actually_runs` fails the build the moment the
+    package metadata, `.python-version`, `ci.yml` and the running interpreter stop agreeing.
 11. Lint is the project's own invocation and rule selection:
     `uv run --frozen --extra dev ruff check src tests tools --select=E9,F63,F7,F82,F401,F811 --line-length=120`.
     No `# noqa` and no per-file exclusion to clear a gate, and never relax an assertion to make a check pass:
