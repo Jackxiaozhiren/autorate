@@ -3134,3 +3134,22 @@ This round adds no `verify` comparison and touches no artefact, so it owes no re
 re-export. That says something about the round's shape, not about its result: the pre-push gate re-checks that
 `autorate protocol` re-emits `protocol.json` byte-identical and that both lanes print their existing
 denominators, and the gate's own log is where those readings belong rather than in this paragraph.
+
+## 2026-10-27 -- the last two unowned figures in the G4 bullet get owners, and a metadata promise is falsified (#134, #136)
+
+**The guard, widened.** `tests/test_readme_slices.py` existed for the slice run only, and `AGENTS.md`'s rule 6
+still said the contamination figures and the five marginal certificates' counts were prose without a row. Both are
+policed now. The marginal counts are read from each certificate's own `meta.detail` -- including the "upper bound"
+figure, which is taken verbatim from that sentence rather than re-rounded in the test, because a rounding rule
+invented inside a guard is a second owner of a published bound. The contamination arm contributes its pin's usable
+and excluded row counts, `delta_hat` and the interval endpoints at the producer's own six-decimal rounding, and its
+comparison count measured by driving `report.rederive_contamination` with counting callbacks at this freeze's
+rubric -- the same method the frozen note's size is checked by. The refusal code quoted in the bullet is read from
+`cli.EXIT_NOT_CERTIFIABLE`, not typed. Then the census stopped being a list of shapes and became a token census:
+every number in the bullet must be computed by an owner or excused by a declared exemption, and the one exemption
+(upstream's own Khmer read: `accuracy 0.000 at mean confidence 0.952` on a 100-case read, a document this
+repository publishes no bytes of) is refused the moment its sentence is reworded, so a waiver cannot outlive its
+fact nor be used to park an inconvenient number. `test_the_token_census_catches_a_number_no_family_owns` forges both
+directions; `test_every_family_this_row_polices_can_go_red` forges all twenty-four families; and the rule's wording
+in `AGENTS.md` now states the row's reach as one bullet, because the last two rounds were paid for by a document
+claiming coverage it did not have.

@@ -46,11 +46,13 @@ rule the gate enforces.
    in `README.md`'s G4 bullet are
    compared by `tests/test_readme_slices.py` against `data/slices_language.json`; until that row landed this rule
    asserted a coverage `README.md` did not have, which is how eight positions contradicted the artefact across two
-   rounds and nothing looked at the copy. Two families are still prose without a row: the contamination arm's
-   figures and the five marginal certificates' automation counts. Their owners are
-   `data/contamination_probe.json` and the five `data/cert_massive_*_laya.json` files, and the gap is carried in
-   `docs/ERRATA.md` rather than closed by this sentence -- a rule that claims coverage it does not have is the
-   defect it is written to prevent.
+   rounds and nothing looked at the copy. The same row now polices that bullet's other two arms too -- the five
+   marginal certificates' counts, read out of each certificate's own `meta.detail`, and the contamination arm's
+   rows, bound and interval, with its comparison count measured by driving `report.rederive_contamination` -- and a
+   census over the whole bullet refuses any number token no owner computes, with exactly one live exemption
+   (upstream's quoted Khmer read), which dies if its sentence is reworded. The row's reach is that bullet and no
+   further: figures elsewhere in `README.md`, and the hand-typed ones in `docs/VERIFICATION.md` and the plans, are
+   policed by their own rows or not at all, and a guard is never credited with a reach it does not have.
 7. **Corrections go through `docs/ERRATA.md`, which is append-only**, and through a re-freeze when they touch a
    frozen sentence. Never overwrite dated evidence to make it read well now; a moved bound gets a dated row, not
    an edit (the precedent is B1 Task 2b).
