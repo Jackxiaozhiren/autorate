@@ -164,13 +164,13 @@ command prints at this revision; the document is their owner, so this section is
 second place to keep them.
 
 - **G1, at least three decision tasks certified at `autorate(α = 0.05)` with a 200-resplit empirical
-  violation rate: `not_certifiable`.** Six decision tasks have been scored and their records committed;
-  zero of the six yield a certificate, and the refusals are published as artefacts rather than rounded
+  violation rate: `not_certifiable`.** Every decision task this tree scores has its records committed;
+  none of them yields a certificate, and the refusals are published as artefacts rather than rounded
   away. The binding quantity is the evaluation half's case count: the exact one-sided bound on a small
   number of automated cases sits above a 5% budget no matter how few are wrong. The criterion's second
   column is now measured and published rather than promised: `tools/resplit_experiment.py` re-splits every
   scored task 200 times at the rubric this freeze owns, and `data/resplit_200.json` with `docs/RESPLIT.md`
-  carries what came out. All six published tasks certify in **0 of 200** splits, so their empirical violation
+  carries what came out. All published tasks certify in **0 of 200** splits, so their empirical violation
   rate is recorded as undefined with a zero denominator instead of being imputed as `0.000`; the one row that
   does produce a rate is the synthetic control (200 of 200 splits certify, rate 0.000 over 200 certificates),
   which tests the machinery and is labelled as nothing else. `verify` compares the artefact's own arithmetic —
