@@ -1128,9 +1128,12 @@ def _run_check(args) -> int:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog=PRODUCER, description="Publish B3's drift envelope.")
-    parser.add_argument("--out", default=None, help="where to write the artefact (default %s)" % ARTEFACT_PATH)
+    # The help prints the repo-relative default, not the resolved path: `--artefact` below already names
+    # `data/drift_envelope.json`, and a resolved `ARTEFACT_PATH` would put this checkout's root in the operator's
+    # terminal. The constant is still what the parser falls back to -- only the sentence a reader sees changes.
+    parser.add_argument("--out", default=None, help="where to write the artefact (default %s)" % ARTEFACT_REL)
     parser.add_argument("--doc", default=None,
-                        help="also write the derived document (the published %s)" % DOC_PATH)
+                        help="also write the derived document (the published %s)" % DOC_REL)
     parser.add_argument("--force", action="store_true", help="replace an existing --out")
     parser.add_argument("--trials", type=int, default=None,
                         help="trials per size; only the count drift.py's envelope states may be published")
