@@ -1096,6 +1096,47 @@ def test_a_forced_run_at_the_default_out_that_writes_no_document_is_refused(tmp_
     assert scratch.is_file() and not (tmp_path / "scratch.md").exists()
 
 
+def test_the_help_text_names_repo_relative_defaults_and_not_this_checkout(capsys):
+    """`--help` must not print the directory the operator cloned into.
+
+    `--out` and `--doc` used to interpolate `ARTEFACT_PATH` / `DOC_PATH`, which are `REPO`-resolved at import
+    time, so the usage text named the checkout root. Rule 2's owner reads committed bytes and never saw it: the
+    path existed only on stdout, assembled at parse time from `REPO`, so a green byte scan and a leaking
+    `--help` were both true at once. The producer now interpolates `ARTEFACT_REL` / `DOC_REL`.
+
+    Both sides are compared with ALL whitespace removed, because argparse wraps its help column at the terminal
+    width and the wrap lands inside the path. Measured while forging this row: the leaking output read
+    `.../jackson/lay` then a newline and indentation then `a/autorate/...`, so a plain `in` test on the resolved
+    constant PASSED on the leak and this row would have been coverage it did not have. Squashing also makes the
+    row insensitive to the column width a user's terminal happens to produce.
+
+    The discriminating direction is the ABSENCE of the resolved constants, not the presence of the relative
+    ones: `--artefact` already printed `data/drift_envelope.json` before the fix, so a presence check alone
+    would have passed on the leaking text. Reach: this producer's parser and nothing else -- the other tools in
+    `tools/` build their own, and none of them is reached from here.
+    """
+    from autorate import drift_envelope
+
+    def squash(text):
+        return re.sub(r"\s+", "", text)
+
+    with pytest.raises(SystemExit) as exit_info:
+        drift_envelope.main(["--help"])
+    assert exit_info.value.code == 0, exit_info.value.code
+    out = capsys.readouterr().out
+    assert "usage:" in out, out
+    squashed = squash(out)
+    for constant in ("ARTEFACT_PATH", "DOC_PATH", "REPO"):
+        resolved = squash(str(getattr(drift_envelope, constant)))
+        assert resolved not in squashed, (
+            "`--help` names the checkout root through `%s`, so the default it prints is resolved rather than "
+            "relative:\n%s" % (constant, out)
+        )
+    # and the defaults are still NAMED, so "fix the leak" cannot be satisfied by deleting the default
+    assert squash(str(ARTEFACT_REL)) in squashed, out
+    assert squash(str(DOC_REL)) in squashed, out
+
+
 # ------------------------------------------------------ the wiring: one owner for the logic, and the gate arm
 #
 # MAJOR-1 has an architectural root cause (§7): `tools/drift_envelope.py` owned the measurement drivers, the
