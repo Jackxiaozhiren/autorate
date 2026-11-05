@@ -3187,3 +3187,51 @@ versions on one machine, not a portability audit: no CI lane now runs 3.10/3.11,
 ever wants to support a wider floor, the honest path is the one this round declined for lack of evidence -- make the
 `meta` comparison name the float tolerance it is applying, in a round that can show the guard still catches a real
 drift after the change. That is a spec-level decision, not a documentation fix, and it stays unopened.
+
+## 2026-11-05 -- §2's conditional is a conjunction whose antecedent is not established, and the pivot does not rest on it
+
+**The sentence, and the two ways it can be read.** Section 2 ends with "If G1--G3 fail, the project is not a
+certification tool and §14's pivot applies." `G1--G3` is a compound subject, so the antecedent reads either as
+"all three fail" or as "any of the three fails", and at this revision the two readings do not give the same
+answer. The sentence has been quoted in review without a ruling on which was meant, and the ambiguity is worth
+closing because it is the only place in the design where a positioning statement hangs on a list.
+
+**What the two criteria actually are, in their own words.** G1 is `not_certifiable`: measured, a refusal, and
+its note states that the certified task count is zero. G3 is `not_measured`, and that status is not a synonym
+for "no reading" -- its note records a measured half that went against the criterion's original wording: on the
+population where the ordinal set gate certifies, the one-sided quantity is inside that set certificate's own
+marginal bound, so the bare sentence "multiclass CP cannot express one" is false for that construction, and the
+row keeps `not_measured` only because the criterion is worded as the wider claim while what survives is
+narrower (no named reporting rule, no price, no override rate). So G3 is neither a pass nor a fail: it is a
+criterion whose wording outran its measurement, recorded as a narrowing rather than re-defined.
+
+**The antecedent.** Read as a conjunction, "G1--G3 fail" is not satisfied, because G3 has no fail to
+contribute; read as "any of the three", it is satisfied by G1 alone. What matters is that both readings
+converge on the same present-tense statement, and that statement does not need the conditional at all: with
+zero certified decision tasks, "the project is not a certification tool" is true on G1's reading alone. The
+unestablished antecedent means the sentence cannot be used to DERIVE the pivot. It does not mean the project is
+still a certification tool, and reading the conditional the other way would reach the same place by a shorter
+route.
+
+**The pivot's status, and one line in this file that was overtaken.** The pivot is "promote §7/§9 (audit +
+contamination) to primary". It has been executed as a publication decision rather than inferred from §2: the
+G1--G5 section of `README.md` publishes the audit multiple and the contamination gap as primary results beside
+the criteria, and `data/contamination_probe.json` carries the interval. The earlier entry that recorded the
+pivot as "only half published: G2's audit is, Plan B3's contamination layer is not" was true when written and
+has been superseded by that publication; it is left standing because this file is append-only, and this
+paragraph is the correction a reader should carry forward.
+
+**Why this is not §14's kill criterion.** §14's numeric condition compares a worst-group certified `autorate`
+with 0.30, and with nothing certified there is no such figure, so that condition is not evaluable rather than
+fired -- already recorded above and unchanged here. §2's sentence is about what the project is; §14's is about
+when its headline number becomes uninteresting. They can be, and are, in different states without contradicting
+each other.
+
+**One sentence for external text, so the reading is not re-litigated each time.** `autorate` is not a
+certification tool at this revision -- G1 certifies nothing -- it measures and publishes the status of all five
+criteria, the audit multiple and the contamination gap are published primary results, and the ordinal guarantee
+(G3) is measured only far enough to narrow its own wording, so "G1--G3 fail" as a conjunction is not
+established and §2's conditional is not the ground on which the pivot rests.
+
+**What this entry does not claim.** That G3 has been falsified, that the pivot was required by §2, or that the
+spec has been edited -- it has not. The spec is its author's file; this is the ledger's dated reading of it.
