@@ -36,9 +36,9 @@ project does. The only sentence worth printing would be about a certificate that
 and the repository's own frozen protocol says that does not exist yet: `protocol.json` records `G1` as
 `not_certifiable` and `G4` as `not_met`, and its `known_limits` carry the line *"no certificate exists,
 so no action is certified"*. `docs/VERIFICATION.md` has no `verified` row describing any shipped
-`autorate` surface — its 40 verified rows are about `laya`, MAPIE, three competitor repositories and six
-papers. Writing the entry would mean minting a claim with no ledger row behind it, which is the failure
-the ledger exists to stop.
+`autorate` surface — every verified row in it is about `laya`, MAPIE, the competitor repositories, or the
+papers the design cites. Writing the entry would mean minting a claim with no ledger row behind it, which is
+the failure the ledger exists to stop.
 
 **The claims that do have rows describe a `laya` that has moved.** Two verified rows could support an
 entry's framing — `id=laya-confidence-docstrings` and `id=laya-readme-gating-instruction` — and both are

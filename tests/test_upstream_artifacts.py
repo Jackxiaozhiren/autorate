@@ -28,6 +28,8 @@ answer the wrong way, and each docstring names the mutation that makes the row r
    the two-PR order, or a query block's date stamp.
 10. `test_the_awesome_jev_entry_is_either_backed_or_omitted_with_its_reason` -- replace the omission
     record with an entry whose claims name no verified ledger row.
+11. `test_the_omission_record_does_not_restate_the_ledger_census` -- write a count of verified rows
+    back into the decision record; the census has one owner, and a typed copy decays when a row is added.
 
 What is deliberately NOT claimed here: that the read-only queries still return what they returned on
 2026-10-14. They are transcripts with dates, and `SUBMISSION.md` says which ones must be re-run
@@ -538,6 +540,32 @@ def test_the_awesome_jev_entry_is_either_backed_or_omitted_with_its_reason():
         assert all(statuses.get(c) == "verified" for c in cites), cites
     # exactly one branch, never both
     assert not (omitted and "- [autorate" in body), "an entry is proposed inside an omission record"
+
+
+def test_the_omission_record_does_not_restate_the_ledger_census():
+    """Mutation: write a count of the ledger's verified rows back into the decision record.
+
+    The record's external readings -- star counts, awesome-list sizes, PR numbers -- are dated
+    observations, and this module's preamble already says they must be re-opened before reuse. A
+    count of `docs/VERIFICATION.md`'s rows is a different thing: it is re-derived on every run by
+    `tests/test_verification_table.py::test_ledger_census_matches_the_published_counts`, so typing
+    it into prose creates a second owner that goes stale the moment a row is added. This round
+    removed `40`, `three` and `six` from the premise-2 sentence rather than updating them: the
+    argument is "no verified row describes any shipped `autorate` surface", and that sentence does
+    not need a digit to be true.
+
+    Reach: a written-out count of verified rows, in this one record. Dated external figures are
+    deliberately outside it, and so are the other artefacts in `docs/upstream/` -- they are
+    transcripts with dates, not derived counts. This row does not check that the record's
+    assertion is still true; the census row measures the ledger and the omission row reads the text.
+    """
+    body = text(Path("awesome-jev-entry.md"))
+    restated = re.search(r"\b\d+\s+verified\s+rows\b", body, re.IGNORECASE)
+    assert not restated, (
+        "the omission record restates the ledger's verified-row count (%r); the census has one "
+        "owner, and a typed copy in prose decays when a row is added"
+        % (restated.group(0) if restated else "")
+    )
 
 
 def test_the_pr_description_and_issue_stay_inside_the_two_pr_order():
