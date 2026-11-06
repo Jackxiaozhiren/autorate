@@ -5,5 +5,9 @@ __pycache__/
 .ruff_cache/
 cert.json
 
+# The composite action's badge output. The *committed* badge lives in `.github/badges/`; this is the
+# per-run copy a workflow uploads as an artefact.
+.autorate/
+
 # SDD implementation worktrees (isolated lanes); never part of the published tree.
 .worktrees/

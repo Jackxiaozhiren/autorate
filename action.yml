@@ -1,0 +1,111 @@
+name: autorate gate
+description: >-
+  Run `autorate verify` (and, when a records file is given, `autorate certify`) and render one of four
+  honest states: certified, not-certifiable, drift, not-run. The action shells out to the CLI; it
+  implements no statistics of its own.
+author: the autorate authors
+branding:
+  icon: check-circle
+  color: gray
+
+inputs:
+  version:
+    description: >-
+      Version of the `autorate` distribution to run from PyPI (`autorate==<version>`), via `uvx`.
+      Mutually exclusive with `ref`. Empty means "run this checkout", which is the in-repo case.
+    required: false
+    default: ""
+  ref:
+    description: >-
+      Git ref of this repository to run the CLI from, resolved through a detached worktree. Needs full
+      history (`actions/checkout` with `fetch-depth: 0`); a shallow checkout reports `not-run` with that
+      reason instead of guessing. Mutually exclusive with `version`.
+    required: false
+    default: ""
+  alpha:
+    description: >-
+      Coverage floor passed to `certify`. Empty means "use the frozen protocol's rubric" -- passing a
+      value that contradicts the freeze exits 2, which this action reports as `not-run`, not as a verdict.
+    required: false
+    default: ""
+  beta:
+    description: >-
+      Error budget passed to `certify`. Empty means "use the frozen protocol's rubric", for the same
+      reason as `alpha`.
+    required: false
+    default: ""
+  path:
+    description: >-
+      Path to `protocol.json`, read from the **working tree**. The action never reads
+      `git show <rev>:protocol.json`, so a shallow checkout cannot break this read; which store the
+      *base revision* was read from is asserted in the job summary as `history source`.
+    required: false
+    default: protocol.json
+  records:
+    description: >-
+      Optional records file. When set, `certify` runs after `verify` at the given `alpha`/`beta`, and its
+      exit 3 becomes the `not-certifiable` state. When empty, the verdict comes from `verify` alone.
+    required: false
+    default: ""
+  fail-on:
+    description: >-
+      Comma-separated states that fail the job. The default is `drift,not-run`: exit 4 fails, exit 3
+      (`not-certifiable`) is a reported result rather than a broken pipeline, and a run that produced no
+      verdict is never a pass. Name `not-certifiable` here to make a refusal fail the job.
+    required: false
+    default: drift,not-run
+  badge-dir:
+    description: Directory the badge (`.svg`) and its record (`.json`) are written to.
+    required: false
+    default: .autorate
+  comment:
+    description: >-
+      Post the bound-vs-previous-bound comment on a pull request, quoting `autorate compare` verbatim.
+      Ignored outside `pull_request` events.
+    required: false
+    default: "true"
+
+outputs:
+  state:
+    description: One of `certified`, `not-certifiable`, `drift`, `not-run`.
+    value: ${{ steps.gate.outputs.state }}
+  denominator:
+    description: The tool's own `N/M` from its `re-derived N /M values` line, when it printed one.
+    value: ${{ steps.gate.outputs.denominator }}
+  badge:
+    description: Path of the generated badge SVG.
+    value: ${{ steps.gate.outputs.badge }}
+
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -uo pipefail
+        python3 "${{ github.action_path }}/tools/action_report.py" \
+          --repo "${{ github.workspace }}" \
+          --path "${{ inputs.path }}" \
+          --records "${{ inputs.records }}" \
+          --version "${{ inputs.version }}" \
+          --ref "${{ inputs.ref }}" \
+          --alpha "${{ inputs.alpha }}" \
+          --beta "${{ inputs.beta }}" \
+          --fail-on "${{ inputs.fail-on }}" \
+          --badge-dir "${{ inputs.badge-dir }}" \
+          --comment "${{ inputs.comment }}" \
+          --base-ref "${{ github.event.pull_request.base.sha }}" \
+          --pr "${{ github.event.pull_request.number }}"
+        # The exit code is captured before anything else runs: a command appended after the script
+        # would otherwise become the step's status and turn a `drift` into a pass.
+        rc=$?
+        # Echo the summary into the step log as well. The file is what renders the job summary; the
+        # echo is what makes the tool's own `re-derived N /M values` line quotable from the run log,
+        # which is the only part of a job summary a later `gh run view --log` can show.
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -s "${GITHUB_STEP_SUMMARY}" ]; then
+          echo "----- job summary -----"
+          cat "${GITHUB_STEP_SUMMARY}"
+        fi
+        exit "$rc"

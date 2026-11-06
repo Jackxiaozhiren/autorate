@@ -1,0 +1,19 @@
+{
+  "certify_exit": null,
+  "cli_source": "working tree (`uv run --frozen autorate`)",
+  "denominator": [
+    649,
+    649
+  ],
+  "denominator_line": "re-derived 649 /649 values",
+  "history_source": "object-db",
+  "lane": "corpus present",
+  "protocol": {
+    "digest": "ce43f8e29cc1",
+    "frozen_at": "2026-10-17",
+    "path": "protocol.json"
+  },
+  "reason": null,
+  "state": "certified",
+  "verify_exit": 0
+}

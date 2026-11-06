@@ -1,0 +1,43 @@
+name: action-gate
+
+# The in-repo composite action, exercised on a real pull request (PRD §7 M0: "action runs on a real PR and
+# prints `re-derived N /M`"). It is deliberately a separate workflow from `ci.yml`: `ci.yml` witnesses the
+# gate on two libcs with the raw CLI, and this one witnesses the *packaged* path -- the action's own
+# checkout contract, its four-state verdict and the badge it writes. Merging them would make a badge
+# failure look like a test failure.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # F8 exception (a), and the same measurement `tests/test_ci_workflow.py` records: a shallow
+          # checkout leaves the runner with one commit in its object database, so `git show <rev>:<path>`
+          # fails while every real clone passes. The action reads `protocol.json` from the working tree and
+          # asserts which store it read the *base* revision from, but the base revision itself is only
+          # readable here. `tests/test_action_f8.py` refuses this workflow if the flag is dropped.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v4
+        with: { python-version: "3.12" }
+      - id: autorate
+        uses: ./
+        with:
+          path: protocol.json
+          # exit 4 fails; exit 3 is a reported result; no-verdict is never a pass. Stated here as well as
+          # in `action.yml` because a workflow that reads only this file must still see the default.
+          fail-on: drift,not-run
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autorate-badge
+          path: .autorate/
+          if-no-files-found: warn

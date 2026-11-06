@@ -1,5 +1,7 @@
 # autorate
 
+[![autorate gate](.github/badges/autorate-badge.svg)](.github/badges/autorate-badge.json)
+
 Certified automation rates for decision models: confidence is not permission.
 
 A benchmark answers "how good is the model". A certificate answers a question an
@@ -95,6 +97,53 @@ machine path, and `tests/test_cli.py` fails the build if one reappears -- a lite
 that passes every local gate and only breaks in the environment nobody can see.
 
 Everything else runs offline on committed files; no command reaches the network.
+
+## GitHub Action and badge
+
+[`action.yml`](action.yml) is a composite action. It shells out to the CLI and implements **no**
+statistics: no bound, rate or aggregate is computed in the action or in
+[`tools/action_report.py`](tools/action_report.py), which only maps the CLI's own exit code to a state and
+formats what the CLI printed. The one number it parses is the denominator out of the tool's
+`re-derived N /M values` line, so the badge can carry it instead of standing alone.
+
+| input | default | meaning |
+|---|---|---|
+| `version` | empty | run `autorate==<version>` from PyPI through `uvx` |
+| `ref` | empty | run the CLI from a detached worktree at that ref of this repository (needs full history) |
+| `alpha`, `beta` | empty | passed to `certify`; empty means "use the frozen protocol's rubric" |
+| `path` | `protocol.json` | read from the **working tree**, never `git show <rev>:protocol.json` |
+| `records` | empty | when set, `certify` runs too, and its exit 3 is the verdict |
+| `fail-on` | `drift,not-run` | states that fail the job |
+| `badge-dir` | `.autorate` | where the `.svg` and its `.json` record are written |
+| `comment` | `true` | post the bound-vs-previous-bound comment, quoting `autorate compare` verbatim |
+
+The states are a closed vocabulary, and none of them is a boolean:
+
+| state | when | what it does **not** mean |
+|---|---|---|
+| `certified` | `verify` exited 0 (and `certify` exited 0, if a records file was given) | not "the model is certified": `protocol.json`'s `claims[]` is where a certificate claim is made or refused |
+| `not-certifiable` | `certify` exited 3 | not a broken pipeline -- a refusal is a result, and the badge says so |
+| `drift` | `verify` exited 4 | not "the numbers moved slightly": the tree cannot reproduce what it publishes |
+| `not-run` | no verdict was produced -- no CLI, no network, a usage error, a shallow checkout for `ref`, or a missing denominator line | never a pass |
+
+`fail-on` defaults to `drift,not-run`: exit 4 fails the job, exit 3 is reported rather than red, and a run
+that produced no verdict is never green. Add `not-certifiable` to make a refusal fail the job as well.
+
+Two things about checkouts, because both have already broken this repository's CI once:
+
+- Every checkout in a workflow that uses the action sets `fetch-depth: 0`
+  ([`.github/workflows/action-gate.yml`](.github/workflows/action-gate.yml)). A shallow runner keeps one
+  commit in its object database, so `git show <rev>:<path>` fails there while passing in every real clone.
+  The action reads `protocol.json` from the working tree and states, in the job summary, which store it
+  read the *base revision* from: `history source: object-db` (full history), `shallow`, or `no-object-db`.
+  `tests/test_action_f8.py` refuses both a workflow that drops the flag and a summary that stops saying it.
+- The committed badge in `.github/badges/` is produced by the same code path the action runs, and it
+  records the protocol digest it was minted under. A re-freeze makes it stale and the test that reads it
+  goes red rather than leaving a green pill describing a superseded protocol. Regenerate it with:
+
+  ```bash
+  uv run --frozen python3 tools/action_report.py --path protocol.json --badge-dir .github/badges
+  ```
 
 ## Reproduction
 
