@@ -52,9 +52,14 @@ rule the gate enforces.
    corpus pinned invisible -- the only deterministic lane, since the arm adds two upstream re-digest comparisons
    when a checkout is visible -- and a census over the whole bullet refuses any number token no owner computes, with
    one live exemption covering three tokens in one sentence (upstream's quoted Khmer read), which dies if that
-   sentence is reworded. The row's reach is that bullet and no further: figures elsewhere in `README.md`, and the
-   hand-typed ones in `docs/VERIFICATION.md` and the plans, are policed by their own rows or not at all, and a
-   guard is never credited with a reach it does not have.
+   sentence is reworded. The row's reach is that bullet and no further. `README.md`'s G1 bullet has its own row in
+   `tests/test_readme_g1.py`: a census whose owners are read from `data/resplit_200.json`, `protocol.json`'s rubric
+   and the spec's own numbered headings, with `test_the_g1_census_catches_a_number_no_owner_computes` forging an
+   invented figure. Section numbers are citations, not measurements, so that census strips them before counting
+   tokens and checks each one against a heading that exists; it does not claim to check that a cited section says
+   what the sentence says. Figures in `README.md`'s other bullets, and the hand-typed ones in
+   `docs/VERIFICATION.md` and the plans, are policed by their own rows or not at all, and a guard is never
+   credited with a reach it does not have.
 7. **Corrections go through `docs/ERRATA.md`, which is append-only**, and through a re-freeze when they touch a
    frozen sentence. Never overwrite dated evidence to make it read well now; a moved bound gets a dated row, not
    an edit (the precedent is B1 Task 2b).
