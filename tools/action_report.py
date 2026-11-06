@@ -148,6 +148,22 @@ def badge_svg(state: str, value: str, tooltip: str) -> str:
          left_w, left_w, right_w, FILL[state], lx, label, vx, html.escape(value))
 
 
+def workspace_path(repo: Path, value: str, label: str):
+    """Resolve a caller-supplied path, and refuse anything that leaves the checkout.
+
+    The action's contract says `path` is a path *in the working tree*; an absolute path or a `..`
+    segment is outside that contract and would make the gate read a file the caller's repository does
+    not contain. Returns `(path, None)` or `(None, reason)`.
+    """
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return None, "`%s` must be relative to the workspace; got the absolute path `%s`" % (label, value)
+    resolved = (repo / candidate).resolve()
+    if resolved != repo and repo not in resolved.parents:
+        return None, "`%s` leaves the workspace: `%s` resolves outside `%s`" % (label, value, repo)
+    return resolved, None
+
+
 def history_source(repo: Path) -> str:
     """Which store a base revision can be read from, asserted rather than assumed (F8 exception (a)).
 
@@ -187,6 +203,8 @@ def resolve_cli(args, repo: Path):
             return None, "`version` needs `uvx` on PATH; it is absent"
         return {"kind": "version", "value": args.version}, None
     if args.ref:
+        if args.ref.startswith("-"):
+            return None, "`ref` must name a revision; `%s` would be read as an option" % args.ref
         hist = history_source(repo)
         if hist != "object-db":
             # F8 exception (a), stated as a state rather than a stack trace.
@@ -402,11 +420,14 @@ def main(argv=None) -> int:
     prefix = prefix_for(source, repo)
     rec["cli_source"] = cli_label(source)
 
+    _, why = workspace_path(repo, args.path, "path")
+    if why:
+        rec["reason"] = why
+        return _finish(rec, args, repo, sections=[], force_fail=True)
     if not (repo / args.path).is_file():
         rec["reason"] = ("`%s` is not a file in the working tree; the action reads the working tree and "
                          "never `git show <rev>:%s`" % (args.path, args.path))
         return _finish(rec, args, repo, sections=[], force_fail=True)
-
     verify_rc, verify_out = run([*prefix, "verify", "--protocol", args.path], repo)
     rec["verify_exit"] = verify_rc
     rec["denominator"] = read_denominator(verify_out)
@@ -422,6 +443,10 @@ def main(argv=None) -> int:
 
     certify_rc, certify_out = None, ""
     if verify_rc == 0 and args.records:
+        _, why = workspace_path(repo, args.records, "records")
+        if why:
+            rec["reason"] = why
+            return _finish(rec, args, repo, sections=[], force_fail=True)
         if not (repo / args.records).is_file():
             rec["reason"] = "`records` names `%s`, which is not in the working tree" % args.records
             return _finish(rec, args, repo, sections=[], force_fail=True)

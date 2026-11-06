@@ -267,6 +267,28 @@ def test_the_action_reads_the_protocol_from_the_working_tree_and_says_so():
     assert "```text\nre-derived 649 /649 values\n```" in ar.summary_markdown(rec)
 
 
+def test_the_action_refuses_a_path_that_leaves_the_checkout(tmp_path):
+    """The contract says "in the working tree"; an absolute path or a `..` is outside it."""
+    (tmp_path / "protocol.json").write_text("{}")
+    assert ar.workspace_path(tmp_path, "protocol.json", "path")[0] == (tmp_path / "protocol.json").resolve()
+    assert ar.workspace_path(tmp_path, "sub/../protocol.json", "path")[0] == (tmp_path / "protocol.json").resolve()
+    # negative controls: both escapes are refused, and the reason names the field, not just "bad path".
+    absolute = ar.workspace_path(tmp_path, "/etc/passwd", "path")
+    escaping = ar.workspace_path(tmp_path, "../protocol.json", "path")
+    assert absolute[0] is None and "path" in absolute[1] and "absolute" in absolute[1]
+    assert escaping[0] is None and "leaves the workspace" in escaping[1]
+
+
+def test_a_ref_that_would_be_read_as_an_option_is_refused():
+    """`git worktree add --detach <path> <ref>` must not receive `--upload-pack=...` as a revision."""
+    import types
+
+    bad = ar.resolve_cli(types.SimpleNamespace(version="", ref="--upload-pack=/bin/sh"), ROOT)
+    assert bad[0] is None and "option" in bad[1]
+    good = ar.resolve_cli(types.SimpleNamespace(version="", ref="HEAD"), ROOT)
+    assert good[0] == {"kind": "ref", "value": "HEAD"} and good[1] is None
+
+
 def test_the_history_source_distinguishes_the_three_stores_it_names(tmp_path):
     """The assertion has to be able to say something other than `object-db`, or it asserts nothing."""
     src = tmp_path / "src"
