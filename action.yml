@@ -60,8 +60,10 @@ inputs:
     default: .autorate
   comment:
     description: >-
-      Post the bound-vs-previous-bound comment on a pull request, quoting `autorate compare` verbatim.
-      Ignored outside `pull_request` events.
+      Post a pull-request comment quoting `autorate compare` verbatim for each changed certificate.
+      The tool prints both sides' denominators but has no authority to pair them into a before/after
+      bound, so the comment claims no bound diff. If the comment cannot be delivered, the job summary
+      records a named `not-run`. Ignored outside `pull_request` events.
     required: false
     default: "true"
 

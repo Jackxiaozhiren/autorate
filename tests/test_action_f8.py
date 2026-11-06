@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -236,27 +237,61 @@ def test_every_workflow_that_uses_the_action_checks_out_full_history():
 
 
 def test_the_pr_comment_quotes_compare_and_carries_both_denominators():
-    """F8 rule 4: a bound diff shows both sides' denominators; the action computes neither."""
-    out = ("cert_laya.json: comparable: no -- the two sides were certified at different alpha\n"
-           "  cert_laya.json: CERTIFIED at alpha=0.050; n_cal=96 n_eval=96\n"
-           "  cert_old.json: CERTIFIED at alpha=0.100; n_cal=95 n_eval=96\n")
+    """F8 rule 4, honestly: both denominators come from the tool's own lines, not from a formatter.
+
+    The fixture is `autorate compare data/cert_laya.json data/cert_jev.json`'s real output shape (see
+    `src/autorate/cli.py::cmd_compare` and `Certificate.summary`). `compare` states in its own docstring
+    that it "has no authority to pair anything", so the comment must not claim a before/after bound.
+    """
+    out = ("comparable: yes -- identical alpha=0.05, beta=0.05, delta=0.05, method=aps, seed=7\n"
+           "evaluation halves: laya has 96 records over 32 distinct request ids, jev has 96 over 32\n"
+           "  cert_laya.json: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; "
+           "n_cal=96 n_eval=96; at coverage 0.950 the exact case-level upper bound 0.975 exceeds the "
+           "budget 0.050\n"
+           "  cert_jev.json: NOT_CERTIFIABLE: reason=empty_feasible_set at alpha=0.050, beta=0.050; "
+           "n_cal=95 n_eval=96; at coverage 0.950 the exact case-level upper bound 0.140 exceeds the "
+           "budget 0.050\n")
     body = ar.comment_body({"state": "certified"}, "a" * 40, "b" * 40, [("data/cert_laya.json", 0, out)])
     assert "n_cal=96 n_eval=96" in body and "n_cal=95 n_eval=96" in body
+    assert "no authority to pair" in body, "the comment must say what the tool refuses to do"
     assert "computes no bound" in body, "the comment must say it is quoting, not deriving"
-    # negative control: the same body without the quote loses both denominators, so their presence is
-    # what the row above reads -- not a sentence the formatter adds on its own.
+    assert "bound vs previous bound" not in body, "a bound diff is a claim the CLI does not make"
+    # negative controls: the formatter invents neither denominator, and an empty section is a named
+    # not-run rather than a silently omitted output (§6.2).
     empty = ar.comment_body({"state": "certified"}, "a" * 40, "b" * 40, [("data/cert_laya.json", 0, "")])
     assert "n_cal=96" not in empty
+    absent = ar.comment_body({"state": "certified"}, "a" * 40, "b" * 40, [])
+    assert "not-run" in absent and "no before/after pair" in absent
+
+
+def _shell_protocol_reads(text):
+    return re.findall(r"git show[^\n]*:[^\n]*protocol\.json", text)
+
+
+def _argv_protocol_reads(text):
+    return re.findall(r'\["git"\s*,\s*"show"[^\]]*protocol\.json', text)
 
 
 def test_the_action_reads_the_protocol_from_the_working_tree_and_says_so():
-    """F8 exception (a): use full history or the working tree, and assert which one was used."""
-    # Only the `runs:` block is a command surface; the inputs block explains the prohibition in prose.
+    """F8 exception (a): use full history or the working tree, and assert which one was used.
+
+    Both *command* surfaces are subjects: the composite's `runs:` block (shell) and the script that
+    actually issues the object-database read (argv). Prose that states the prohibition -- action.yml's
+    `inputs:` descriptions, the script's docstring and its error messages -- is not a command and is not
+    inspected, because a pattern that indicts its own honest negations is §0.3's exemption-shaped defect.
+    """
     run_block = ACTION.read_text().split("runs:", 1)[1]
-    assert "git show" not in run_block, (
-        "the action must not read the protocol out of the object database; `ref` is the only lane that "
-        "needs history, and it reports `not-run` when the checkout is shallow")
-    assert "git show" in "run: git show HEAD:protocol.json", "the check cannot see the shape it forbids"
+    script_text = SCRIPT.read_text()
+    assert _shell_protocol_reads(run_block) == []
+    assert _argv_protocol_reads(script_text) == []
+    # The one permitted object-database read is scoped to base certificates, never to the protocol.
+    assert '"data/cert_*.json"' in script_text
+    # negative controls: both predicates fire on the forbidden shape planted in their real subjects.
+    # The replaced guard asserted a literal that contained itself -- §6.2 calls that decoration.
+    assert _shell_protocol_reads(run_block + "\n          git show HEAD~1:protocol.json\n")
+    assert _argv_protocol_reads(script_text +
+                                '\nrun(["git", "show", "%s:protocol.json" % base], repo)\n')
+
     rec = {"state": "certified", "verify_exit": 0, "certify_exit": None, "denominator": (649, 649),
            "lane": "corpus present", "protocol": {"path": "protocol.json", "digest": "ce43f8e29cc1",
                                                  "frozen_at": "2026-10-17"},
@@ -265,6 +300,60 @@ def test_the_action_reads_the_protocol_from_the_working_tree_and_says_so():
     assert "re-derived 649 /649 values" not in ar.summary_markdown(rec)  # the line is not invented
     rec["denominator_line"] = "re-derived 649 /649 values"
     assert "```text\nre-derived 649 /649 values\n```" in ar.summary_markdown(rec)
+
+
+def test_the_badge_number_comes_from_the_line_the_summary_quotes():
+    """F8 rule 2: the quoted line and the parsed denominator must be one row, not two."""
+    text = "re-derived 1 /2 values\nre-derived 649 /649 values\n"
+    quoted = ar._line_starting(text, "re-derived ", last=True)
+    assert quoted == "re-derived 649 /649 values"
+    assert ar.read_denominator(quoted or "") == (649, 649)
+    assert ar.read_denominator(text) == (649, 649), "the parser must agree with the last quoted line"
+    # negative control: first-match would disagree with `read_denominator`'s last-match rule, which is
+    # exactly the split this guard exists to prevent.
+    first = ar._line_starting(text, "re-derived ")
+    assert first != quoted
+    assert ar.read_denominator(first or "") != (649, 649)
+
+
+def test_a_failed_comment_delivery_is_a_named_not_run(tmp_path, monkeypatch):
+    """§6.2: a step that cannot deliver its output must say so, not fail silently into stderr."""
+    summary = tmp_path / "summary.md"
+    args = SimpleNamespace(pr="14", base_ref="a" * 40, summary=str(summary))
+
+    def refused(cmd, repo):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return 0, "b" * 40 + "\n"
+        return 1, "gh: not logged in"
+
+    monkeypatch.setattr(ar, "run", refused)
+    ar._post_comment(args, tmp_path, {"state": "certified"}, [])
+    body = summary.read_text()
+    assert "PR comment: `not-run`" in body and "not logged in" in body
+    # negative control: a delivered comment leaves no not-run line behind.
+    summary.write_text("")
+
+    def delivered(cmd, repo):
+        return (0, "b" * 40 + "\n") if cmd[:2] == ["git", "rev-parse"] else (0, "")
+
+    monkeypatch.setattr(ar, "run", delivered)
+    ar._post_comment(args, tmp_path, {"state": "certified"}, [])
+    assert "not-run" not in summary.read_text()
+
+
+def test_a_runner_without_uvx_gets_not_run_not_a_pass(monkeypatch, tmp_path):
+    """F8 exception (b): a runner that cannot reach a distribution reports not-run, never certified."""
+    args = SimpleNamespace(version="0.1.0", ref="")
+    monkeypatch.setattr(ar.shutil, "which", lambda name: None)
+    source, why = ar.resolve_cli(args, tmp_path)
+    assert source is None and "uvx" in why
+    assert ar.classify("verify", 2) == "not-run"
+    assert ar.exit_for("not-run", {"drift", "not-run"}, False) != 0, "not-run must not be a green exit"
+    # negative control: with uvx present the very same args resolve to the pinned-distribution lane,
+    # so the refusal above is about the environment, not a blanket rejection of `version`.
+    monkeypatch.setattr(ar.shutil, "which", lambda name: "/usr/bin/uvx")
+    source2, why2 = ar.resolve_cli(args, tmp_path)
+    assert source2 == {"kind": "version", "value": "0.1.0"} and why2 is None
 
 
 def test_the_action_refuses_a_path_that_leaves_the_checkout(tmp_path):

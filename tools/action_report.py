@@ -233,11 +233,13 @@ def cli_label(source: dict) -> str:
     return "working tree (`uv run --frozen autorate`)"
 
 
-def _line_starting(text: str, prefix: str):
-    for line in (text or "").splitlines():
-        if line.startswith(prefix):
-            return line
-    return None
+def _line_starting(text: str, prefix: str, last: bool = False):
+    """The quoted line. `last=True` agrees with `read_denominator`'s last-match rule, so the badge's
+    number and the verbatim line in the job summary can never come from different `re-derived` rows."""
+    hits = [line for line in (text or "").splitlines() if line.startswith(prefix)]
+    if not hits:
+        return None
+    return hits[-1] if last else hits[0]
 
 
 def _first_nonempty(text: str):
@@ -326,12 +328,20 @@ def changed_certificates(repo: Path, base_sha: str, head_sha: str, prefix):
 
 
 def comment_body(rec: dict, base_sha: str, head_sha: str, sections) -> str:
-    lines = ["### autorate: bound vs previous bound", "",
-             "`%s` -> `%s`. Both denominators are quoted by `autorate compare`; this action computes no "
-             "bound." % (base_sha[:12], head_sha[:12]), ""]
+    """Quote the tool; do not claim a bound diff the tool refuses to compute (F8 rule 4, §13.3 item 4).
+
+    `autorate compare` prints each side's own `n_cal` / `n_eval` but states in its own source that it
+    "has no authority to pair anything". A title saying "bound vs previous bound" would assert a
+    before/after claim the shipped CLI does not make, so the comment names exactly what it carries.
+    """
+    lines = ["### autorate: base/head certificates, quoted", "",
+             "`%s` -> `%s`. Each side's denominators are printed by `autorate compare`, which explicitly "
+             "has no authority to pair the two into a before/after bound. The blocks below are its output "
+             "verbatim; this action computes no bound and claims no bound diff."
+             % (base_sha[:12], head_sha[:12]), ""]
     if not sections:
-        lines.append("No certificate under `data/` changed in this pull request, so there is no bound to "
-                     "diff. The gate verdict is in the job summary.")
+        lines.append("`not-run`: no certificate under `data/` changed in this pull request, so there is "
+                     "no before/after pair to quote. The gate verdict is in the job summary.")
     for name, rc, out in sections:
         lines += ["`%s` -- `autorate compare` exit `%d`" % (name, rc), "", "```text",
                   out.strip() or "(no output)", "```", ""]
@@ -346,7 +356,12 @@ def _post_comment(args, repo: Path, rec, sections):
     path.write_text(body, encoding="utf-8")
     rc, out = run(["gh", "pr", "comment", args.pr, "--body-file", str(path)], repo)
     if rc != 0:
-        print("pr comment: not-run (gh exited %d): %s" % (rc, out.strip()[:400]), file=sys.stderr)
+        # §6.2: an environment that cannot deliver an output must produce a *named* not-run, not a
+        # silent stderr line that leaves the job looking complete.
+        why = out.strip()[:400] or "no output"
+        _write_summary("### PR comment: `not-run`\n\n`gh pr comment` exited %d: %s\n" % (rc, why),
+                       args.summary)
+        print("pr comment: not-run (gh exited %d): %s" % (rc, why), file=sys.stderr)
 
 
 def verdict_from(verify_rc: int, verify_out: str, certify_rc=None, certify_out: str = ""):
@@ -430,10 +445,12 @@ def main(argv=None) -> int:
         return _finish(rec, args, repo, sections=[], force_fail=True)
     verify_rc, verify_out = run([*prefix, "verify", "--protocol", args.path], repo)
     rec["verify_exit"] = verify_rc
-    rec["denominator"] = read_denominator(verify_out)
+    # One source for both: the line the summary quotes verbatim is the line the badge parses. Taking
+    # `last` matches `read_denominator`, so an earlier transcript cannot shadow the closing line.
+    rec["denominator_line"] = _line_starting(verify_out, "re-derived ", last=True)
+    rec["denominator"] = read_denominator(rec["denominator_line"] or "")
     rec["lane"] = read_lane(verify_out)
     rec["protocol"] = read_protocol(verify_out)
-    rec["denominator_line"] = _line_starting(verify_out, "re-derived ")
     if verify_rc == 0 and rec["denominator"] is None:
         rec["reason"] = ("`verify` exited 0 but printed no `re-derived N /M values` line, so there is no "
                          "denominator the badge could carry")
@@ -469,14 +486,14 @@ def main(argv=None) -> int:
     sections = []
     if args.base_ref:
         if rec["history_source"] != "object-db":
-            notes.append("bound diff: not-run -- history source is `%s`, so the base revision cannot be "
-                         "read (F8 exception (a))" % rec["history_source"])
+            notes.append("certificate comparison: not-run -- history source is `%s`, so the base revision "
+                         "cannot be read (F8 exception (a))" % rec["history_source"])
         else:
             head_rc, head_sha = run(["git", "rev-parse", "HEAD"], repo)
             head_sha = head_sha.strip() if head_rc == 0 else "HEAD"
             sections, diff_why = changed_certificates(repo, args.base_ref, head_sha, prefix)
             if diff_why:
-                notes.append("bound diff: not-run -- %s" % diff_why)
+                notes.append("certificate comparison: not-run -- %s" % diff_why)
 
     return _finish(rec, args, repo, sections=sections)
 

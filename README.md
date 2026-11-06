@@ -115,7 +115,7 @@ formats what the CLI printed. The one number it parses is the denominator out of
 | `records` | empty | when set, `certify` runs too, and its exit 3 is the verdict |
 | `fail_on` | `drift,not-run` | states that fail the job |
 | `badge_dir` | `.autorate` | where the `.svg` and its `.json` record are written |
-| `comment` | `true` | post the bound-vs-previous-bound comment, quoting `autorate compare` verbatim |
+| `comment` | `true` | post a PR comment quoting `autorate compare` verbatim (both denominators, no bound diff) |
 
 The states are a closed vocabulary, and none of them is a boolean:
 
@@ -128,6 +128,16 @@ The states are a closed vocabulary, and none of them is a boolean:
 
 `fail_on` defaults to `drift,not-run`: exit 4 fails the job, exit 3 is reported rather than red, and a run
 that produced no verdict is never green. Add `not-certifiable` to make a refusal fail the job as well.
+
+**What the PR comment is, and is not.** F8 rule 4 asks for a bound-versus-previous-bound diff with both
+denominators. The shipped `autorate compare` prints each side's own `n_cal` / `n_eval` but states in its
+own source that it "has no authority to pair anything", and returns a usage error rather than a
+before/after table when the two certificates were frozen under different protocols. The comment therefore
+quotes the command's output verbatim, carries both denominators as the tool printed them, and says plainly
+that it computes no bound; claiming a bound diff would assert a capability the tool does not have
+(PRD §13.3 item 4). When no certificate under `data/` changed — the usual case here — the comment says
+`not-run`, and a comment that cannot be delivered is a named `not-run` in the job summary rather than a
+silent stderr line. The literal rule 4 wording is recorded as a deviation in the milestone report.
 
 Two things about checkouts, because both have already broken this repository's CI once:
 
