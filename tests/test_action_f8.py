@@ -152,11 +152,11 @@ def test_the_committed_badge_names_the_digest_it_was_minted_under():
 
 # --- the action and its checkout contract ---------------------------------------------------------
 
-INPUTS = ("version", "ref", "alpha", "beta", "path", "records", "fail-on", "badge-dir", "comment")
+INPUTS = ("version", "ref", "alpha", "beta", "path", "records", "fail_on", "badge_dir", "comment")
 
 
 def _declared_inputs(text):
-    return set(re.findall(r"^ {2}([a-z-]+):$", text, re.MULTILINE))
+    return set(re.findall(r"^ {2}([a-z_-]+):$", text, re.MULTILINE))
 
 
 def test_the_action_is_a_composite_that_runs_the_shipped_shell():
@@ -168,8 +168,8 @@ def test_the_action_is_a_composite_that_runs_the_shipped_shell():
     missing = set(INPUTS) - _declared_inputs(text)
     assert not missing, "inputs F8 names but the action does not declare: %s" % sorted(missing)
     # negative control: the same predicate must refuse an action.yml missing one input.
-    synthetic = re.sub(r"^ {2}fail-on:$", "  failon:", text, flags=re.MULTILINE)
-    assert "fail-on" in set(INPUTS) - _declared_inputs(synthetic)
+    synthetic = re.sub(r"^ {2}fail_on:$", "  failon:", text, flags=re.MULTILINE)
+    assert "fail_on" in set(INPUTS) - _declared_inputs(synthetic)
 
 
 def test_the_action_step_returns_the_shipped_scripts_exit_code():

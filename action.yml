@@ -47,14 +47,14 @@ inputs:
       exit 3 becomes the `not-certifiable` state. When empty, the verdict comes from `verify` alone.
     required: false
     default: ""
-  fail-on:
+  fail_on:
     description: >-
       Comma-separated states that fail the job. The default is `drift,not-run`: exit 4 fails, exit 3
       (`not-certifiable`) is a reported result rather than a broken pipeline, and a run that produced no
       verdict is never a pass. Name `not-certifiable` here to make a refusal fail the job.
     required: false
     default: drift,not-run
-  badge-dir:
+  badge_dir:
     description: Directory the badge (`.svg`) and its record (`.json`) are written to.
     required: false
     default: .autorate
@@ -93,8 +93,8 @@ runs:
           --ref "${{ inputs.ref }}" \
           --alpha "${{ inputs.alpha }}" \
           --beta "${{ inputs.beta }}" \
-          --fail-on "${{ inputs.fail-on }}" \
-          --badge-dir "${{ inputs.badge-dir }}" \
+          --fail-on "${{ inputs.fail_on }}" \
+          --badge-dir "${{ inputs.badge_dir }}" \
           --comment "${{ inputs.comment }}" \
           --base-ref "${{ github.event.pull_request.base.sha }}" \
           --pr "${{ github.event.pull_request.number }}"

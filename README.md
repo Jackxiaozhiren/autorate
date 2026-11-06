@@ -113,8 +113,8 @@ formats what the CLI printed. The one number it parses is the denominator out of
 | `alpha`, `beta` | empty | passed to `certify`; empty means "use the frozen protocol's rubric" |
 | `path` | `protocol.json` | read from the **working tree**, never `git show <rev>:protocol.json` |
 | `records` | empty | when set, `certify` runs too, and its exit 3 is the verdict |
-| `fail-on` | `drift,not-run` | states that fail the job |
-| `badge-dir` | `.autorate` | where the `.svg` and its `.json` record are written |
+| `fail_on` | `drift,not-run` | states that fail the job |
+| `badge_dir` | `.autorate` | where the `.svg` and its `.json` record are written |
 | `comment` | `true` | post the bound-vs-previous-bound comment, quoting `autorate compare` verbatim |
 
 The states are a closed vocabulary, and none of them is a boolean:
@@ -126,7 +126,7 @@ The states are a closed vocabulary, and none of them is a boolean:
 | `drift` | `verify` exited 4 | not "the numbers moved slightly": the tree cannot reproduce what it publishes |
 | `not-run` | no verdict was produced -- no CLI, no network, a usage error, a shallow checkout for `ref`, or a missing denominator line | never a pass |
 
-`fail-on` defaults to `drift,not-run`: exit 4 fails the job, exit 3 is reported rather than red, and a run
+`fail_on` defaults to `drift,not-run`: exit 4 fails the job, exit 3 is reported rather than red, and a run
 that produced no verdict is never green. Add `not-certifiable` to make a refusal fail the job as well.
 
 Two things about checkouts, because both have already broken this repository's CI once:

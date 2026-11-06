@@ -34,7 +34,7 @@ jobs:
           path: protocol.json
           # exit 4 fails; exit 3 is a reported result; no-verdict is never a pass. Stated here as well as
           # in `action.yml` because a workflow that reads only this file must still see the default.
-          fail-on: drift,not-run
+          fail_on: drift,not-run
       - if: always()
         uses: actions/upload-artifact@v4
         with:
