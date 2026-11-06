@@ -40,4 +40,10 @@ jobs:
         with:
           name: autorate-badge
           path: .autorate/
-          if-no-files-found: warn
+          # `.autorate/` is a hidden directory and upload-artifact@v4 excludes hidden files by default,
+          # so without this flag the step reports "No files were found" as a warning and the badge a
+          # reader is supposed to see never leaves the runner. Measured on run 42167495868: the gate
+          # was green and the artifact absent. `error` rather than `warn` for the same reason: the badge
+          # is the deliverable, so its absence is a failure of this workflow, not a note.
+          if-no-files-found: error
+          include-hidden-files: true

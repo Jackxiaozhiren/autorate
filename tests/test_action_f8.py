@@ -184,6 +184,35 @@ def test_the_action_step_returns_the_shipped_scripts_exit_code():
     assert tapped.returncode == 1, "the tap does not preserve the failing code"
 
 
+def _artifact_problems(text):
+    """The upload step must be able to carry the badge out of a hidden directory, and say so if it
+    cannot. Both halves were measured missing on run 42167495868: the gate was green, the artifact
+    absent, and the only trace was a `##[warning]` line nobody reads."""
+    lines = text.splitlines()
+    out = []
+    for i, line in enumerate(lines):
+        if "actions/upload-artifact@" not in line:
+            continue
+        block = "\n".join(lines[i:i + 12])
+        if ".autorate/" not in block and "badge" not in block:
+            continue
+        if "include-hidden-files: true" not in block:
+            out.append("the badge directory is hidden and the step does not include hidden files")
+        if "if-no-files-found: error" not in block:
+            out.append("a missing badge is only a warning")
+    return out
+
+
+def test_the_badge_artifact_is_actually_uploaded():
+    workflow = (WORKFLOWS / "action-gate.yml").read_text()
+    assert _artifact_problems(workflow) == [], _artifact_problems(workflow)
+    # negative control: the committed shape minus each flag must be named.
+    hidden_dropped = workflow.replace("include-hidden-files: true\n", "")
+    assert any("hidden" in p for p in _artifact_problems(hidden_dropped))
+    warn_restored = workflow.replace("if-no-files-found: error", "if-no-files-found: warn")
+    assert any("warning" in p for p in _artifact_problems(warn_restored))
+
+
 def _shallow_checkouts(text):
     """Checkout steps whose next eight lines never say `fetch-depth: 0` (F8 exception (a))."""
     lines = text.splitlines()
