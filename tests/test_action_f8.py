@@ -114,6 +114,15 @@ def _badge_problems(payload, digest12, svg):
     proto = payload.get("protocol") or {}
     if proto.get("digest") != digest12:
         out.append("badge minted under %r, the tree's freeze is %r" % (proto.get("digest"), digest12))
+    lane = payload.get("lane")
+    if lane not in ("corpus present", "corpus absent"):
+        out.append("lane %r is not a label the tool prints" % (lane,))
+    line = payload.get("denominator_line") or ""
+    m = re.search(r"re-derived (\d+) /(\d+) values", line)
+    if not m:
+        out.append("the record carries no verbatim denominator line")
+    elif isinstance(den, list) and len(den) == 2 and [int(m.group(1)), int(m.group(2))] != den:
+        out.append("denominator_line %r disagrees with denominator %r" % (line, den))
     if state and state not in svg:
         out.append("the svg does not carry its state word")
     if isinstance(den, list) and len(den) == 2 and ("%d/%d" % (den[0], den[1])) not in svg:
@@ -127,11 +136,18 @@ def test_the_committed_badge_names_the_digest_it_was_minted_under():
     payload = json.loads(BADGE_JSON.read_text())
     svg = BADGE_SVG.read_text()
     assert not _badge_problems(payload, digest12, svg)
-    # negative controls: a superseded digest, and an svg that lost its denominator.
+    # negative controls: a superseded digest, an svg that lost its denominator, and a record whose
+    # verbatim line was edited away from the pair it claims.
     stale = json.loads(json.dumps(payload))
     stale["protocol"]["digest"] = "0" * 12
     assert any("freeze" in p for p in _badge_problems(stale, digest12, svg))
     assert any("denominator" in p for p in _badge_problems(payload, digest12, "autorate certified"))
+    edited = json.loads(json.dumps(payload))
+    edited["denominator_line"] = "re-derived 1 /1 values"
+    assert any("disagrees" in p for p in _badge_problems(edited, digest12, svg))
+    unlabelled = json.loads(json.dumps(payload))
+    unlabelled["lane"] = "green"
+    assert any("lane" in p for p in _badge_problems(unlabelled, digest12, svg))
 
 
 # --- the action and its checkout contract ---------------------------------------------------------

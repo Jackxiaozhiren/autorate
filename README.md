@@ -139,10 +139,19 @@ Two things about checkouts, because both have already broken this repository's C
   `tests/test_action_f8.py` refuses both a workflow that drops the flag and a summary that stops saying it.
 - The committed badge in `.github/badges/` is produced by the same code path the action runs, and it
   records the protocol digest it was minted under. A re-freeze makes it stale and the test that reads it
-  goes red rather than leaving a green pill describing a superseded protocol. Regenerate it with:
+  goes red rather than leaving a green pill describing a superseded protocol.
+
+  It is minted in the **corpus-absent** lane, because that is the lane a clone and the runner see: the
+  corpus is not in the repository, so a stranger reproduces `re-derived 612 /612 values`, and the badge
+  carries that number and `corpus absent` in its tooltip and in `autorate-badge.json`. On a machine that
+  also holds the corpus the same command prints `re-derived 649 /649 values` and writes a badge saying
+  `corpus present`; both are the tool's own labels, and the badge never carries one lane's number under
+  the other lane's name. Re-mint the committed one from an export:
 
   ```bash
-  uv run --frozen python3 tools/action_report.py --path protocol.json --badge-dir .github/badges
+  exp=$(mktemp -d) && git archive HEAD | tar -x -C "$exp"
+  (cd "$exp" && uv run --frozen python3 tools/action_report.py --path protocol.json --badge-dir badges)
+  cp "$exp"/badges/autorate-badge.svg "$exp"/badges/autorate-badge.json .github/badges/
   ```
 
 ## Reproduction
