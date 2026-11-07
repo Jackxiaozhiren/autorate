@@ -79,6 +79,31 @@ def test_with_qhat_moves_the_operating_point_without_minting_a_certificate():
     assert d["qhat"] == 0.05
     assert any("OVERRIDDEN" in s and "do not describe this threshold" in s
                for s in d["envelope"]), d["envelope"]
+    # A warning string alone is not machine-readable certification. The
+    # threshold was never evaluated, so old error bounds must not be published.
+    assert d["certified"] is False
+    assert d["error_bound"] is None
+    assert d["coverage_alpha"] is None and d["beta"] is None
+    assert d["reason"] == "operating_override_not_certified"
+    assert "uncertified" in d["why"]
+    assert Gate(cert).decide(_rec([0.93, 0.02, 0.03, 0.02]))["certified"] is True
+
+
+@pytest.mark.parametrize("qhat", [-0.01, 1.01, float("nan"), float("inf"), "bad"])
+def test_invalid_operating_overrides_are_rejected(qhat):
+    with pytest.raises(ValueError, match="qhat override"):
+        Gate(_cert()).with_qhat(qhat)
+
+
+def test_an_override_can_change_the_action_but_not_certify_it():
+    rec = _rec([0.99, 0.01], u=0.5)
+    cert = _cert(qhat=0.3)
+    normal = Gate(cert).decide(rec)
+    changed = Gate(cert).with_qhat(0.9).decide(rec)
+    assert normal["action"] == "escalate" and normal["certified"] is True
+    assert changed["action"] == "auto" and changed["certified"] is False
+    assert changed["error_bound"] is None
+    assert cert.qhat == 0.3 and cert.conditional_error_bound == 0.04
 
 
 def test_every_decision_carries_the_envelope_so_no_downstream_can_lose_it():

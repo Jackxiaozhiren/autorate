@@ -7,6 +7,7 @@ someone has to remember to read (spec 10).
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import MISSING, asdict, dataclass, field
 from enum import Enum
 from types import MappingProxyType
@@ -267,6 +268,28 @@ class Certificate:
                        if getattr(self, f) is None]
             if missing:
                 raise ValueError("a feasible certificate must carry %s" % ", ".join(missing))
+            # Feasible objects may be restored from untrusted JSON. A NaN bound
+            # bypasses ordinary comparisons (NaN > x is False), so require
+            # finite, in-range numbers before any claim is published.
+            for field_name in ("qhat", "autorate", "conditional_error_bound",
+                               "marginal_error_bound", "mean_set_size"):
+                value = getattr(self, field_name)
+                try:
+                    finite = math.isfinite(value)
+                except (ValueError, TypeError, OverflowError):
+                    finite = False
+                if not finite:
+                    raise ValueError("%s must be finite" % field_name)
+                upper = math.inf if field_name == "mean_set_size" else 1.0
+                if not 0.0 <= value <= upper:
+                    raise ValueError("%s must be in [0, %s]" % (field_name, upper))
+            for endpoint in self.autorate_ci:
+                try:
+                    valid = math.isfinite(endpoint) and 0.0 <= endpoint <= 1.0
+                except (ValueError, TypeError, OverflowError):
+                    valid = False
+                if not valid:
+                    raise ValueError("autorate_ci endpoints must be finite fractions in [0,1]")
             if self.autorate > 1.0 + 1e-9:
                 raise ValueError("autorate is a fraction of evaluated decisions: %r" % (self.autorate,))
             lo, hi = self.autorate_ci
