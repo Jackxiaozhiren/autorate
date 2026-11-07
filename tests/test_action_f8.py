@@ -368,14 +368,26 @@ def test_the_action_refuses_a_path_that_leaves_the_checkout(tmp_path):
     assert escaping[0] is None and "leaves the workspace" in escaping[1]
 
 
-def test_a_ref_that_would_be_read_as_an_option_is_refused():
+def test_a_ref_that_would_be_read_as_an_option_is_refused(tmp_path):
     """`git worktree add --detach <path> <ref>` must not receive `--upload-pack=...` as a revision."""
-    import types
-
-    bad = ar.resolve_cli(types.SimpleNamespace(version="", ref="--upload-pack=/bin/sh"), ROOT)
+    bad = ar.resolve_cli(SimpleNamespace(version="", ref="--upload-pack=/bin/sh"), ROOT)
     assert bad[0] is None and "option" in bad[1]
-    good = ar.resolve_cli(types.SimpleNamespace(version="", ref="HEAD"), ROOT)
+
+    # Build the store rather than assuming ROOT has one: this suite also runs from a `git archive`
+    # export, where there is no `.git` at all. A `git init` is enough -- `history_source` asks
+    # whether the work tree is shallow, not whether it has commits.
+    repo = tmp_path / "with-object-db"
+    repo.mkdir()
+    assert _git("init", "-q", cwd=repo).returncode == 0
+    assert ar.history_source(repo) == "object-db"
+    good = ar.resolve_cli(SimpleNamespace(version="", ref="HEAD"), repo)
     assert good[0] == {"kind": "ref", "value": "HEAD"} and good[1] is None
+
+    # The export lane is itself a store: a ref there must be a named not-run, not a pass.
+    export = tmp_path / "export"
+    export.mkdir()
+    refused = ar.resolve_cli(SimpleNamespace(version="", ref="HEAD"), export)
+    assert refused[0] is None and "no-object-db" in refused[1]
 
 
 def test_the_history_source_distinguishes_the_three_stores_it_names(tmp_path):
@@ -397,7 +409,9 @@ def test_the_history_source_distinguishes_the_three_stores_it_names(tmp_path):
     assert ar.history_source(full) == "object-db"
     assert ar.history_source(shallow) == "shallow"
     assert ar.history_source(empty) == "no-object-db"
-    assert ar.history_source(ROOT) == "object-db"
+    # ROOT is deliberately not asserted: this suite runs both from a checkout and from a `git
+    # archive` export, whose honest answer is `no-object-db`. The three stores are built here so
+    # the distinction is pinned in either lane rather than borrowed from the surrounding checkout.
 
 
 # --- no statistics in the shell -------------------------------------------------------------------
