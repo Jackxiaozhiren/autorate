@@ -20,6 +20,26 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/autorate"]
 
+# The default sdist is the whole tracked tree, which for this repository is the wrong artefact to
+# publish: it carried 242 planning files, 27 `docs/` files and -- blocking -- the six
+# `data/records_*.jsonl` corpora, whose rows PRD §8.4 says a public share must never carry. What a
+# reader of the sdist needs is the code plus the committed evidence `verify` re-derives, so the
+# include list is that set and nothing else. Tests are excluded on purpose: they read `docs/`,
+# `tools/` and the sibling corpus, and shipping a suite that cannot run from its own sdist is the
+# defect this project filed against its upstream, not a thing to reproduce here.
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/data",
+  "/protocol.json",
+  "/README.md",
+  "/LICENSE",
+  "/pyproject.toml",
+]
+exclude = [
+  "/data/*.jsonl",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The build-step tools live outside the `src` package, so a test that imports one needs the

@@ -59,6 +59,19 @@ Two of those rows carry the whole argument:
 `refusal_rate` and `mean_set_size` exist because an empty certified set is a refusal,
 not a free correct answer: counting it as automation would inflate the rate.
 
+## Installing the wheel, and what it cannot do
+
+`pip install autorate` installs the library and the console script. It does **not** install this
+repository's evidence bundle. `autorate verify` re-derives *this* tree's published numbers, so it
+needs `protocol.json` and the committed `data/` set and refuses with exit `4` when an artefact the
+tables declare is absent -- by design, because the six `data/records_*.jsonl` files carry dataset
+rows (labels, per-option probabilities, gold answers) and are not put in a package that any index
+can host. For the evidence, take the repository, not the wheel:
+
+```bash
+uv add "autorate @ git+https://github.com/Jackxiaozhiren/autorate"
+```
+
 ## Commands
 
 ```bash
