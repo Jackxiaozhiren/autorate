@@ -1,12 +1,11 @@
 name: autorate gate
-description: >-
-  Run `autorate verify` (and, when a records file is given, `autorate certify`) and render one of four
-  honest states: certified, not-certifiable, drift, not-run. The action shells out to the CLI; it
-  implements no statistics of its own.
+# Marketplace requires a description shorter than 125 characters and a branding colour from its
+# fixed allow-list; keep both here rather than letting a release draft discover them (PRD §8.1).
+description: 'Run `autorate verify` or `certify`; report certified, not-certifiable, drift or not-run; the CLI owns the statistics.'
 author: the autorate authors
 branding:
   icon: check-circle
-  color: gray
+  color: gray-dark
 
 inputs:
   version:
