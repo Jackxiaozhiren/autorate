@@ -26,7 +26,7 @@ jobs:
           # asserts which store it read the *base* revision from, but the base revision itself is only
           # readable here. `tests/test_action_f8.py` refuses this workflow if the flag is dropped.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with: { python-version: "3.12" }
       - id: autorate
         uses: ./
