@@ -1,10 +1,12 @@
 # Prepared issue text — not submitted
 
-> **Status: drafted, not filed.** No issue has been opened on `NandhaKishorM/laya`; the author still has
-> zero issues and zero PRs on that repository (re-checked 2026-10-14, see `SUBMISSION.md`). This file is
-> the text that would be filed, rewritten against what a re-measurement found: of the four findings the
-> original draft carried, **one** still describes the current release. Filing all four today would post
-> three duplicates and a patch for code that has already moved.
+> **Status: drafted, not filed; withdrawn.** No issue has been opened on `NandhaKishorM/laya`; the
+> author still has zero issues and zero PRs on that repository (re-checked 2026-10-14, see
+> `SUBMISSION.md`). This file is the text that would have been filed, rewritten against the 2026-10-14
+> measurement: of the four findings the original draft carried, three had been taken upstream and one
+> described the release current at that date. A later re-measurement found that finding no longer
+> reproduced, so no filing followed. This is a dated transcript of that measurement, not a claim about
+> the upstream's present code.
 
 ---
 
@@ -88,7 +90,7 @@ recorded here as context rather than filed as bugs:
 | which field `confidence_threshold` gates on was undocumented and untested | commit `4e552251` (`gate thresholds on answer_confidence, never entropy confidence`), made fail-closed by `93bf34a6` via `_gate_confidence` | 2026-09-29, 2026-09-30 |
 
 The `research/eval/` lane is, as it was, occupied by contributors who merge quickly; that is one reason
-this text stays a reduction to the one finding that is still live rather than a bundle.
+this text was written as a reduction to the one finding live at that date rather than a bundle.
 
 ### What this issue does not claim
 

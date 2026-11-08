@@ -23,7 +23,7 @@ machine; that failure is recorded rather than smoothed over.
 
 | file | what it is | state |
 |---|---|---|
-| `issue.md` | the issue text, reduced to the one finding still live at the current release | drafted, not filed |
+| `issue.md` | the issue text, reduced to the one finding live at the 2026-10-14 measurement; a later re-measurement found none live | drafted, not filed; withdrawn |
 | `patch/laya-0.3.20-fixes.patch` | the four-finding diff against a clean `v0.3.20` checkout, sha256 `e1aad33a46a62a2066037f74a41228cad0384e47bfe69827d952486e095b5c76` | checked with `git apply --check`, never applied |
 | `patch/README.md` | the diff's provenance, the tag blobs it expects, per-finding upstream status | — |
 | `pr-description.md` | PR 1 of the two-PR order, and why it must be rebased before it could be filed | drafted, not filed |
@@ -181,8 +181,9 @@ threshold gone from the gating example, `## Community Tools` unchanged in its fi
 
 Two consequences for the artefacts, both already written into them:
 
-1. `issue.md` no longer reports the three taken findings; it reports the one that still describes the
-   release, which is that `tests/test_packaging.py` cannot run from the published sdist.
+1. `issue.md` no longer reports the three taken findings; it reported the one that described the
+   release at that date, which was that `tests/test_packaging.py` cannot run from the published sdist.
+   A later re-measurement against the upstream's next published sdist found no live finding.
 2. `pr-description.md` carries a rebase requirement, because a `v0.3.20` diff against `main` is not a
    contribution anyone could merge.
 
