@@ -36,7 +36,7 @@ jobs:
           # in `action.yml` because a workflow that reads only this file must still see the default.
           fail_on: drift,not-run
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: autorate-badge
           path: .autorate/

@@ -49,7 +49,7 @@ jobs:
       # numbers re-deriving and never witnesses them agreeing with the freeze that names them.
       - run: uv run --frozen autorate verify --protocol protocol.json | tee /tmp/verify.log
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-logs
           path: /tmp/*.log
@@ -97,7 +97,7 @@ jobs:
         # the second libc's point is that the FROZEN rubric re-derives the same numbers on a
         # different math library; the plain form never compares the tree to the freeze
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cross-libc-logs-${{ matrix.os }}
           path: /tmp/*.log
