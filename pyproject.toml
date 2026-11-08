@@ -1,11 +1,20 @@
 [project]
 name = "autorate"
-version = "0.1.0"
+version = "0.1.2"
 description = "Certified automation rates for decision models: confidence is not permission."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 dependencies = ["numpy>=1.24"]
+
+# The repository is public since 2026-11-08, so package-index links no longer point at a
+# private tree (PRD section 8.1). 0.1.1 was never published on PyPI: the v0.1.1 git tag is an
+# Action-listing metadata patch whose distribution bytes are identical to 0.1.0.
+[project.urls]
+Homepage = "https://github.com/Jackxiaozhiren/autorate"
+Repository = "https://github.com/Jackxiaozhiren/autorate"
+Issues = "https://github.com/Jackxiaozhiren/autorate/issues"
+Releases = "https://github.com/Jackxiaozhiren/autorate/releases"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
