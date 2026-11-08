@@ -18,7 +18,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # F8 exception (a), and the same measurement `tests/test_ci_workflow.py` records: a shallow
           # checkout leaves the runner with one commit in its object database, so `git show <rev>:<path>`

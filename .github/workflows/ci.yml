@@ -12,7 +12,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history, because `tests/test_g5_transcript.py` reads the `protocol.json` of the commit the
           # transcript NAMES. The default shallow checkout keeps only HEAD, so the digest and ancestry rows
@@ -81,7 +81,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history, because `tests/test_g5_transcript.py` reads the `protocol.json` of the commit the
           # transcript NAMES. The default shallow checkout keeps only HEAD, so the digest and ancestry rows
