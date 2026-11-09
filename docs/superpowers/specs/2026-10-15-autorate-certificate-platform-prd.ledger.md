@@ -286,3 +286,83 @@ exits 0 at **649 /649**; the packet is built from `e9b0cf1`, the release
 commit, so no published artefact moved. Section 13.1's published-artefact row
 therefore reads **1**, not 0 - the same single path as before, in the ledger
 that Section 13.5 requires.
+
+---
+
+## 5. Milestone M2 opening — 2026-11-09 (PRD §0.4, §13.5)
+
+Captured at the M1-closure tip, before any M2 source edit. The two opening
+blocks above are history, not ground truth.
+
+### B1 — identity
+
+```text
+$ git rev-parse --abbrev-ref HEAD
+integration/f8-into-main
+
+$ git rev-parse --short HEAD
+b55cb53
+```
+
+`B1A_EXIT=0` · `B1B_EXIT=0`. `origin/main` points at the same commit.
+
+### B2 — working tree
+
+```text
+$ git status --short
+```
+
+Empty output, 0 lines. `B2_EXIT=0`, `B2_LINES=0`.
+
+### B3 — the honesty gate
+
+```text
+$ uv run --frozen autorate verify --protocol protocol.json
+protocol: protocol.json ce43f8e29cc1 (frozen 2026-10-17)
+inventory source: recomputed from the corpus
+disclosure: corpus present: inventory, digests and the snapshot all re-derived;
+            the frozen protocol rubric was enforced
+re-derived 649 /649 values
+```
+
+`B3_EXIT=0`. Lane **corpus present**; NIF reference denominator **649 /649**,
+identical to the M1 opening. M1 changed no `data/` file, so the clean-clone
+corpus-absent reading of 2026-11-09 (**612 /612**) stands too.
+
+### B4 — command surface
+
+```text
+$ uv run --frozen autorate --help
+snapshot, export-feishu, certify, severity, compare, gate, report, audit,
+protocol, verify
+```
+
+`B4_EXIT=0`, 10 subcommands. M2 adds nothing here: Section 7 puts the runner in
+the portal repo, not on the frozen chain.
+
+### B5 — adoption blocker
+
+```text
+$ gh repo view --json visibility,stargazerCount
+{"stargazerCount":1,"visibility":"PUBLIC"}
+```
+
+`B5_EXIT=0`. Unchanged since the M1 opening.
+
+### M2 scope, and what is deliberately not in it
+
+Section 7's M2 row: a **job runner** that captures argv, exit code and stdout
+hash; a **pinned-distribution registry**; and **`doctor`**. Repository: the
+portal, not this one. Two invariants turn `ACTIVE (M2)` in Section 6.1 — I2
+(the triple travels with the number, enforced at emit time in the renderer) and
+I5 (run rows carry argv plus exit code). AC4's mismatch path must be provable.
+
+Named as out of scope so it cannot be skipped silently: no database, no HTTP
+API, no auth (M3); no policies or monitor (M5); no change to any file under
+`data/` or to any compared artefact (NIF). The frozen chain gains nothing here.
+
+### Stop point
+
+Section 13.5: stop for the owner's approval at the Section 13.1 gate table.
+This block is the baseline the M2 gate will be read against; it claims nothing
+proven.
