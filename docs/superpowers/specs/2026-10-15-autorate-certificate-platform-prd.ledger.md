@@ -130,3 +130,95 @@ session, which is what the gate matrix uses.
 ## 2. Gates — appended as they are run
 
 Append-only from here: a later section may add readings, never rewrite the block above.
+
+---
+
+## 3. Milestone M1 opening — 2026-11-09 (PRD §0.4, §13.5)
+
+Captured after the `autorate 0.1.2` PyPI release and its `v0.1.2` tag, before
+any M1 source edit. Every exit code below was read from the command that
+produced it. The 2026-11-06 block above is history, not ground truth.
+
+### B1 — identity
+
+```text
+$ git rev-parse --abbrev-ref HEAD
+integration/f8-into-main
+
+$ git rev-parse --short HEAD
+e9b0cf1
+```
+
+`B1A_EXIT=0` · `B1B_EXIT=0`. `origin/main` points at the same commit.
+
+### B2 — working tree
+
+```text
+$ git status --short
+```
+
+`B2_EXIT=0`, `B2_LINES=0`. No other work in the tree.
+
+### B3 — the honesty gate
+
+```text
+$ uv run --frozen autorate verify --protocol protocol.json
+protocol: protocol.json ce43f8e29cc1 (frozen 2026-10-17)
+inventory source: recomputed from the corpus
+disclosure: corpus present: inventory, digests and the snapshot all re-derived;
+            the frozen protocol rubric was enforced
+re-derived 649 /649 values
+```
+
+`B3_EXIT=0`. Lane: **corpus present**. NIF reference denominator: **649 /649**.
+The clean-clone corpus-absent run printed **612 /612 values**; both are
+baseline facts.
+
+### B4 — command surface
+
+```text
+$ uv run --frozen autorate --help
+snapshot, export-feishu, certify, severity, compare, gate, report, audit,
+protocol, verify
+```
+
+`B4_EXIT=0`, 10 subcommands.
+
+### B5 — adoption blocker
+
+```text
+$ gh repo view --json visibility,stargazerCount
+{"stargazerCount":1,"visibility":"PUBLIC"}
+```
+
+`B5_EXIT=0`. The 2026-11-06 block recorded `PRIVATE`; that reading is stale and
+is left in place as history, corrected here by the newer reading.
+
+### M1 scope and stop point
+
+Section 7 assigns M1 to the `autorate-portal` repository, which does not exist
+locally or under the owner's GitHub account at 2026-11-09. Section 13.5 says the
+previous session's approval is not carried forward, so creating that repository
+is an owner decision and was not executed. No M1 source file was created.
+
+The M1 implementation plan and the Section 13.2 report (including the liveness
+table, the deviation register and the Section 13.1 gate matrix) are held in the
+external evidence directory, not in this repository, because Section 7 puts
+them in the portal repo once it exists. AC1, AC9, AC10 and AC14 are **not
+proven**; I6 is ACTIVE for M1 but **UNPROVEN** in this session.
+
+### Deviation registered, not hidden
+
+This commit changes one file under `docs/` (this ledger), so
+`git diff --name-only HEAD~1 -- data/ docs/` is not empty for this commit.
+The byte-compared `data/` tree is untouched, `verify` still exits 0 at
+**649 /649**, and no guard was relaxed. Section 13.5 requires the ledger
+commit before source edits; Section 13.1's published-artefact gate is counted
+as a deviation here rather than described as zero.
+
+### Owner decisions still open
+
+1. Whether `autorate-portal` is created, and whether it is public.
+2. The pinned `autorate` distribution version and wheel SHA-256 for M1's packet.
+3. Any new upstream filing still requires the four-part instruction in
+   `docs/upstream/SUBMISSION.md` (Section 0.2 (b), Section 13.7).
