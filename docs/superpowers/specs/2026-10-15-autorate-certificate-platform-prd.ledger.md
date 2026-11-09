@@ -196,16 +196,19 @@ is left in place as history, corrected here by the newer reading.
 
 ### M1 scope and stop point
 
-Section 7 assigns M1 to the `autorate-portal` repository, which does not exist
-locally or under the owner's GitHub account at 2026-11-09. Section 13.5 says the
-previous session's approval is not carried forward, so creating that repository
-is an owner decision and was not executed. No M1 source file was created.
+At the 2026-11-09 open, Section 7 assigned M1 to the `autorate-portal`
+repository, which did not exist locally or under the owner's GitHub account at
+that moment. Section 13.5 forbids carrying an earlier session's approval
+forward, so creating that repository was put to the owner rather than assumed;
+the owner approved it as a **public** repository and M1 was then implemented
+there. No M1 source file was created in *this* repository: Section 7's
+"the frozen repo is untouched" holds.
 
-The M1 implementation plan and the Section 13.2 report (including the liveness
-table, the deviation register and the Section 13.1 gate matrix) are held in the
-external evidence directory, not in this repository, because Section 7 puts
-them in the portal repo once it exists. AC1, AC9, AC10 and AC14 are **not
-proven**; I6 is ACTIVE for M1 but **UNPROVEN** in this session.
+The M1 plan is committed in the portal repo at
+`docs/superpowers/plans/2026-11-09-m1-evidence-packet.md`. The Section 13.2
+report, the Section 13.1 gate logs and the packets themselves are readings, and
+readings for M1 live in the external evidence directory recorded in Section 4
+below rather than in this repository.
 
 ### Deviation registered, not hidden
 
@@ -218,7 +221,68 @@ as a deviation here rather than described as zero.
 
 ### Owner decisions still open
 
-1. Whether `autorate-portal` is created, and whether it is public.
-2. The pinned `autorate` distribution version and wheel SHA-256 for M1's packet.
-3. Any new upstream filing still requires the four-part instruction in
+1. Any new upstream filing still requires the four-part instruction in
    `docs/upstream/SUBMISSION.md` (Section 0.2 (b), Section 13.7).
+2. M2's pinned-distribution registry starts from the versions in Section 4
+   below; widening it to older releases is a decision not yet taken.
+
+The two M1 decisions this list used to hold - whether `autorate-portal` exists
+and is public, and which `autorate` version the packet pins - were taken by the
+owner on 2026-11-09 and are recorded as decisions in Section 4.
+
+---
+
+## 4. Milestone M1 closure — 2026-11-09
+
+Owner approved the M1 stop point on 2026-11-09. The readings below are what M1
+proved; the narrative, the liveness table, the seven deviations and the
+disclosures are in `report-2026-11-09-m1-close.md` in the evidence directory
+(`~/laya-evidence/m1-2026-11-09/`, sha256 `e9aa7f98…` at approval), next to the
+gate table, the packets and the CI logs each figure is read from.
+
+### Decisions taken
+
+| Decision | Value | Date |
+|---|---|---|
+| `autorate-portal` created | yes, **public**, `Jackxiaozhiren/autorate-portal` | 2026-11-09 |
+| pinned distribution | `autorate 0.1.2`, wheel sha256 `7709d3faa560417e…` | 2026-11-09 |
+| M1 report accepted | `report-2026-11-09-m1-close.md`, ten §13.2 sections | 2026-11-09 |
+
+### Readings that close M1
+
+| Reading | Value at 2026-11-09 | Where it was read |
+|---|---|---|
+| portal commits | `0eb1c64`, `4c4ff1d`, `25e549b` | `git log` on the portal repo |
+| portal CI | `42582581800`, `42584682718`, both jobs green | `gh run view --json` |
+| portal tests | 49 collected, 49 passed | `gate/suite.log` |
+| negative controls | 21 of 21 plants fired red and were restored, sha256 receipt | `logs_plants_v2.log` |
+| AC1 | tampered byte → rc 4, did not index | `gate/ac1_verify.log` |
+| AC9 | `certified 612 /612` in four runs: two backends (uv, container) on this machine, and the same two in CI | `logs_ac9_real_replay.log`, `ci_42584682718_full.log` |
+| AC10 | Docker off `PATH` and PyPI unreachable → rc 3 `not-run`, `argv=[]`, `exit_code=null` | `logs_ac10_real_absence.log` |
+| AC14 | fresh registry `created row` → `idempotent hit`, `FRESH_ROWS=1` | `gate/ac14_fresh.log` |
+| I6 | pinned wheel hash swapped → rc 4, receipt `03b7af4c…` unchanged after restore | `gate/i6.log` |
+| packet | full 33 artefacts / shareable 27, sha256 `03b7af4c…` / `148c22a9…` | `logs_t9_t10.log` |
+| reproducibility | two clean checkouts, byte-identical, same sha256 as CI | `GATE_REBUILD_BYTE_IDENTICAL_RC=0` |
+| privacy (§8.4) | full: 6 records files, 15015 rows, 0 named; shareable: 0 files, 0 rows | `GATE_PRIVACY` lines |
+| packet scope | 33 of 146 tracked files at `e9b0cf1` (21 `data/`, 11 `docs/`, `protocol.json`) | `packet_scope.log` |
+
+### Correction, not annotation (Section 8.3)
+
+Four sentences in Section 3 above asserted a present state that stopped being
+true the moment the owner approved: that `autorate-portal` did not exist, that
+creating it was not executed, that no M1 source file was created, and that
+AC1/AC9/AC10/AC14 were not proven. Section 8.3 says such a sentence is
+*corrected or dropped, not annotated*, so those sentences were rewritten in
+place here rather than left standing with a note beneath them; the previous
+wording stays readable at `9bce245`. The same rule was applied to the two
+resolved owner decisions above.
+
+### Deviation, counted
+
+This commit changes one file under `docs/`, so
+`git diff --name-only e9b0cf1..HEAD -- data/ docs/` returns one path and
+`git diff --name-only e9b0cf1..HEAD -- data/` returns **0**. `verify` still
+exits 0 at **649 /649**; the packet is built from `e9b0cf1`, the release
+commit, so no published artefact moved. Section 13.1's published-artefact row
+therefore reads **1**, not 0 - the same single path as before, in the ledger
+that Section 13.5 requires.
