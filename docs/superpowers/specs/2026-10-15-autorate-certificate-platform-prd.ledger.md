@@ -452,3 +452,10 @@ orgs/projects, F1 ingest, F2 certificate view, F3 slice view and the
 provenance drawer; its gate is AC2, AC3, AC13, AC14 and a green parity job
 (§6.3), with a read-only deployment first. F2's `started_at` is the first
 source task.
+
+This Section 6 commit was fast-forwarded onto **both** remote branches: `main`,
+which is the default branch CI checks out, and `integration/f8-into-main`. The
+first push reached only the latter, leaving `main` at `230e40b` — a state in
+which the next session's B1 and the CI checkout would have read the still-open
+M2 baseline. Both branches now carry the closure, and remote `HEAD` resolves to
+it.
