@@ -459,3 +459,137 @@ first push reached only the latter, leaving `main` at `230e40b` — a state in
 which the next session's B1 and the CI checkout would have read the still-open
 M2 baseline. Both branches now carry the closure, and remote `HEAD` resolves to
 it.
+
+---
+
+## 7. Milestone M3 opening — 2026-11-10 (PRD §0.4, §13.5)
+
+The owner supplied the Section 13.5 resume opener verbatim with
+`This session: M3 only` on 2026-11-10. Section 0.4 was re-run from scratch at
+the current HEAD (`386dc9e`), not copied from Section 5: HEAD has moved by two
+commits since the M2 opening, so those readings are history. Every exit code
+below comes from its own command, captured by `echo "NAME_EXIT=$?"` immediately
+after a redirect; logs are in `~/laya-evidence/m3-2026-11-10/gate/`.
+
+### B1 — identity
+
+```text
+$ git rev-parse --abbrev-ref HEAD
+integration/f8-into-main
+
+$ git rev-parse --short HEAD
+386dc9e
+```
+
+`B1A_EXIT=0` · `B1B_EXIT=0`. `git ls-remote` confirms remote `main`,
+`integration/f8-into-main` and `HEAD` all resolve to `386dc9e`.
+
+### B2 — working tree
+
+```text
+$ git status --short
+```
+
+Empty output, 0 lines. `B2_EXIT=0`, `B2_LINES=0`.
+
+### B3 — the honesty gate
+
+```text
+$ uv run --frozen autorate verify --protocol protocol.json
+protocol: protocol.json ce43f8e29cc1 (frozen 2026-10-17)
+inventory source: recomputed from the corpus
+disclosure: corpus present: inventory, digests and the snapshot all re-derived;
+            the frozen protocol rubric was enforced
+re-derived 649 /649 values
+```
+
+`B3_EXIT=0`. Lane **corpus present**; NIF reference denominator **649 /649**,
+unchanged from the M2 opening.
+
+### B3A — clean-clone lane, measured not inferred
+
+The opener warns that a locally green tree has turned red in CI once, because
+the frozen repo's CI reads an object database a shallow checkout lacks. So the
+corpus-absent reading was re-executed rather than carried forward:
+
+```text
+$ git archive HEAD | tar -x -C <dir> ; git ls-files > <dir>/.tracked-files
+M3_EXPORT_MANIFEST_LINES=146
+
+$ env -u PYTHONPATH AUTORATE_FEISHU_ROOT=/nonexistent \
+    AUTORATE_TRACKED_FILES=<dir>/.tracked-files \
+    uv run --frozen autorate verify --protocol protocol.json
+inventory source: committed data/inventory.md.json
+disclosure: corpus absent: 9 SOURCE.json digests and the inventory snapshot are
+            transcribed from the committed data/inventory.md.json, not recomputed
+re-derived 612 /612 values
+```
+
+`M3_CLEAN_CLONE_VERIFY_RC=0`. This is an **additional** reading, not one of
+Section 0.4's five; it establishes both lanes at this tip.
+
+### B4 — command surface
+
+```text
+$ uv run --frozen autorate --help
+snapshot, export-feishu, certify, severity, compare, gate, report, audit,
+protocol, verify
+```
+
+`B4_EXIT=0`, 10 subcommands, unchanged. Section 7 puts all of M3 in the portal
+repo; the frozen CLI surface gains nothing.
+
+### B5 — adoption blocker
+
+```text
+$ gh repo view --json visibility,stargazerCount
+{"stargazerCount":1,"visibility":"PUBLIC"}
+```
+
+`B5_EXIT=0`. Unchanged.
+
+### M3 scope, and what is deliberately not in it
+
+Section 7's M3 row (verbatim deliverable): **auth, orgs/projects, F1 ingest,
+F2 certificate view, F3 slice view, provenance drawer**; gate **AC2, AC3, AC13,
+AC14**, the frozen repo's committed artefacts rendering correctly end-to-end,
+and the **parity job (§6.3) green**; rollback point **read-only deployment
+first (no policies yet)**. Stack is fixed by §4.2: FastAPI + SQLAlchemy on
+SQLite (PostgreSQL by one env var) + Alembic + Pydantic, one process, one port.
+
+Two invariants turn `ACTIVE (M3)` in §6.1 — **I1** (no statistic computed in the
+app tier; the static rule and the ORM-aggregate plant) and **I3** (a refusal
+renders as a refusal, verbatim). I2 and I5 are `ACTIVE (M2)` and must not
+regress; I6 stays `ACTIVE (M1)`; I4 stays `UNPROVEN (M4)`. §6.2 forbids any
+skip/xfail/ignore/exemption to get green.
+
+The first source task is the **follow-up** named F2 in Section 6 — add
+`started_at` to the M2 `RunRow` — not functional feature F2 (the certificate
+view). No invariant-carrying field changes.
+
+Named out of scope so it cannot be skipped silently: M4's claim check, auditor
+export and localization; M5's policies, monitor, in-browser verifier and the
+`--format json` freeze round; any change to `data/` or to a file `verify`
+byte-compares (§0.5 NIF); any endpoint that computes a bound (I1 / §3.4 NG7);
+§0.2 carve-out (a) irreversible public exposure and (b) outbound messages to
+named third parties.
+
+### Session boundary, disclosed
+
+Section 13.5 says `This session: … only` and `Do not carry the previous
+session's approval forward`. From the executor's side, M2's closure (Section 6)
+and this M3 opener arrived in the **same conversation window**, with a context
+compaction between them; the formal one-milestone-per-session boundary is
+therefore under tension. It is handled by substance, not by silence: this pass
+does M3 only; **M2's approval is not carried forward** (the Section 13.1 gate
+table needs a fresh owner approval for M3); Section 0.4 was re-run rather than
+copied; this ledger block is committed before any source edit; and the pass
+stops at the Section 13.1 gate table. If the owner judges the formal boundary
+binding, the correct remedy is to refuse this milestone's gate table and reopen
+M3 in a fresh window, not to edit this record.
+
+### Stop point
+
+Section 13.5: stop for the owner's approval at the Section 13.1 gate table,
+with the Section 13.2 report and liveness table. This block is the baseline M3
+will be read against; it claims nothing proven.
