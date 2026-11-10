@@ -361,8 +361,94 @@ Named as out of scope so it cannot be skipped silently: no database, no HTTP
 API, no auth (M3); no policies or monitor (M5); no change to any file under
 `data/` or to any compared artefact (NIF). The frozen chain gains nothing here.
 
-### Stop point
+### Stop point (reached 2026-11-09, satisfied 2026-11-10)
 
-Section 13.5: stop for the owner's approval at the Section 13.1 gate table.
-This block is the baseline the M2 gate will be read against; it claims nothing
+Section 13.5's stop at the Section 13.1 gate table was reached on 2026-11-09
+and the owner approved it on 2026-11-10. The closure is Section 6 below. This
+block remains the baseline the M2 gate was read against; it claims nothing
 proven.
+
+---
+
+## 6. Milestone M2 closure — 2026-11-10 (PRD §13.5)
+
+The owner approved the M2 stop point on 2026-11-10 with the instruction
+"批准，请按照你的思路建议进行", delegating the six follow-ups in Section 9 of
+the M2 report. The readings below are what M2 proved; the narrative, the ten
+§13.2 sections, the liveness table, seven deviations and the disclosures are in
+`~/laya-evidence/m2-2026-11-09/report-2026-11-09-m2-replay-engine.md`
+(sha256 `e417d15e…`), beside `gate_table.log` (sha256 `5d01eb8f…`), the `gate/`
+logs, `ci_42610673606_full.log` and the independent review
+`review-2026-11-10-m2-independent.md` (sha256 `9fe2017a…`).
+
+### Decisions taken (F1–F6)
+
+| # | Decision | Value | Basis |
+|---|---|---|---|
+| F1 | Container-backed AC4/AC9 evidence | Accepted as **CI-only** for M2–M4; M3's container exit gate runs in CI. Provisioning an egress runner remains an option, not a condition | §5.11 AC4/AC9 need Docker and PyPI egress. This machine's containers return `[Errno 101]`, so the local container attempt is recorded as `refused` (rc 4, `exit_code: 1`) and never as a pass, and `doctor` reports `container-network fail`. CI `42610673606` supplies `argv[0]=docker`, AC4 rc 4 and two container `certified` replays. **No gate was waived**: the missing half is supplied elsewhere, not forgiven |
+| F2 | `started_at` on the run row | **Add the field as M3's first source task**; §4.3 is not edited | §0.5 bars M1–M4 from changing files `verify` compares, and the PRD sits on that chain. A field on `RunRow` changes no invariant-carrying field. Deferred out of this session deliberately: the approved gate table is bound to `a1a1cc0` / `9d8e145` and no source edit may silently move that tip |
+| F3 | Coverage floor | **None, on purpose, recorded as such.** Re-evaluate at M5 | §13.1 defines no coverage gate. A floor set at today's number is a ratchet on a suite M3 will reshape. This neither adds nor removes a guard: there was none to lower |
+| F4 | §13.1 gate table and M2 | **Approved and closed 2026-11-10** | Owner's instruction above; §13.5 stop point; the independent reviewer had already judged the report a valid input to this approval |
+| F5 | Independent review | **Confirmed**: 1 MUST FIX + 3 SHOULD FIX, all four CLOSED on the closure pass; the non-blocking `REPRO_RC` provenance was also supplied | `review-2026-11-10-m2-independent.md` (Closure verification) and `gate/export_present_repro_rc.txt`. The reviewer explicitly did not approve M2 and did not re-run the milestone; approval was the owner's, not the author's or reviewer's |
+| F6 | The counted `docs/` deviation (D7) | **Accepted as M1 §4 did. No §7 freeze round** | The single path is this ledger, which is not a byte-compared artefact. `GATE_PUBLISHED_DATA_CHANGED=0`, `verify` still prints `re-derived 649 /649 values`, and the packet is built from `e9b0cf1`. §7's freeze round is triggered by a change that would *move* a published artefact; none moved here. This is a counted exception under §13.1, not an §0.5 NIF breach |
+
+### Readings that close M2
+
+| Reading | Value at 2026-11-10 | Where it was read |
+|---|---|---|
+| tips | portal gate `a1a1cc0`, closure `9d8e145` (two doc-only commits, pushed); frozen `230e40b`, both trees clean | `gate_table.log` header, `git log` |
+| portal CI | `42610673606` and `42799336470` (the doc-only tip), both jobs success | `ci_42610673606_full.log`, `ci_42799336470_full.log`, `gate/ci_42799336470_result.json` |
+| NIF | `GATE_NIF_RC=0`, `re-derived 649 /649 values` | `gate/nif.log` |
+| published artefacts | `GATE_PUBLISHED_DATA_CHANGED=0`; `GATE_PUBLISHED_DATA_DOCS_CHANGED=1`, the one path is the ledger | `gate_table.log`, `gate/published_delta.txt` |
+| portal suite | 11 files / 99 tests, `GATE_SUITE_RC=0`; `GATE_NEW_FILES_RC=0` with 50 dots across five files; ruff and compileall rc 0 | `gate/suite.log`, `gate/collect_only.log`, `gate/new_files.log` |
+| plants | `total=31 runtime_landed=31 red=31 restored=31`, locally and in CI | `gate/plants.log`, `ci_42610673606_full.log` |
+| leak test | `GATE_LEAK_HITS=7`, all seven the PRD's own phrase "no longer" | `gate/leak.txt` |
+| AC4 | `mismatch` rc 4, both digests named, `611 /612` vs `612 /612`; CI's container copy rc 4 with `argv[0]=docker` | `gate/ac4*`, CI log |
+| AC9 | two attempts, two rows, both `certified 612 /612`; CI two container `certified` | `gate/ac9*`, `gate/runs.jsonl` |
+| AC10 | `not-run` rc 3, `argv: []`, `exit_code: null`; CI `SHAREABLE_REPLAY_RC=3` | `gate/ac10*`, CI log |
+| container attempt | `refused` rc 4, `exit_code: 1` — never a pass | `gate/container_attempt.log` |
+| run store | `GATE_RUNS_ROWS=5` for five attempts | `gate/runs.jsonl`, `gate/runs_list.log` |
+| `doctor` | uv rc 0 all ok; container rc 3 `container-network fail`; no-docker rc 3 | `gate/doctor_*` |
+| export lane | 146 tracked paths; `GATE_EXPORT_RC=0`, `1227 passed, 31 skipped in 539.23s`; corpus-absent `verify` rc 0 at `612 /612` | `gate/export_pytest.log`, `gate/export_verify.log` |
+| liveness | I2 and I5 `ACTIVE (M2)`, I6 `ACTIVE (M1)`; I1/I3/I4 `UNPROVEN`; parity `N/A` (§6.3) | report §5 |
+
+### Correction, not annotation (Section 8.3)
+
+Five sentences were rewritten in place rather than left standing with a note
+beneath them. Section 5's "Stop point" now says the stop was reached and
+satisfied; it had said "stop for the owner's approval" in the present tense.
+The M2 plan's export-lane row named only `AUTORATE_TRACKED_FILES`, which ran the
+wrong lane (`b044191`); the same paragraph then repeated a miscount,
+`1256 passed, 7 skipped`, which the re-executed lane disproved —
+`1255 passed, 3 skipped in 684.16s` (`9d8e145`). The report's two occurrences
+of that number were corrected the same way. Four gate tables were discarded,
+not annotated: `gate_table_v1.log` (AC4 rc 125 before `--image`),
+`gate_table_v4_corrupt.log` (a script rewritten while running produced a
+spliced line), `gate_table_v5_prelane_fix.log` (corpus-present export lane;
+`GATE_COLLECTED=11` was a file count wearing a test-count name) and
+`gate_table_v6_docker_down.log` (the container row degraded to `not-run`, the
+same reading as AC10, so it proved nothing). They remain in the evidence
+directory because deleting them would hide the corrections.
+
+### Deviation, counted
+
+This commit changes one file under `docs/`, so
+`git diff --name-only 230e40b..HEAD -- data/ docs/` returns one path (this
+ledger) and `git diff --name-only 230e40b..HEAD -- data/` returns **0**.
+`verify` still exits 0 at **649 /649**; the packet is built from `e9b0cf1`, so
+no published artefact moved. Section 13.1's published-artefact row therefore
+reads **1**, not 0 — the same counted exception M1's Section 4 registers and
+the one F6 accepts.
+
+### Stop point for the next session
+
+Section 13.5's resume opener says "This session: <M1|M2|M3|M4|M5> only" and
+"Do not carry the previous session's approval forward", and it requires the
+Section 0.4 baseline to be **re-run** because the stored baseline is history.
+This session therefore ends here: no M3 plan file, no portal source edit, no
+`data/` change. M3 starts in a new session with B1–B5 re-captured and committed
+to this ledger before its first source edit. Its Section 7 row is auth,
+orgs/projects, F1 ingest, F2 certificate view, F3 slice view and the
+provenance drawer; its gate is AC2, AC3, AC13, AC14 and a green parity job
+(§6.3), with a read-only deployment first. F2's `started_at` is the first
+source task.
