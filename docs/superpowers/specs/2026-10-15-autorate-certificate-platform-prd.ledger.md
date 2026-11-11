@@ -593,3 +593,112 @@ M3 in a fresh window, not to edit this record.
 Section 13.5: stop for the owner's approval at the Section 13.1 gate table,
 with the Section 13.2 report and liveness table. This block is the baseline M3
 will be read against; it claims nothing proven.
+
+---
+
+## 8. Milestone M3 closure — 2026-11-11 (PRD §13.5)
+
+The owner approved the M3 stop point on 2026-11-11 with the instruction
+"全部授权批准，我都听你的，请按照你的思路建议进行", delegating the seven
+follow-ups in Section 9 of the M3 report. The readings below are what M3
+proved; the narrative, the ten §13.2 sections, the liveness table, sixteen
+deviations, three independent reviews and the disclosures are in
+`~/laya-evidence/m3-2026-11-10/report-2026-11-10-m3-portal-core.md`
+(sha256 `6b5caaea…`), beside `gate_table.log` (sha256 `41f5a2c8…`), the `gate/`
+logs, `m3_gate_run.sh` (sha256 `25e30882…`) and `ci-43016752565.json`
+(sha256 `46c98068…`). The report was not edited after the approval; the sha
+above is the one the owner approved.
+
+### Decisions taken (F1–F7)
+
+| # | Decision | Value | Basis |
+|---|---|---|---|
+| F1 | The §4.4 endpoints M3 did not build (D1) | **Accepted as written**: M3 ships the subset the report names; runs, policies, claims and exports stay with M4/M5 | §7 assigns claim check and audit export to M4 and policies/monitor to M5. No endpoint was invented ahead of its milestone, and none was silently dropped: the report lists the subset |
+| F2 | D2–D5, the schema and F1 readings | **Accepted as permanent** | D2 widens `membership.role` to the enum §4.5's matrix needs; D3's derived packet id prevents one tenant's ingest blocking another's; D4's digest is a hash, never a statistic; D5's verbatim-duplicate rule is the only one that does not refuse the frozen repository's own records artefact |
+| F3 | Coverage floor (D10) | **None, on purpose, recorded as such.** Re-evaluate at M5 | §13.1 defines no coverage gate. A floor at today's 181 is a ratchet on a suite M4 will reshape. There was no guard to lower |
+| F4 | §13.1 gate table and M3 | **Approved and closed 2026-11-11** | Owner's instruction above; §13.5 stop point; the third review returned no MUST FIX, and the gate rows — not an aggregate rc — are the verdict (D14) |
+| F5 | The three independent reviews | **Accepted**: 4 MUST/6 SHOULD/2 NIT, then 10 findings (5 MUST), then MUST 0/SHOULD 4/NIT 2 with 86 claims checked; every named finding closed, the last six in the report's prose | Report §§11–13. No reviewer approved the milestone and none re-ran it; approval is the owner's, not the author's or a reviewer's |
+| F6 | A per-group bound exists only in tests | **Accepted with the limitation named**: `data/slices_language.json` refuses all four groups, so the bound-rendering path is exercised by tests; the refusal path is exercised end-to-end over HTTP | The frozen tree publishes no feasible group bound. The first artefact that publishes one exercises the rendering path; nothing claims it happened here |
+| F7 | D9, D13, D14, D15, D16 | **Accepted as written** | Each names its section and its reason: both published slice shapes and where the artefact is found; the group's own budget; a gate table with no aggregate rc; the companion panel built from published rows; the pinned denominator as a second check |
+
+D6–D8, D11 and D12 are accepted under the same instruction; F7 names only the
+five the report put to the owner. D12's disclosure is closed by this approval:
+the M2 closure and the M3 opener shared one conversation window, the opener said
+so before any source edit, and the substance was kept — baseline re-run, ledger
+committed before source edits, a fresh approval at the gate.
+
+### Readings that close M3
+
+| Reading | Value at 2026-11-11 | Where it was read |
+|---|---|---|
+| tips | portal gate `d0400b4`, frozen `51e1294`; both trees clean; report-only review fixes moved neither tip | `gate_table.log` header, `git status` |
+| portal CI | `43016752565`, three jobs success: `suite / plants / lint`, `frozen packet / AC1 / AC9 / AC10 / I6`, `parity 6.3 / committed artefacts render byte-equal` | `ci-43016752565.json`, `ci-43016752565.log` |
+| NIF | `GATE_NIF_RC=0`, `re-derived 649 /649 values` | `gate/nif.log` |
+| published artefacts | `GATE_PUBLISHED_DATA_CHANGED=0`; at the gate one `docs/` path, this ledger's opening | `gate_table.log`, `gate/published_delta.txt` |
+| portal suite | 19 files / 181 tests, rc 0; the eight new files 76 passed; ruff and compileall rc 0 | `gate/suite.log`, `gate/collect_only.log`, `gate/new_files.log` |
+| plants | `total=40 runtime_landed=40 red=40 restored=40 leftover_markers=[]`; CI reports the same total | `gate/plants.log`, CI log |
+| leak test | `GATE_LEAK_HITS=7`, all seven the PRD's own "no longer" | `gate/leak.txt` |
+| AC2 / AC3 / AC13 / AC14 | one `1 passed` each, rc 0 | `gate/ac2.log` … `gate/ac14.log` |
+| F3 over HTTP | `GATE_F3_HTTP_RC=0`: four refusal rows, four denominators, two panels, no `no_slice_evidence`, the published correction printed | `gate/f3_http.log` |
+| parity (§6.3) | 8 fixtures, 7 compared field by field, 1 rendered from its published shape; `PARITY SLICES=… rows=4 refusals=4`; published, quoted and live `612 /612` | `gate/parity.log` |
+| `doctor` | uv rc 0, all required checks ok; container rc 3, `docker fail`, `container-network not-required` | `gate/doctor_uv.log`, `gate/doctor_container.log` |
+| export lane | 146 tracked paths; `1227 passed, 31 skipped in 660.61s`; corpus-absent `verify` rc 0 at `612 /612` | `gate/export_pytest.log`, `gate/export_verify.log` |
+| container (CI) | `byte-identical: yes`; `state: certified`, `argv[0] == "docker"`, `exit_code: 0`; 2 attempts, 2 certified rows; `AC4_MISMATCH_RC=4`, `SHAREABLE_REPLAY_RC=3` | `ci-43016752565.log` |
+| liveness | I1 and I3 `ACTIVE (M3)`; I2 and I5 `ACTIVE (M2)`; I6 `ACTIVE (M1)`; I4 `UNPROVEN (M4)`, its §6.2 plant named and not counted among the 40 | report §5 |
+| reviews | three read-only; the last checked 86 claims and returned MUST 0 / SHOULD 4 / NIT 2, all six closed in prose | report §§11–13 |
+| report | 551 lines, sha256 `6b5caaea…`; `shasum -a 256 -c report.sha256` verifies | `report.sha256` |
+
+### Correction, not annotation (Section 8.3)
+
+The corrections a reader of this ledger needs are these; each replaced the
+sentence or control it corrected rather than leaving a note beneath it.
+
+The F1 tamper control was replaced: an 8-byte replacement for a certificate
+made the manifest's byte-count branch refuse first, so the sha256 check could
+not fail. A one-byte flip of the same length is now the control, and the
+refusal reason is pinned. D13 was rewritten twice — first because only the
+denominator was called per group while the artefact publishes `alpha`, `beta`
+and `delta` too, then because "after correction" misdescribed the values: the
+per-group `beta` is 0.05, and only `run.corrected_*` is 0.0125. Its final
+reading is the group's own budget, with the correction displayed and never
+applied. Parity's "8 artefacts byte-equal" became 7 compared field by field
+plus 1 rendered from its published shape, and the expected denominator is read
+from the frozen README with `PINNED_REDERIVED` disclosed as a second check
+(D16). `doctor.py`'s three duplicated definitions were removed. The gate script
+stopped passing a second `-q` (`-o addopts= -q`), captured
+`GATE_PUBLISHED_RC`, and carries no aggregate rc (D14). On the final pass the
+runs 1–3 script hashes were relabelled **recorded readings** after the claimed
+run-3 derivation failed to reproduce; only run 4's is checkable on disk
+(report §13, S4). §5's I4 row was restored to §6.1's cross-freeze rule with
+`UNPROVEN (M4)`, and §3's row 12 `rc` was marked as the CI job's success rather
+than a code this machine captured.
+
+Nothing above was closed with a skip, an xfail, an ignore or an exemption. The
+suite went 172 → 177 → 181 and the plants 38 → 40 because the reviews found
+behaviour that had no control on it.
+
+### Deviation, counted
+
+Since `386dc9e`, `git diff --name-only 386dc9e..HEAD -- data/ docs/` returns two
+paths, both this ledger — the M3 opening (`51e1294`) and this closure — and
+`-- data/` returns **0**. `verify` still exits 0 at **649 /649**; the packet is
+built from `e9b0cf1`, so no published artefact moved. Section 13.1's
+published-artefact row read **1** at the gate and reads **2** after this commit;
+both paths are this file, which `verify` does not compare.
+
+### Stop point for the next session
+
+Section 7's M4 row is F4 claim check, F5 audit export, badge-as-shareable and
+the localization pass; its gate is AC5, AC6, AC7, AC8, AC11 and a P1 and a P2
+walkthrough completed with an external reader; its rollback point is that
+F4/F5 are additive views over M3's data. The external-reader walkthrough is the
+long-lead item and needs a person outside this loop: the owner should name them
+before M4's gate, not at it.
+
+M4 starts in a new session with B1–B5 re-captured at the new tip and committed
+to this ledger before its first source edit. This session opens no M4 plan and
+edits no source. The report above is frozen at the sha the owner approved.
+
+This Section 8 commit is pushed to **both** remote branches, `main` and
+`integration/f8-into-main`, so the next session's B1 and the CI checkout read
+the closed milestone rather than the open one.
