@@ -679,12 +679,13 @@ behaviour that had no control on it.
 
 ### Deviation, counted
 
-Since `386dc9e`, `git diff --name-only 386dc9e..HEAD -- data/ docs/` returns two
-paths, both this ledger — the M3 opening (`51e1294`) and this closure — and
-`-- data/` returns **0**. `verify` still exits 0 at **649 /649**; the packet is
-built from `e9b0cf1`, so no published artefact moved. Section 13.1's
-published-artefact row read **1** at the gate and reads **2** after this commit;
-both paths are this file, which `verify` does not compare.
+Since `386dc9e`, `git diff --name-only 386dc9e..HEAD -- data/ docs/` returns one
+path, this ledger — the M3 opening (`51e1294`) and this closure both touch it —
+and `-- data/` returns **0**. `verify` still exits 0 at **649 /649**; the packet
+is built from `e9b0cf1`, so no published artefact moved. Section 13.1's
+published-artefact row therefore still reads **1** at the closure: later commits
+touch this same path rather than adding one. `verify` does not compare this
+file.
 
 ### Stop point for the next session
 
