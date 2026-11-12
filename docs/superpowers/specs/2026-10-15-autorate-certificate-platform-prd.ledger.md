@@ -713,3 +713,151 @@ edits no source. The report above is frozen at the sha the owner approved.
 This Section 8 commit is pushed to **both** remote branches, `main` and
 `integration/f8-into-main`, so the next session's B1 and the CI checkout read
 the closed milestone rather than the open one.
+
+---
+
+## 9. Milestone M4 opening — 2026-11-12 (PRD §0.4, §13.5)
+
+The owner supplied the Section 13.5 resume opener with `This session: M4 only`
+on 2026-11-12. Section 0.4 was re-run from scratch at the current HEAD
+(`fd06bf9`), not copied from Section 7: HEAD has moved since the M3 opening, so
+those readings are history, not ground truth. Every exit code below comes from
+its own command, captured by `echo "NAME_EXIT=$?"` immediately after a redirect;
+logs are in `~/laya-evidence/m4-2026-11-12/gate/`.
+
+### B1 — identity
+
+```text
+$ git rev-parse --abbrev-ref HEAD
+integration/f8-into-main
+
+$ git rev-parse --short HEAD
+fd06bf9
+```
+
+`B1A_EXIT=0` · `B1B_EXIT=0`. `git ls-remote origin 'refs/heads/*'` confirms
+remote `main`, `integration/f8-into-main` and `HEAD` all resolve to `fd06bf9`.
+
+### B2 — working tree
+
+```text
+$ git status --short
+```
+
+Empty output, 0 lines. `B2_EXIT=0`, `B2_LINES=0`. `git worktree list` shows no
+other worktree holding a branch that this session will edit.
+
+### B3 — the honesty gate
+
+```text
+$ uv run --frozen autorate verify --protocol protocol.json
+claim G1 not_certifiable ≥3 decision tasks yield a certified `autorate(α=0.05)` with an upper risk bound
+claim G2 measured_not_bounded The gate `laya`'s README instructs demonstrably violates its own implied error rate
+claim G3 not_measured ≥1 ordinal guarantee that multiclass CP cannot express
+claim G4 not_met Worst-slice certification refuses rather than averages
+claim G5 certified Reproducible from a commit with no GPU, no network, no model
+protocol: protocol.json ce43f8e29cc1 (frozen 2026-10-17)
+inventory source: recomputed from the corpus
+disclosure: corpus present: inventory, digests and the snapshot all re-derived; the frozen protocol rubric was enforced
+re-derived 649 /649 values
+```
+
+`B3_EXIT=0`. Lane **corpus present**; NIF reference denominator **649 /649**,
+unchanged from the M3 opening. Section 0.4's hard rule is satisfied: the tree
+reproduces its own published numbers.
+
+The two labels the product displays are read off the tool's own output, not
+inferred:
+
+| Label | Value at this baseline | Where it comes from |
+|---|---|---|
+| lane | **`corpus present`** | the `disclosure:` line, verbatim |
+| denominator | **`649 /649`** | the `re-derived N /M values` line, verbatim |
+| freeze | `protocol.json ce43f8e29cc1 (frozen 2026-10-17)` | `protocol:` line |
+
+### B3A — clean-clone lane, re-executed as the opener requires
+
+The opener warns that a locally green tree has turned red in CI once, because
+the frozen repo's CI reads an object database a shallow checkout lacks. The
+corpus-absent reading was therefore re-executed rather than carried forward:
+
+```text
+$ git archive HEAD | tar -x -C <dir> ; git ls-files > <dir>/.tracked-files
+M4_EXPORT_MANIFEST_LINES=146
+
+$ env -u PYTHONPATH AUTORATE_FEISHU_ROOT=/nonexistent \
+    AUTORATE_TRACKED_FILES=<dir>/.tracked-files \
+    uv run --frozen autorate verify --protocol protocol.json
+inventory source: committed data/inventory.md.json
+disclosure: corpus absent: 9 `SOURCE.json` digests and the inventory snapshot are transcribed from the committed data/inventory.md.json, not recomputed
+re-derived 612 /612 values
+```
+
+`M4_CLEAN_CLONE_VERIFY_RC=0`. This is an **additional** reading, not one of
+Section 0.4's five; it establishes both lanes at this tip.
+
+### B4 — command surface
+
+```text
+$ uv run --frozen autorate --help
+snapshot, export-feishu, certify, severity, compare, gate, report, audit,
+protocol, verify
+```
+
+`B4_EXIT=0`, 10 subcommands, unchanged. Section 7 puts all of M4 in the portal
+repo; the frozen CLI surface gains nothing.
+
+### B5 — adoption blocker
+
+```text
+$ gh repo view --json visibility,stargazerCount
+{"stargazerCount":1,"visibility":"PUBLIC"}
+```
+
+`B5_EXIT=0`. Unchanged since the M3 opening.
+
+### M4 scope, and what is deliberately not in it
+
+Section 7's M4 row (verbatim deliverable): **F4 claim check, F5 audit export,
+badge-as-shareable, localization pass** (Section 11's `Localization` row; the
+second language is fixed by A6 as Simplified Chinese, `zh-Hans`). Gate:
+**AC5, AC6, AC7, AC8, AC11; a P1 and a P2 walkthrough completed with an
+external reader**. Rollback point: **F4/F5 are additive views over M3's data**.
+Repository: the portal, not this one.
+
+In §6.1 **I4** (no cross-freeze aggregation without a boundary) turns
+`ACTIVE (M4)`: two packets at different `protocol_digest` values must not share
+a trend axis unless the boundary is drawn and both digests are named. I1, I3
+(`ACTIVE (M3)`), I2, I5 (`ACTIVE (M2)`) and I6 (`ACTIVE (M1)`) must not
+regress. §6.2 forbids any skip/xfail/ignore/exemption to get green.
+
+Named out of scope so it cannot be skipped silently: M5's policies, monitor,
+in-browser verifier and the `--format json` freeze round; any change to `data/`
+or to a file `verify` byte-compares (§0.5 NIF); any endpoint that computes a
+bound (I1 / §3.4 NG7); §0.2 carve-out (a) irreversible public exposure and
+(b) outbound messages to named third parties. M3's approval is **not** carried
+forward: the Section 13.1 gate table needs a fresh owner approval for M4.
+
+### Open gate row, recorded at the opening
+
+The owner's opener states that **no external reader is named** and that the
+P1/P2 walkthrough is "not yours to close". Section 8 records the same fact,
+dated 2026-11-12. It is carried as an **open row** in the Section 13.1 gate
+table: it cannot be satisfied by the author, by any reviewer, or by CI, and no
+substitute or softened reading is proposed. It blocks **approval**, not the
+work: this session builds M4 to the gate and stops there. Naming an external
+reader is the owner's act; this ledger records it when it happens.
+
+### Deviation, counted
+
+This commit changes one file under `docs/` (this ledger), so
+`git diff --name-only fd06bf9..HEAD -- data/ docs/` returns one path and
+`-- data/` returns **0**. `verify` still exits 0 at **649 /649**; no published
+artefact moved. Section 13.1's published-artefact row is counted as 1 here,
+not described as zero — the same single path M1, M2 and M3 registered.
+
+### Stop point
+
+Section 13.5: stop for the owner's approval at the Section 13.1 gate table,
+with the Section 13.2 report and liveness table. This block is the baseline M4
+will be read against; it claims nothing proven.
