@@ -696,6 +696,16 @@ F4/F5 are additive views over M3's data. The external-reader walkthrough is the
 long-lead item and needs a person outside this loop: the owner should name them
 before M4's gate, not at it.
 
+Recorded 2026-11-12: the owner states that **no external reader is named yet**
+("目前还没有外部读者"). The P1/P2 walkthrough is therefore an open gate item,
+not a formality to be filled in at the end. It cannot be satisfied by the
+author, by any of the three reviewers, or by a CI job; M4 must not report its
+gate as complete while the reader is unnamed. Naming one is the owner's act and
+this ledger records it when it happens. This paragraph is a ledger-only commit:
+`git diff --name-only 386dc9e..HEAD -- docs/` still returns one path (this file)
+and `-- data/` still returns **0**, so no published artefact moved and `verify`
+is unaffected.
+
 M4 starts in a new session with B1–B5 re-captured at the new tip and committed
 to this ledger before its first source edit. This session opens no M4 plan and
 edits no source. The report above is frozen at the sha the owner approved.
