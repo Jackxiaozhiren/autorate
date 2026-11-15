@@ -861,3 +861,47 @@ not described as zero — the same single path M1, M2 and M3 registered.
 Section 13.5: stop for the owner's approval at the Section 13.1 gate table,
 with the Section 13.2 report and liveness table. This block is the baseline M4
 will be read against; it claims nothing proven.
+
+## 9A. Owner waiver — P1/P2 external reader gate row, 2026-11-15
+
+The Section 9 opening carried one row OPEN: the P1/P2 walkthrough "with an
+external reader". Section 8 recorded the fact on 2026-11-12; the Section 13.1
+gate table recorded it again at `318f80d` (`gate/p1p2_waiver.log` quotes the
+line). On 2026-11-15 the owner stated that no reader exists outside the
+developer, and then authorised the coding agent to execute the walkthrough in
+that role. The exact words are quoted in `gate/p1p2_waiver.log` (W1) and are
+not paraphrased here.
+
+What the owner waived is one clause: that the walkthrough be completed and
+signed by an external reader. What was not waived is that a walkthrough be
+executed and recorded, that the record say in its own text that the executor
+is neither external nor independent, and that no PASS be claimed for a waived
+criterion. The row's disposition is therefore **waived-by-owner**, not
+satisfied. The earlier table is not rewritten: it still prints OPEN, because
+that is what it printed at `972c107`, and a log is not rewritten.
+
+The record is `walkthrough/results-2026-11-15/P1-P2-sheet.md`: twelve rows,
+verbatim screen text, six screenshots, one bundle dump. Its executor is an AI
+agent — not a person, not outside this loop, and not independent: it wrote part
+of the reader-facing text and knew the expected verdicts. It found six defects
+(F1–F6, listed in `report-addendum-2026-11-15-p1p2-waiver.md` §A4); two of
+them, F1 and F2, mean a reader cannot tell what the one `certified` row
+actually publishes. That is the kind of thing an independent reader was
+supposed to catch, and it is recorded here as the cost of the waiver, not as a
+result the waiver produced.
+
+Deviation, counted the same way M1–M3 counted theirs: this commit changes one
+path under `docs/` (this ledger), `git diff --name-only <base>..HEAD -- data/`
+returns 0, and no published artefact moves. It is D12 in the Section 13.2
+report, recorded in an addendum so the report's own bytes stay at
+`f1e87ac9…`. The Section 13.1 table is re-run at this commit rather than
+carried forward, because the frozen tip moved; those readings live in the
+evidence directory and the table names its own files.
+
+Residual risk, stated once: no independent reader has seen this build, so the
+author's blind spots are unmeasured. The waiver accepts that risk; it does not
+measure it. If a real external reader appears later, the same handout can be
+run again and this waiver superseded.
+
+M4 is **not** approved by this entry. Approval is still the owner's act at the
+Section 13.1 gate table.
