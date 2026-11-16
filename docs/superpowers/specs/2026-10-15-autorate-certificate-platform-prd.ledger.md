@@ -1086,3 +1086,18 @@ than the record.
 This Section 10 commit is pushed to **both** remote branches, `main` and
 `integration/f8-into-main`, so the next session's B1 and the CI checkout read the closed
 milestone rather than the open one.
+
+### Closure reading taken after the push
+
+The frozen repo's CI on the commit that carries Section 10 — `eddbfe4`, the parent of the
+commit that adds this paragraph — is run **43800958117**, conclusion **success**, with
+`offline`, `cross-libc-verify (macos-latest)` and `cross-libc-verify (ubuntu-latest)` all
+completed success. It was read with `gh run view` after the push, not predicted, and it is
+recorded here the way `gate/p1p2_waiver.log` REVISION 2 recorded run `43726509623`: as a
+reading of a named commit, beside the table, not inside it.
+
+This paragraph is the follow-up commit Section 10 promised. It changes only this ledger file,
+adds no source or data path, and moves no published artefact. The run it records belongs to
+its parent commit; this commit's own push triggers a further run, whose result cannot be
+written into the file that would cause it — so the chain stops at this line, by construction
+rather than by omission.
