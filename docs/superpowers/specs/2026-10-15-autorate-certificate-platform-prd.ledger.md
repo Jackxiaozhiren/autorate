@@ -905,3 +905,184 @@ run again and this waiver superseded.
 
 M4 is **not** approved by this entry. Approval is still the owner's act at the
 Section 13.1 gate table.
+
+---
+
+## 10. Milestone M4 closure — 2026-11-16 (PRD §13.5)
+
+The owner approved the M4 stop point on 2026-11-15 at 23:18 CST (15:18Z) with the
+instruction **"批准，授权，请按照你的思路建议进行"**, delegating the D1–D12 rulings recorded in
+`gate/m4_approval.log` (sha256 `ffec5c447da593d7eba165ad5a505aa01a46d9052f7f6e2820aeb92070ec2a56`).
+The readings below are what M4 proved; the narrative, the ten §13.2 sections, the liveness
+table, twelve deviations and three independent reviews are in
+`~/laya-evidence/m4-2026-11-12/report-2026-11-13-m4-audience-features.md` (sha256
+`f1e87ac9a7bf34504f73d49fd85864d8ad919b371dbce7d206d9c67b1b5ecdd4`), beside
+`gate/gate_table.6a18500.log` (sha256
+`49f8d1806b2f017bb5e919fa71de6dae4f9b1531f0977bbffec163081339a622`), the `gate/` logs,
+`gate/p1p2_waiver.log` (sha256
+`d4fc8756ba54210f410cb7d94a46d8ca7d8777beaf98cd07d76c7dfff7bf62b2`), the addendum
+`report-addendum-2026-11-15-p1p2-waiver.md` (sha256 `e199a4ec…`) and
+`walkthrough/results-2026-11-15/P1-P2-sheet.md`. The report was not edited after the
+approval; the sha above is the one the owner approved. The gate table was not edited after
+its run (`TABLE_EDITED_AFTER_RUN=no`), and the approval names that table's sha rather than a
+summary of it.
+
+**Row 13 of the approved table is waived-by-owner, not satisfied.** The table prints
+`GATE_P1_P2_WALKTHROUGH=WAIVED-BY-OWNER … NOT a PASS`; the approval log records
+`ROW_13_DISPOSITION=waived-by-owner (the reader clause was waived, not satisfied)` and
+`EXTERNAL_READER_SATISFIED=no`. No external reader has seen this build. The substitute
+walkthrough was executed by an AI agent that wrote part of the reader-facing text and knew
+the expected verdicts, so it is neither external nor independent, and its six findings are
+what that executor noticed rather than what a reader would have noticed. The approval
+accepts that residual risk; it does not measure it, and no PASS is claimed for the row.
+
+### Decisions taken (D1–D12)
+
+| # | Decision | Value | Basis |
+|---|---|---|---|
+| D1 | AC5 is demonstrated on a **synthetic** certificate | **Accepted as written** | No certificate in `data/cert_*.json` is `feasible=true` with a non-null `autorate`; F4 rule 4 forbids printing an unpublished point estimate, so the `bounded_refutes` branch needs a labelled fixture. Against the real packet every claim is `cannot_be_bounded`, and a test asserts it |
+| D2 | `cannot_be_bounded` names no required sample size | **Accepted** | `data/g1_feasibility.json` publishes no `n_min`/`required_n`; the code reads the missing pool inputs and the size ladder it does publish, then says the artefact states no required sample. Inventing one is the failure F4 rule 3 names |
+| D3 | The audit lane is quoted as Markdown, never parsed into a bound | **Accepted** | `docs/AUDIT.md` is the lane's only artefact; five exact sentences are read from the packet's bytes and carried as labels, so a packet that lacks them says so |
+| D4 | The localization artifact is the rendered HTML pair, not PNG | **Accepted** | HTML is byte-comparable and diffable; a PNG's pixels follow the runner's font stack and would make the gate unstable. A PNG requirement, if wanted, is an M5 item |
+| D5 | axe pass and manual keyboard pass | **Settled on the walkthrough side**: the keyboard pass ran (13 controls, all outline solid, recorded in the 12-row table); axe remains `not-run` and is recorded as `not-run`, never as a pass | Report D5; `walkthrough/results-2026-11-15/P1-P2-sheet.md`. One of the two was done, so the conditional acceptance closes only that half |
+| D6 | The gate table has no aggregate exit code | **Accepted** | The rows are the verdict; an aggregate rc lets a failing row hide behind a wrapper's status, which is the failure M3's first run demonstrated |
+| D7 | The local container reading is a named `not-run`; the clean-machine row is CI's | **Accepted** | This machine has no Docker daemon (`doctor --backend container` rc 3). CI run `43546775573`'s `headSha` equals the portal tip, so the row is witnessed elsewhere rather than waived here |
+| D8 | AC7's recorded-mismatch trigger was corrected twice | **Accepted** | The `db.Run` query at `97736d8` could not fire (no product path inserts that row, and a mismatch's replay `exit_code` is 0); the row is now the run-store JSONL observation. The table at `1148056` is archived and not cited |
+| D9 | The frozen repo gained one ledger-only commit, `972c107` | **Accepted** | §0.4/§13.5 require the baseline committed before source edits; `-- data/` returns 0 paths and `verify` still reads `649 /649`. The published-artefact row is counted as 1, not described as zero |
+| D10 | Badge bytes are buildable only with `READ_CERTIFICATES` | **Accepted** | The build reads a project's packet context; the artefact it returns carries only the triple, the denominator, the closed-vocabulary state and `records_rows: 0`. Public shareability belongs to the artefact, not to an unauthenticated endpoint |
+| D11 | §5's `generic_aap` versus §4.3's `aap` | **`aap` kept**; the PRD wording change is deferred to the next revision of the PRD, not made here | The PRD sits on the chain `verify` compares, so M4 may not edit it; an alias would need a heading mapping invented for it. A caller following §5 gets a named 422 rather than a silently different bundle |
+| D12 | The P1/P2 reader waiver | **Accepted as recorded** (Section 9A, `gate/p1p2_waiver.log` W1) | The waiver removes the reader blocker; it does not approve M4, does not close W-F1–W-F6 and does not convert row 13 into a PASS |
+
+R-F4–R-F8 are **deferred to the M5 backlog**, and this approval closes none of them: AC5
+against a real feasible certificate, a machine-readable form of the audit lane, the PNG
+question, the coverage floor, and `project_id` on run rows. The walkthrough's defects are
+split: **W-F1 and W-F2 are M5 entry conditions** (see the stop point); W-F3–W-F6 are M5
+backlog. The report's follow-ups and the walkthrough's defects are different lists — R-F*
+and W-F* in the approval log — and are not interchangeable.
+
+### Readings that close M4
+
+| Reading | Value at 2026-11-16 | Where it was read |
+|---|---|---|
+| approved tips | portal `318f80d`, frozen `6a18500`; both trees clean | gate table header; portal `git status` 0 lines, frozen B2 0 lines |
+| closure baseline | B1 `integration/f8-into-main` / `6a18500`, remote `main`, `integration/f8-into-main` and `HEAD` all `6a18500`; B2 0 lines; B4 10 subcommands; B5 `{"stargazerCount":1,"visibility":"PUBLIC"}` | `gate/closeout-6a18500/b1a.log` … `b5.log`, each exit in its own `*.exit` |
+| B3 | rc 0, lane **corpus present**, `re-derived 649 /649 values`, protocol `ce43f8e29cc1` frozen 2026-10-17 | `gate/closeout-6a18500/b3.log` |
+| B3A | rc 0, lane **corpus absent**, `inventory source: committed data/inventory.md.json`, `re-derived 612 /612 values`, 146 manifest lines | `gate/closeout-6a18500/b3a.log`, `b3a_manifest.txt` |
+| portal CI | run `43546775573` headSha `318f80d`, three jobs success: `suite / plants / lint`, `frozen packet / AC1 / AC9 / AC10 / I6`, `parity 6.3 / committed artefacts render byte-equal` | gate table row 12; `gate/ci_runs.json` |
+| frozen repo CI at the approved tip | run `43726509623` headSha `6a18500`, conclusion success: `offline`, `cross-libc-verify (macos-latest)`, `cross-libc-verify (ubuntu-latest)` | `gh run view 43726509623`; `gate/p1p2_waiver.log` REVISION 2; addendum A8 |
+| NIF | `GATE_NIF_RC=0`, `re-derived 649 /649 values` | `gate_table.6a18500.log` row 1 |
+| published artefacts | `GATE_PUBLISHED_DATA_CHANGED=0`; `GATE_PUBLISHED_DATA_DOCS_CHANGED=1`, the one path this ledger | gate table; `gate/published_delta.txt` |
+| portal suite | 28 files / 259 tests, `GATE_SUITE_RC=0`; the nine new M4 files 78 passed; ruff, compileall and yaml/toml rc 0 | `gate/suite.log`, `gate/new_files.log` |
+| plants | `total=55 runtime_landed=55 red=55 restored=55 leftover_markers=[]` | `gate/plants.log`; CI run `43546775573` |
+| leak test | `GATE_LEAK_HITS=7`, all seven the PRD's own phrase `no longer` | `gate/leak.txt` |
+| AC5 / AC6 / AC7 / AC7 over HTTP / AC8 / AC11 | one named reading each, rc 0 | `gate/ac5.log` … `gate/ac11.log` |
+| I4 | `ACTIVE (M4)`; two digests without a boundary draw no trend, with one both are named | report §5; `gate/plants.log` |
+| parity (§6.3) | 11 fixtures, 7 compared field by field, 1 rendered from its published shape; `612 /612` published, quoted and live; `PARITY VERIFY_RC=0` | `gate/parity.log` |
+| `doctor` | uv rc 0, required checks all ok; container rc 3, `docker` failed — a named `not-run` | `gate/rebuild-6a18500/doctor_uv.log`, `doctor_container.log` |
+| export lane | 146 tracked paths; `1227 passed, 31 skipped in 865.34s`; corpus-absent `verify` rc 0 at `612 /612` | `gate/export_pytest.log`, `gate/export_verify.log` |
+| walkthrough | waived-by-owner; 12 rows, 6 screenshots, 1 bundle dump; executor AI, not human, not external, independence none | `walkthrough/results-2026-11-15/P1-P2-sheet.md`, `gate/p1p2_waiver.log` |
+| reviews | three read-only: 1 BLOCKING + 3 non-blocking; 2 BLOCKING; then 1 BLOCKING + 2 MAJOR + 6 MINOR, re-review `APPROVE` | report §§11–13, `review-3.md` |
+| report | 515 lines, sha256 `f1e87ac9…`; unchanged since approval | `report-2026-11-13-m4-audience-features.md` |
+
+### Correction, not annotation (Section 8.3)
+
+Six corrections replaced the sentence or the control they corrected rather than leaving a
+note beneath it.
+
+AC7's recorded-mismatch trigger was corrected twice. It was first keyed to a byte mismatch
+against the manifest, then at `97736d8` to a `db.Run` row — a row no product path inserts,
+whose `exit_code` on a mismatch is the replay process's own 0 — and finally at `05a2423` to
+the run-store JSONL row with `state == "mismatch"`. The gate table run at `1148056` is
+archived as `gate/gate_table.at-1148056.log` and is not cited; the table at `97736d8` is
+superseded by the one this section closes.
+
+F4's comparator was narrowed. At `97736d8` any published field could be compared with the
+certified `autorate`, so a claim on `bound`, `n_cal` or `alpha` would have been answered with
+a bounded verdict about a different quantity. `claims.RATE_FIELD` now admits only
+`autorate`, and a claim whose unit differs from the certified unit — or a certificate that
+states none — is `cannot_be_bounded` with no number.
+
+The deciding row was replaced. `latest_row` took the last line whatever its state, so a later
+`not-run` or `refused` row lifted a recorded mismatch and the export proceeded; AC7 was
+bypassable by one ordinary command. `engine.deciding_row` returns the last row that
+**observed** the source (`certified` or `mismatch`); `not-run` and `refused` neither block nor
+clear.
+
+A pin-matching guard was added during the third review's re-review and then removed at
+`318f80d`: matching the row's wheel against the packet's pin let a one-field edit to
+`distribution.sha256` re-seal a blocked packet and export 200. The removal is the correction;
+the test asserts the fail-closed reading the reviewer asked for, and the removal narrows the
+reviewed surface rather than extending it.
+
+CI's five acceptance-criterion lines ended with a literal `echo "M4_AC*_RC=0"` — a constant
+wearing an exit code's name. At `97736d8` each command appends its own rc to a file and a
+harness asserts the five names and values before the step exits.
+
+The walkthrough's own record carried a wrong reading into three reader-facing documents:
+"seven certificates, all refusal". `README.md`'s table, `smoke-test.md` and
+`reader-script.md`'s owner table all said it, and it is false: the frozen packet publishes
+six `feasible=false` / `empty_feasible_set` rows and one `certified` row (`severity_ordinal`,
+`synthetic-ordinal`, `bound=0.045180414995`, `n_cal=n_eval=600`, no `autorate` key). The
+accurate fixed fact is "no certificate publishes `autorate`", not "no certificate is
+certified"; `smoke-test.md` records the correction as C1 and the reader-facing text was
+rewritten.
+
+Nothing above was closed with a skip, an xfail, an ignore or an exemption. The suite went
+181 → 259 and the plants 40 → 55 because the reviews found guards that could not fire, not
+because a threshold was moved.
+
+### Deviation, counted
+
+This commit changes one file under `docs/`, so
+`git diff --name-only fd06bf9..HEAD -- data/ docs/` returns one path (this ledger, now
+carrying the M4 opening `972c107`, the waiver `6a18500` and this closure) and
+`git diff --name-only fd06bf9..HEAD -- data/` returns **0**. `verify` still exits 0 at
+**649 /649**; no published artefact moved. Section 13.1's published-artefact row therefore
+reads **1**, not 0 — the same counted exception M1, M2 and M3 registered, and the one D9
+accepts. `verify` does not compare this file.
+
+### Stop point for the next session
+
+Section 7's M5 row is **F6** monitor and drift, **F7** policies and enforcement, **F9** the
+self-contained HTML viewer and share link, and **F10** administration; the Pyodide certificate
+self-checker reusing the *published* `verify` module; and the frozen repo's `--format json`
+as **one freeze round**, approved before it is run. Its gate is **AC12**, the browser
+checker's verdict equalling the container replay's for the same packet, and the freeze round
+passing with denominators unchanged and a recorded justification for adding a compared field
+or not. Rollback point: the browser checker must degrade to "replay required" if the wheel
+cannot be fetched.
+
+M5 inherits two **entry conditions**, not backlog items: **W-F1** and **W-F2**. The one
+`certified` row's detail renders `bound: not published by this certificate` while the
+handout and the artefact say that row publishes a different quantity, `bound`; and the detail
+group panel shows `n_cal=1487` for every row (`jev` publishes 95, `severity_ordinal` 600)
+without naming its dataset. Together they mean a reader cannot tell what the one certified
+row actually publishes, which is the claim M4 exists to make readable. They are fixed before
+M5 is called done, not after.
+
+The rest of the walkthrough's findings are M5 backlog: W-F3 (zh-Hans translates buttons and
+header cells only; verdict and detail body remain English), W-F4 (`known_limits[1]` says no
+certificate exists, contradicting the certified row), W-F5 (`gaps: []` is ambiguous between
+"no gap" and "not stated") and W-F6 (the 14th Tab lands on `BODY` with `outline: none`).
+R-F4–R-F8 are also deferred: AC5 against a real feasible certificate, a machine-readable
+audit lane, the PNG question, the coverage floor, and `project_id` on run rows.
+
+M5 starts in a new session with Section 0.4 re-run at the new tip and committed here before
+its first source edit. **M4's approval is not carried forward**: §13.5 requires M5's own
+baseline and its own approval at the Section 13.1 gate table. This session opens no M5 plan
+and edits no portal source. The report stays frozen at the sha the owner approved.
+
+M4 now consists of the four audience features at portal `318f80d`; the gate rows AC5, AC6,
+AC7, AC8 and AC11 plus parity, NIF and the suite green at frozen `6a18500`; one row
+waived-by-owner; twelve recorded deviations; three read-only reviews; a report at the
+approved sha; and the two walkthrough findings M5 must fix before it closes.
+
+One reading is taken **after** this push — the frozen repo's CI on the commit that carries
+this section — and is appended in the follow-up ledger commit that changes only this file,
+together with whether `report.sha256` verifies. A file cannot contain the result of a run its
+own push triggers, and writing a predicted run id here would be the summary that reads better
+than the record.
+
+This Section 10 commit is pushed to **both** remote branches, `main` and
+`integration/f8-into-main`, so the next session's B1 and the CI checkout read the closed
+milestone rather than the open one.
