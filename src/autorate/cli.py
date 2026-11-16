@@ -1009,18 +1009,50 @@ def cmd_verify(args) -> int:
     for label, key, owner in CORPUS_DIGESTS:
         expect(label, file_digest(globals()[owner]), corpus[key])
 
-    for claim in protocol.claims:
-        print("claim %s %s %s" % (claim["id"], claim["status"], claim["criterion"]))
-    print("protocol: %s %s (frozen %s)" % (getattr(args, "protocol", None) or PROTOCOL_JSON,
-                                           digest[:12], protocol.frozen_at))
-    print("inventory source: %s" % source)
-    print("disclosure: %s; the frozen protocol rubric was enforced" % disclosure)
-    print("re-derived %d /%d values" % (checked, total))
+    # M5's one freeze round: build ONE result object here, then render it as
+    # text or JSON. No comparison, field list or denominator changes — the
+    # `expect*` calls above are the only authority, and their counts are copied
+    # into the result verbatim. `--format` is a presentation switch, not a
+    # second verifier.
+    rc = EXIT_DRIFT if (failures or mismatches) else 0
+    result = {
+        "claims": [{"id": c["id"], "status": c["status"], "criterion": c["criterion"]}
+                   for c in protocol.claims],
+        "protocol": getattr(args, "protocol", None) or PROTOCOL_JSON,
+        "protocol_digest": digest[:12],
+        "frozen_at": protocol.frozen_at,
+        "inventory_source": source,
+        "disclosure": disclosure,
+        "checked": checked,
+        "total": total,
+        "re_derived": "%d /%d" % (checked, total),
+        "failures": list(failures),
+        "mismatches": list(mismatches),
+        "exit_code": rc,
+    }
+    fmt = getattr(args, "format", "text")
+    print(_render_verify(result, fmt))
     for f in failures:
         print("DRIFT:", f, file=sys.stderr)
     for f in mismatches:
         print("RUBRIC MISMATCH:", f, file=sys.stderr)
-    return EXIT_DRIFT if (failures or mismatches) else 0
+    return rc
+
+
+def _render_verify(result: dict, fmt: str) -> str:
+    """The two presentations of the SAME result. Text is byte-identical to B3."""
+    if fmt == "json":
+        return json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    if fmt != "text":
+        raise UsageError("--format must be text or json, got %r" % fmt)
+    lines = ["claim %s %s %s" % (c["id"], c["status"], c["criterion"])
+             for c in result["claims"]]
+    lines.append("protocol: %s %s (frozen %s)" % (
+        result["protocol"], result["protocol_digest"], result["frozen_at"]))
+    lines.append("inventory source: %s" % result["inventory_source"])
+    lines.append("disclosure: %s; the frozen protocol rubric was enforced" % result["disclosure"])
+    lines.append("re-derived %s values" % result["re_derived"])
+    return "\n".join(lines)
 
 
 def _frozen_at_in_place(out: Path) -> str:
@@ -1240,6 +1272,8 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--protocol", default=None,
                    help="which freeze to enforce (default %s, read as a published artefact)"
                         % PROTOCOL_JSON)
+    v.add_argument("--format", choices=("text", "json"), default="text",
+                   help="presentation of the same result (M5's one freeze round)")
     v.set_defaults(fn=cmd_verify)
     return p
 
