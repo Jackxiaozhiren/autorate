@@ -1101,3 +1101,160 @@ adds no source or data path, and moves no published artefact. The run it records
 its parent commit; this commit's own push triggers a further run, whose result cannot be
 written into the file that would cause it — so the chain stops at this line, by construction
 rather than by omission.
+
+---
+
+## 11. Milestone M5 opening — 2026-11-16 (PRD §0.4, §13.5)
+
+The owner authorised this session with the two words **「授权M5」** on 2026-11-16, against the
+Section 13.5 opener whose body reads `This session: M5 only (Section 7)`. Section 0.4 was
+re-run from scratch at the current HEAD rather than copied from Section 10: HEAD has moved,
+and the opener's own warning is that a stored baseline is history, not ground truth. Every
+exit code below comes from its own command, written by `printf`/`echo` immediately after that
+command's own redirect. Logs and their SHA-256s are in `~/laya-evidence/m5-2026-11-16/gate/`
+(`baseline.sha256` covers `b1a.log b1b.log b2.log b3.log b3a.log b4.log b5.log`).
+
+### B1 — identity
+
+```text
+$ git rev-parse --abbrev-ref HEAD
+integration/f8-into-main
+
+$ git rev-parse --short HEAD
+f5eb3cd
+```
+
+`B1A_EXIT=0` · `B1B_EXIT=0`. `git ls-remote origin` resolves remote `main`,
+`integration/f8-into-main` and `HEAD` all to `f5eb3cd39c00582edf67680311939a04b437e3cf`
+(`B1_REMOTE_EXIT=0`). The locality that matters: the tree M5 will read is the tree the
+remote reports, at the commit Section 10 closed M4 on.
+
+### B2 — working tree
+
+```text
+$ git status --short
+```
+
+Empty output, 0 lines. `B2_EXIT=0`, `B2_LINES=0`. No other worktree holds a branch this
+session will edit.
+
+### B3 — the honesty gate
+
+```text
+$ uv run --frozen autorate verify --protocol protocol.json
+claim G1 not_certifiable ≥3 decision tasks yield a certified `autorate(α=0.05)` with an upper risk bound
+claim G2 measured_not_bounded The gate `laya`'s README instructs demonstrably violates its own implied error rate
+claim G3 not_measured ≥1 ordinal guarantee that multiclass CP cannot express
+claim G4 not_met Worst-slice certification refuses rather than averages
+claim G5 certified Reproducible from a commit with no GPU, no network, no model
+protocol: protocol.json ce43f8e29cc1 (frozen 2026-10-17)
+inventory source: recomputed from the corpus
+disclosure: corpus present: inventory, digests and the snapshot all re-derived; the frozen protocol rubric was enforced
+re-derived 649 /649 values
+```
+
+`B3_EXIT=0`, and `grep -c '^re-derived 649 /649 values$'` returns `1` with
+`B3_RELINE_GREP_EXIT=0`. Lane **corpus present**; denominator **649 /649**, identical to the
+M4 opening and to Section 10's closure reading. Section 0.4's hard rule is satisfied: the
+tree reproduces its own published numbers, so M5 may be built on it.
+
+| Label | Value at this baseline | Where it comes from |
+|---|---|---|
+| lane | **`corpus present`** | the `disclosure:` line, verbatim |
+| denominator | **`649 /649`** | the `re-derived N /M values` line, verbatim |
+| freeze | `protocol.json ce43f8e29cc1 (frozen 2026-10-17)` | `protocol:` line |
+
+### B3A — clean-clone lane, re-executed rather than carried
+
+The opener repeats the reason: the frozen repo's CI reads an object database a shallow
+checkout lacks, which has already turned a locally green tree red once. Re-executed at this
+tip:
+
+```text
+$ git archive HEAD | tar -x -C <dir> ; git ls-files > <dir>/.tracked-files
+M5_EXPORT_MANIFEST_LINES=146
+
+$ env -u PYTHONPATH AUTORATE_FEISHU_ROOT=/nonexistent \
+    AUTORATE_TRACKED_FILES=<dir>/.tracked-files \
+    uv run --frozen autorate verify --protocol protocol.json
+inventory source: committed data/inventory.md.json
+disclosure: corpus absent: 9 `SOURCE.json` digests and the inventory snapshot are transcribed from the committed data/inventory.md.json, not recomputed -- this run cannot see whether that snapshot went stale; the frozen protocol rubric was enforced
+re-derived 612 /612 values
+```
+
+`M5_CLEAN_CLONE_VERIFY_RC=0`, 146 tracked paths. Both lanes hold at `f5eb3cd`. This is an
+additional reading, not one of Section 0.4's five.
+
+### B4 — command surface
+
+```text
+$ uv run --frozen autorate --help
+snapshot, export-feishu, certify, severity, compare, gate, report, audit,
+protocol, verify
+```
+
+`B4_EXIT=0`, 10 subcommands. The surface M5 will extend is this one: the freeze round adds a
+flag to `verify`, not a subcommand, and the flag must not change any denominator.
+
+### B5 — adoption blocker
+
+```text
+$ gh repo view --json visibility,stargazerCount
+{"stargazerCount":1,"visibility":"PUBLIC"}
+```
+
+`B5_EXIT=0`. Unchanged since the M4 opening.
+
+### M5 scope, and what is deliberately not in it
+
+Section 7's M5 row, verbatim deliverable: **F6** monitor and drift, **F7** policies and
+enforcement, **F9** self-contained HTML packet viewer and share link, **F10** administration;
+the **Pyodide certificate self-checker** reusing the *published* `verify` module; and the
+frozen repo's **`--format json`** as **one freeze round**. Repository: **portal + frozen repo**.
+Gate: **AC12**; the browser checker's verdict equal to the container replay's for the same
+packet; the freeze round passing with denominators **unchanged** and a **recorded
+justification for adding a compared field or not**. Rollback point: the browser checker must
+degrade to **"replay required"** if the wheel cannot be fetched.
+
+The freeze round is authorised in **name and scope only**: `--format json` on `verify`, one
+round, denominators unchanged unless the round is explicitly approved to change them. §0.5
+NIF is not suspended for anything else — no other file `verify` compares, no other compared
+field, no other published document. If the round turns out to require a second change to the
+compared surface, that second change is a new request to the owner, not part of this
+authorisation.
+
+Two **entry conditions**, inherited from Section 10 and not backlog: **W-F1** — the one
+`certified` row's detail renders `bound: not published by this certificate` while the handout
+and the artefact say that row publishes `bound` — and **W-F2** — the detail group panel shows
+`n_cal=1487` for every row (`jev` publishes 95, `severity_ordinal` 600) without naming its
+dataset. Both are fixed before M5 is called done. Backlog carried into M5: W-F3–W-F6 and
+R-F4–R-F8, as Section 10 lists them.
+
+In §6.1, the six invariants are **carried, not inherited as proven**: at this opening every
+row is `UNPROVEN at M5` until its plant is run in *this* milestone's CI, per §6.1's own rule
+that a rule whose plant has not run in this milestone is `UNPROVEN` and may not be cited as
+satisfied. I1 (M3), I2 (M2), I3 (M3), I4 (M4), I5 (M2) and I6 (M1) must not regress; the
+liveness table the Section 13.2 report carries starts from this sentence, not from the
+previous report's table. §6.2 still forbids any skip/xfail/ignore/exemption to get green.
+
+Named out of scope so it cannot be skipped silently: §0.2 carve-outs **(a)** irreversible
+public exposure and **(b)** outbound messages to named third parties; any endpoint that
+computes a bound (I1 / §3.4 NG7); any change to `data/` or to a byte-compared published
+document outside the one authorised freeze round; and any F8 distribution work (that is M0's
+and is already recorded as unblocked/blocked there).
+
+### Deviation, counted
+
+This commit changes one file under `docs/` (this ledger). `git diff --name-only f5eb3cd..HEAD
+-- data/` is read after the commit and returns **0**; `-- data/ docs/` returns **1**; `verify`
+is then re-run on the committed tree and still exits 0 at **649 /649** — read, not assumed,
+and recorded in the M5 evidence directory rather than asserted here. No published artefact
+moves, and M4's approved report stays frozen at
+`f1e87ac9a7bf34504f73d49fd85864d8ad919b371dbce7d206d9c67b1b5ecdd4`.
+
+### Stop point
+
+Section 13.5 restated for M5: baseline first (this section), ledger commit **before** the
+first source edit, stop for the owner's approval at the Section 13.1 gate table with the
+Section 13.2 report and liveness table. This block is the baseline M5 will be read against;
+it claims nothing built and nothing proven. M4's approval is not carried forward.
