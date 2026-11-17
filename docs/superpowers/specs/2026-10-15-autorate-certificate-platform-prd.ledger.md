@@ -1424,3 +1424,43 @@ table at `f61648f9…`; neither was edited after approval. No outbound message t
 third party and no irreversible public exposure (§0.2 (a)/(b)) was undertaken by this
 approval. M0's release blockers and the deferred backlog are the only open items, each with
 owner jackson.
+
+---
+
+## 14. Verification-type closeout of deferred follow-ups — 2026-11-17 (post-approval, docs-only)
+
+Owner instruction "继续推进", resolved to verification-type closeout: execute the
+verifiable backlog items, add **real** evidence, change no product code, touch no release and
+no external action. Full record in
+`/Users/jackson/laya-evidence/m5-2026-11-16/f5-addendum-2026-11-17.md`
+(sha `8265b25e…`, evidence sha manifest `f5-browser-check/SHA256SUMS.txt`). This section is
+docs-only: the approved gate table `f61648f9…` and report `8719e225…` were not edited,
+`data/` did not change, `verify` still `649 /649`, and no milestone was reopened.
+
+- **F5 (T8 checker in a real browser) — DONE.** Checker rebuilt with the product's own
+  `build_checker` and real published pin (wheel `7709d3fa…`, rule sha `79e7e1b5…`), served
+  over localhost and opened in ego-browser v2.2.1 **real Chromium**. Rule layer: real-browser
+  `publishedVerdict` equals the Node execution of the same `verifier.mjs` on **6/6** decision
+  inputs; recorded in `f5-record.json`, not asserted. End-to-end `autorateCheck` returned
+  `replay required` on all six: `fetchWheel()` hashes the PyPI **JSON metadata** bytes against
+  the **wheel** sha, so the digest cannot match — the checker's designed "never a pass from an
+  unverified wheel" degradation, recorded as an observation, not relabelled a defect and not
+  fixed (no source change). Screenshot `ego-checker.png` retained. Browser space and server
+  both closed.
+- **F7 (new, owner jackson) — opened by this run.** Decide whether `PIN.source` should point
+  at a byte source whose digest can equal the wheel sha (needs wheel-CORS/hosting work) or
+  whether "always `replay required` on this machine" is the intended v1 posture. No product
+  decision was made here.
+- **F3 (P1/P2 external-reader walkthrough) — NOT RUN, precondition absent.** The owner's own
+  2026-11-15 decision recorded `not-run` and stop; no reader outside the execution loop has
+  been named, and the owner may not act as the reader. An agent cannot manufacture an
+  independent reader. No results sheet, no signature, no `p1p2_addendum.log`; gate row 72
+  stays `OPEN` verbatim. Only the owner naming a reader unblocks it.
+- **R-F4 (AC5 against a real feasible certificate) — NOT RUN, precondition absent.** All seven
+  published certificates have `autorate: null`; the one `feasible: true` certificate publishes
+  `bound`, not `autorate`, so no real artefact exists for AC5's "share above the certified
+  autororate" comparison. A fixture re-run presented as real would be the mislabelling the
+  method forbids; no reading was invented.
+
+Stop point unchanged: the milestone gates remain approved and discharged; the four items
+above are follow-ups with owner jackson, not open gate rows.
