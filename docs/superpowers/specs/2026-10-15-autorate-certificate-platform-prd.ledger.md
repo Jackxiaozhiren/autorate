@@ -1549,3 +1549,76 @@ unchanged by this section.
 
 _Stop point: this section prepares and records; it does not authorize or perform any release step.
 M4/M5 gate tables and reports remain byte-identical and approved._
+
+## 17. Owner confirms the four §13.7 items — by ratification of completed acts (2026-11-17)
+
+Owner instruction, verbatim: **"已经确认四项，后续我应该怎么操作"** followed by
+**"请继续完成未完成的任务"**. Instruction scope: record the four-part confirmation and
+identify the true remaining work. Before writing the confirmation I re-measured the live state,
+and that measurement **corrects a factual error in Section 16**, recorded here rather than
+silently rewritten (this ledger is append-only).
+
+**Section 16 correction.** Section 16 said "A7 still blocks PyPI ... PyPI release and tag stay
+blocked" and listed "visibility flip, A7 token, PyPI release, tag" as remaining owner actions.
+That was wrong: it inherited PRD §8.1/§12.3 text written on 2026-10-15 and did not re-check what
+has happened since. The block below is history; the measured state here is ground truth.
+
+**Measured state of the release chain (2026-11-17, read-only GETs).** The entire chain is
+already executed, by the owner using an account outside this machine (this machine has never
+had a publishing credential — Section 16's credential check remains true and is not contradicted):
+
+| §8.1 arrow | measured evidence | when |
+|---|---|---|
+| upstream issue filed | `NandhaKishorM/laya#1263`, author `Jackxiaozhiren`, `state_reason=completed`, maintainer implemented the guard | filed 2026-10-16, completed 2026-10-17 |
+| repository visibility | `GET api.github.com/repos/Jackxiaozhiren/autorate` → `private=false`, `visibility=public`; `autorate-portal` also `public` | public since 2026-11-08 (corroborated by `pyproject.toml` comment and B5 readings from M1 onward) |
+| PyPI release `autorate` | PyPI JSON lists 0.1.0 and 0.1.2; wheel+sdist upload times captured in this round's evidence | 0.1.0 2026-11-08T02:46Z, 0.1.2 2026-11-09T02:46Z |
+| git tag + GitHub Release | tags `v0.1.0`, `v0.1.1`, `v0.1.2`; GitHub Releases published for all three | 2026-11-08T03:05Z / 12:42Z, 2026-11-09T02:48Z |
+
+This is consistent with the older, correct ledger lines: Section 3 opens "Captured after the
+`autorate 0.1.2` PyPI release and its `v0.1.2` tag", and its B5 reads `PUBLIC` with the note that
+the 2026-11-06 `PRIVATE` block "is history, not ground truth". The 2026-11-06 held/not-done
+block in Section 1 is similarly stale history.
+
+**The four §13.7 items, confirmed by the owner and ratified against the measured state:**
+
+1. **Target and exact text** — confirmed as in Section 16 §5 item 1: no new filing. The one live
+   finding was filed by the owner as #1263 and is `completed`; `issue.md` stays withdrawn. The
+   written instruction the PRD required before the visibility arrow is satisfied by this
+   confirmation, after the fact, and the arrow itself was already executed on 2026-11-08.
+2. **Branch / fork / PR** — none in round one; unchanged. No fork, branch or PR was created by
+   the agent or, per the measured record, needed for #1263 (the maintainer fixed it directly).
+3. **Who answers review comments** — no new filing exists, so there are no round-one comments
+   to answer. A named responder would be required only if the owner opens a new contribution;
+   none is asserted here.
+4. **Freshness date** — 2026-11-17, the date item 4 was actually re-measured (Section 16),
+   not the 2026-10-14 date the PRD warned against copying.
+
+**True remaining work after this confirmation:**
+
+- **Nothing in the §8.1 release chain for `autorate`.** It is complete; re-running PyPI release
+  or re-flipping visibility would be a duplicate of a completed action and would fail or add noise.
+- **`autorate-portal` is not on PyPI** (measured: `GET pypi.org/pypi/autorate-portal/json` →
+  404), while its repository is public and its code is at `21c5c9c`. Publishing it is a new
+  decision, not a leftover from §8.1: PRD §12.3 A3 settled the name and §12.3 A2 settled the
+  `autorate` version, but no owner instruction in this ledger authorizes a portal release.
+  It also needs a publishing credential this machine does not have. Not done; owner's call.
+- **§8.3 owner-reading checklist** (upstream-state attribution sweep, ERRATA append-only
+  confirmation, privacy-rule implementation) was a pre-flight for the visibility flip. The flip
+  has already happened, so these are retrospective items if the owner wants them, not blockers.
+- Deferred backlog (F3 real external reader, R-F4 real feasible certificate, R-F5/R-F8)
+  unchanged; no gate table was reopened.
+
+**No action taken in this section:** no visibility change, no PyPI upload, no tag, no fork/PR,
+no issue or comment, no credential. All measurements were read-only GETs. Frozen artifacts
+unchanged: M4 gate table `a36b4451…`, M5 report `8719e225…`, M5 gate table `f61648f9…`;
+`data/` delta 0; `verify` still `649 /649`.
+
+**Evidence-package revision.** The owner-ready package cited in Section 16 (sha `5b8de331…`)
+had the same stale "remaining owner actions" error in its §6. It was corrected to the measured
+state above and re-signed: new sha `0fb72e25…`, manifest `release-chain-unblock.sha256`
+re-verified OK, all five evidence files unchanged. Section 16's sha remains the pre-revision
+reading and is left as history.
+
+_Stop point: the release chain is complete; this section records the owner's confirmation and
+the correction. Any future portal release or new upstream contribution requires a fresh owner
+decision._
