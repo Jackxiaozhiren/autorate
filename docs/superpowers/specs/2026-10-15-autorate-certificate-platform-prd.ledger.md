@@ -1464,3 +1464,43 @@ docs-only: the approved gate table `f61648f9…` and report `8719e225…` were n
 
 Stop point unchanged: the milestone gates remain approved and discharged; the four items
 above are follow-ups with owner jackson, not open gate rows.
+
+---
+
+## 15. Owner decisions on F7 and F3 — 2026-11-17 (docs-only, no product change)
+
+Owner instruction "这两个都需要执行，全部批准" resolved the two decisions left open in
+Section 14. Both were executed as recorded below. No product code, no `data/`, no report and
+no gate table changed; `verify` still `649 /649`; the approved tips are unchanged
+(portal `21c5c9c`, frozen `c9793a0` at this section's commit).
+
+- **F7 → option C, "keep the current degradation".** The four-option research is in
+  `/Users/jackson/laya-evidence/m5-2026-11-16/f7-wheel-checker-options.md` (sha `ecfbeffa…`).
+  Decision: no code change; the checker keeps returning `replay required` when it cannot verify
+  a wheel, which is the gate row's explicitly preserved behaviour ("must degrade to
+  `replay required` if the wheel cannot be fetched"). F5 already proves the rule layer is equal
+  6/6 in a real browser. Options A/B/D (metadata pin confirmation, Pyodide replay, same-origin
+  wheel endpoint) were **not** chosen and each would have required a fresh §0.4/gate/approval
+  cycle; none was opened.
+- **F3 → re-run the AI-substitute walkthrough and record a further owner waiver (W2).**
+  Per W1's precedent and the owner's express choice, the P1/P2 walkthrough was re-run with the
+  same M4 wheel (`c77524b9…`) on an isolated instance using real Chromium (ego-browser v2.2.1).
+  Full record: `m4-2026-11-12/walkthrough/results-waiver-rerun-20261117/P1-P2-sheet.md`
+  (sha `ebbf43b9…`), two screenshots and `SHA256SUMS.txt` in the same directory. Twelve
+  steps plus the keyboard path completed; the annex-iv bundle reproduced byte-for-byte
+  (`60e1c0db…`, identical to W1 — a deterministic bundle re-derived in a new session).
+  Recorded in `m4-2026-11-12/gate/p1p2_waiver.log` **REVISION 3** (sha `67f28943…`) as
+  `waived-by-owner`, explicitly **not** PASS, independence zero, executor not human and not
+  external. `gate/gate_table.log` sha `a36b4451…` and report sha `f1e87ac9…` are unchanged;
+  gate row 72 and `p1p2_addendum.log` were not touched. Only a named human reader outside the
+  loop can satisfy the original PRD row; W2 does not claim otherwise.
+
+Findings from the re-run are consistent with W1 and with the M5 walkthrough entry conditions
+(group panel shows `n_cal=1487` on the `jev` row that publishes 95, without naming its source;
+`known_limits[1]` contradicts the certified row; zh-Hans translates chrome but not verdict
+body; `gaps: []` ambiguous). They are carried as recorded findings, not silently closed by
+M5's fixes because this wheel is the M4 build the gate row is bound to.
+
+_STOP point unchanged: milestone gates remain approved and discharged; F7 is decided as C;
+F3 is waived-by-owner again (W2) and still cannot be reported as PASS; F4/F5 remain
+not-run with owner jackson; R-F6 and the release blockers A3/A4/A7 are unaffected._
