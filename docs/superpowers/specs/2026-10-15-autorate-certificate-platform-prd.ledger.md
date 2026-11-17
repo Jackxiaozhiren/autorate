@@ -1258,3 +1258,78 @@ Section 13.5 restated for M5: baseline first (this section), ledger commit **bef
 first source edit, stop for the owner's approval at the Section 13.1 gate table with the
 Section 13.2 report and liveness table. This block is the baseline M5 will be read against;
 it claims nothing built and nothing proven. M4's approval is not carried forward.
+
+---
+
+## 12. Milestone M5 closeout — 2026-11-17 (gate table, report, stop point)
+
+The Section 0.4 baseline in Section 11 was committed at `0db1fd8` before the first source
+edit, as the opener required. M5 was then built in the portal (T1–T8, T10) and in the
+frozen repo (T9), the Section 13.1 gate table was run at the final tips, and the Section
+13.2 report was frozen to disk. Approval is the owner's act and is the one open row;
+**M4's approval is not carried forward**.
+
+### Implementation commits (read, not assumed)
+
+Portal `autorate-portal`, `318f80d..21c5c9c`, ten commits: plan `1da8730`; W-F1/W-F2
+`d0d4c02`; AC12 `8b848ec`; F6 `50eca97`; F7 `c2539a0`; F9 `4b773ac`; F10 `e6cad3f`;
+T8 `eee869d`; the §6.2 plant retarget `f274389`; and the gate fix `21c5c9c`.
+Frozen `autorate`, `f5eb3cd..1792bf1`, two commits: this ledger's opening `0db1fd8` and
+the single authorised freeze round `1792bf1` (`verify --format json`, text byte-identical,
+no compared field added). Both repos were pushed: `1792bf1` to frozen `main` and
+`integration/f8-into-main`; `21c5c9c` to portal `main`. A first push attempt on 2026-11-16
+failed with CONNECT 502 / HTTP2 framing (recorded in `gate/t9_push_*.log`); the retry on
+2026-11-17 succeeded, with rc 0 captured per command.
+
+### Gate table readings (Section 13.1)
+
+Run at `PORTAL_TIP=f274389`, `FROZEN_TIP=1792bf1`; verbatim stdout in
+`~/laya-evidence/m5-2026-11-16/gate/gate_run.stdout`, each rc captured from its own command.
+
+| Gate | Reading | rc |
+|---|---|---|
+| Frozen non-interference | `re-derived 649 /649 values`, identical to B3 | 0 |
+| Freeze round (M5 only) | JSON `re_derived="649 /649"`, `exit_code:0`; text byte-identical to baseline sha `b31e3412…` | 0 |
+| Published-artefact untouched | `0` data paths, `1` docs path (the opening ledger) since `f5eb3cd`; T9 touched only `src/`, `tests/` | 0 |
+| New-file coverage | `47 passed`, `47` collected (nine M5 test files) | 0 |
+| Portal suite | `302 passed` in `36` files (after gate fix `303 passed`) | 0 |
+| Frozen verify-focused tests | `99 passed` | 0 |
+| Invariant plants | `total=55 runtime_landed=55 red=55 restored=55 leftover_markers=[]` | 0 |
+| Corpus-absent lane | `1230 passed, 31 skipped`; `612 /612`; `147` tracked lines | 0 |
+| Leak test | `7` hits, all adjudicated in the report's §7/§6 (D8), unchanged from M4 | 0 |
+| Clean machine | CI run `44065676777`, headSha `21c5c9c`, three jobs all `success` | 0 |
+| Owner approval | **OPEN** — this report, a reviewer, the author and CI cannot close it | n/a |
+
+Two gate rows were **red on the first run and corrected, not annotated**: `GATE_RUFF_RC=1`
+(7 unused F401 imports) and `GATE_PARITY_RC=1` (parity's `artefact_values` did not read the
+artefact's third `bound` shape that W-F1 added to `ingest`, so it compared the portal
+against `None`). Both were fixed in `21c5c9c` — imports removed; parity reads the same
+three shapes with a regression test — and re-verified: ruff `All checks passed!`, parity
+`PARITY OK … denominators 612 /612`, full suite `303 passed`, CI green. No skip, xfail,
+ignore or exemption was added (§6.2). The first-run red readings are kept in the gate log
+and shown in the report; they are not silently rewritten.
+
+### Report frozen
+
+`~/laya-evidence/m5-2026-11-16/report-2026-11-17-m5-enforcement-monitor-verifier.md`,
+sha256 `8719e225cccc9eb87b7f0e0fa5b57eb3d4099f6332dde4a93b8a7675474177b6`
+(`report.sha256`, verified OK). It carries all §13.2 sections: baseline B1–B5 verbatim,
+commands with exit codes, AC12/checker-verdict/W-F1/W-F2/F6/F7/F9/F10/T9 proven, the
+liveness table (I1–I6 all ACTIVE on this milestone's re-run; two plants rewritten under
+§6.2, none void, none unproven), deviations D1–D8, re-derived vs transcribed numbers,
+deliberately-not-done, follow-ups and added-file guards.
+
+### Deviation, counted
+
+Since `f5eb3cd` this ledger gained one docs commit (this one) and the freeze round added
+one frozen source + one frozen test file. `git diff --name-only f5eb3cd..HEAD -- data/`
+returns **0**; the freeze round changed no published artefact and no compared field;
+`verify` still exits 0 at **649 /649**. M4's approved report stays frozen at
+`f1e87ac9a7bf34504f73d49fd85864d8ad919b371dbce7d206d9c67b1b5ecdd4`.
+
+### Stop point
+
+The Section 13.1 gate table has been run at the final tips (`autorate-portal 21c5c9c`,
+`autorate 1792bf1`), both pushed and CI-validated. Work stops here for the owner's
+approval of this table, which no report, reviewer, author or CI can supply. M4's approval
+is not carried forward.
