@@ -1431,9 +1431,9 @@ owner jackson.
 
 Owner instruction "继续推进", resolved to verification-type closeout: execute the
 verifiable backlog items, add **real** evidence, change no product code, touch no release and
-no external action. Full record in
-`/Users/jackson/laya-evidence/m5-2026-11-16/f5-addendum-2026-11-17.md`
-(sha `8265b25e…`, evidence sha manifest `f5-browser-check/SHA256SUMS.txt`). This section is
+no external action. Full record in the evidence tree at
+`m5-2026-11-16/f5-addendum-2026-11-17.md` (sha `8265b25e…`, evidence sha manifest
+`m5-2026-11-16/f5-browser-check/SHA256SUMS.txt`). This section is
 docs-only: the approved gate table `f61648f9…` and report `8719e225…` were not edited,
 `data/` did not change, `verify` still `649 /649`, and no milestone was reopened.
 
@@ -1474,8 +1474,8 @@ Section 14. Both were executed as recorded below. No product code, no `data/`, n
 no gate table changed; `verify` still `649 /649`; the approved tips are unchanged
 (portal `21c5c9c`, frozen `c9793a0` at this section's commit).
 
-- **F7 → option C, "keep the current degradation".** The four-option research is in
-  `/Users/jackson/laya-evidence/m5-2026-11-16/f7-wheel-checker-options.md` (sha `ecfbeffa…`).
+- **F7 → option C, "keep the current degradation".** The four-option research is in the
+  evidence tree at `m5-2026-11-16/f7-wheel-checker-options.md` (sha `ecfbeffa…`).
   Decision: no code change; the checker keeps returning `replay required` when it cannot verify
   a wheel, which is the gate row's explicitly preserved behaviour ("must degrade to
   `replay required` if the wheel cannot be fetched"). F5 already proves the rule layer is equal
@@ -1504,3 +1504,48 @@ M5's fixes because this wheel is the M4 build the gate row is bound to.
 _STOP point unchanged: milestone gates remain approved and discharged; F7 is decided as C;
 F3 is waived-by-owner again (W2) and still cannot be reported as PASS; F4/F5 remain
 not-run with owner jackson; R-F6 and the release blockers A3/A4/A7 are unaffected._
+
+## 16. Release-chain unblock preparation — 2026-11-17 (read-only measurement + docs-only fix)
+
+Owner instruction "解锁发布链（推荐）". Scope held to what needs no owner authority: re-measure
+PRD §13.7 item 4, check A7 / §8.2 pre-flight, and prepare an owner-ready answer package. No
+visibility flip, PyPI release, tag, fork, PR, issue, comment or credential was created.
+
+**Decisive finding — the upstream-filing arrow already fired.** The single finding
+`docs/upstream/issue.md` was drafted to file was filed by the owner as `NandhaKishorM/laya#1263`
+on 2026-10-16 and closed `state_reason=completed` on 2026-10-17; maintainer `sathariels`
+implemented the proposed guard. Author issue count now 1 (that closed issue), PRs 0. §13.7
+item 1's 2026-10-15 recommendation to file `issue.md` is therefore stale: filing now would
+duplicate a completed issue and damage the credibility the thesis rests on.
+
+**§13.7 item 4 re-measured, not copied** (2026-11-17T12:00Z–12:02Z, read-only GETs). Upstream
+moved from v0.4.6 (2026-10-14) to **v0.4.35** (published 2026-11-16; `main` pushed 2026-11-16).
+Current `tests/test_packaging.py` carries `require_repo()` — sha256 `d914157b…` — and skips
+repo-only sections instead of raising; the published sdist's copy is byte-identical. The sdist
+still ships 0 `.github/` and 0 compose files, but the suite now runs from it: **rc=0, 11 SKIP,
+`all packaging tests passed`**. The "cannot run from published sdist" finding no longer
+reproduces; the fix is in the shipped artifact, not only on `main`.
+
+**A7 still blocks PyPI.** `~/.pypirc` absent, `TWINE_*`/`PYPI_*` env count 0, `twine` not
+installed. A project-scoped token is an owner account action; PyPI release and tag stay blocked.
+
+**§8.2 pre-flight found and fixed one real defect (docs-only).** The two-stage credential scan
+returned zero assignment-shaped hits. The absolute-path guard
+`test_no_committed_file_carries_an_absolute_home_path` was **red on this tree** — ledger lines
+1435 and 1478, written in Sections 14/15, carried absolute literals naming this machine's
+login home. Both were rewritten to evidence-tree-relative paths; the guard re-ran 1 passed.
+This was a regression I
+introduced after the last gate; leaving it would hand the owner a red test tree. Frozen
+artifacts re-hashed unchanged: M4 gate table `a36b4451…`, M5 report `8719e225…`, M5 gate table
+`f61648f9…`. `data/` delta 0; `verify` still `649 /649`.
+
+**Owner-ready package:** evidence tree `m5-2026-11-16/release-chain-unblock-2026-11-17.md`
+(sha `5b8de331…`), with `release-chain-unblock.sha256` and `release-chain-evidence/`. Its §5
+updates all four §13.7 answers: (1) no new filing — #1263 already filed and completed; (2) no
+fork/PR in round one (unchanged); (3) no comments to answer given no new filing, but only owner
+can decide a new contribution; (4) freshness date 2026-11-17, re-measured. The remaining chain —
+written four-part instruction, visibility flip, A7 token, PyPI release, tag — is owner-only and
+unchanged by this section.
+
+_Stop point: this section prepares and records; it does not authorize or perform any release step.
+M4/M5 gate tables and reports remain byte-identical and approved._
