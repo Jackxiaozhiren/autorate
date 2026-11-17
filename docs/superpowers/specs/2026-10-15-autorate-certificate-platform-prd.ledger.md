@@ -1333,3 +1333,94 @@ The Section 13.1 gate table has been run at the final tips (`autorate-portal 21c
 `autorate 1792bf1`), both pushed and CI-validated. Work stops here for the owner's
 approval of this table, which no report, reviewer, author or CI can supply. M4's approval
 is not carried forward.
+
+---
+
+## 13. M5 owner approval and terminal state — 2026-11-17 (PRD §13.5)
+
+The owner approved the M5 stop point on 2026-11-17 at 18:42 CST (10:42Z) with the verbatim
+instruction **"批准，执行"**, recorded in
+`~/laya-evidence/m5-2026-11-16/gate/m5_approval.log` (sha256
+`7fe7c5c660e258637a263992357e90e1f5356555cf62c87cf41f567790878ddf`). The approval names
+the gate table `gate/gate_run.stdout` (sha256
+`f61648f99f32a8aebcb706e355362a77bedd92dae4da30204cf2ee0a6a884445`) and the frozen report
+`report-2026-11-17-m5-enforcement-monitor-verifier.md` (sha256
+`8719e225cccc9eb87b7f0e0fa5b57eb3d4099f6332dde4a93b8a7675474177b6`) — the exact bytes the
+owner approved. Neither the report nor the gate table was edited after approval. Section
+12's gate-table transcription keeps the `Owner approval … OPEN` row as it was printed at
+run time; a log is not rewritten. This section is where that row is closed.
+
+**Scope of the approval.** The Section 13.1 gate table at portal `21c5c9c` / frozen
+`1792bf1`, all rows: NIF `649 /649`; the freeze round (JSON `re_derived="649 /649"`, text
+byte-identical, no compared field added); the two first-run red rows (ruff F401, parity's
+third `bound` shape) corrected in `21c5c9c` and re-verified green; AC12; the browser/checker
+verdict equality; W-F1/W-F2; F6/F7/F9/F10; 55/55 plants; parity `612 /612`; the CI
+clean-machine row (run `44065676777`, three jobs success); and the approval row now closed.
+
+### Decisions taken (report D1–D8)
+
+| # | Decision | Value | Basis |
+|---|---|---|---|
+| D1 | ruff row red on first gate run (7 F401) | **Accepted as fixed** | imports removed in `21c5c9c`; ruff `All checks passed!`; no ignore/exemption added (§6.2) |
+| D2 | parity row red on first gate run (third `bound` shape) | **Accepted as fixed** | `tools/parity.py` reads the artefact's plain `bound` like `ingest`; regression test added; parity `PARITY OK … 612 /612`; no compared field added to the frozen repo |
+| D3 | gate table has no aggregate exit code | **Accepted** | rows are the verdict; an aggregate rc lets a failing row hide |
+| D4 | two frozen commits since opening (`0db1fd8`, `1792bf1`) | **Accepted** | opening ledger committed before first source edit; one authorised freeze round; `data/` delta 0; `verify` still `649 /649` |
+| D5 | corpus-absent lane manifest is 147 lines | **Accepted** | the freeze round added one frozen test file; both lanes hold (`649 /649` and `612 /612`) |
+| D6 | container reading is a named `not-run`; clean machine is CI's | **Accepted** | no Docker daemon (rc 3); CI run `44065676777` headSha equals portal tip, three jobs success |
+| D7 | two plants retargeted, not deleted (§6.2) | **Accepted** | `html-exclusion-disclosure` → `render.py`, `m4-ac11-staleness-swallowed` → `policies.py`; both landed at runtime and reddened |
+| D8 | leak test's 7 hits | **Accepted** | all seven are the PRD's own phrase `no longer`; PRD not edited to shrink the count |
+
+The freeze round's recorded justification — **no compared field added** — is accepted:
+`--format json` serialises the comparisons the text path already performs; the text output
+is byte-identical (sha `b31e3412…`) and the denominator is unchanged. W-F1/W-F2 are closed;
+AC12 and the checker verdict equality are accepted. Report D1–D8 are M5's list and are not
+the ledger's M4 D1–D12.
+
+### Readings that close M5 (Section 0.4 re-run at the approved tips)
+
+Re-captured in `gate/closeout-21c5c9c/` (`baseline.sha256` covers b1a/b1b/b1_remote/b2/
+b2_portal/b3/b3a/b4/b5; each exit code from its own command, in `closeout.stdout`):
+
+| Reading | Value at 2026-11-17 | Where it was read |
+|---|---|---|
+| approved tips at gate | portal `21c5c9c`, frozen `1792bf1`; both trees clean | gate table header; b2/b2_portal 0 lines |
+| final frozen tip | `023baa4` (docs-only closure ledger after `1792bf1`); remote `main`, `integration/f8-into-main` and `HEAD` all `023baa4` | b1b.log, b1_remote.log |
+| B1 | branch `integration/f8-into-main`, tip `023baa4` | b1a.log, b1b.log |
+| B2 | frozen 0 lines, portal 0 lines | b2.log, b2_portal.log |
+| B3 | rc 0, corpus present, `re-derived 649 /649 values`, one exact line | b3.log (sha `b31e3412…`, identical to the opening) |
+| B3A | rc 0, corpus absent, `re-derived 612 /612 values`, 147 manifest lines | b3a.log (sha `9eb4aaca…`, identical to the opening) |
+| B4 | rc 0, 10 subcommands (`--format json` is a flag) | b4.log (sha `93a3fe04…`, identical to the opening) |
+| B5 | `{"stargazerCount":1,"visibility":"PUBLIC"}` | b5.log |
+| NIF after docs-only closure | `data/` delta since `1792bf1` = 0; since opening `f5eb3cd` = 0 | post_data_paths.txt, data_delta.txt |
+| report sha unchanged | `8719e225…` at closeout, equal to the approved sha | report_sha_check.log |
+
+The byte-identical B3/B3A/B4/B5 logs across the opening (`f5eb3cd`) and the final closure
+tip (`023baa4`) are the non-interference evidence: the closing ledger commits touched only
+`docs/`, and no published artefact, compared field or denominator moved.
+
+### Terminal state of the milestone sequence
+
+PRD Section 7 defines six milestones, M0 through M5; **M5 is the last row**. With this
+approval, every milestone gate table in the sequence has been run and approved in its own
+session, each with its own Section 0.4 baseline and its own owner approval (no approval was
+carried forward): M1 `b1b.log`-lineage at `e9aa7f98…`, M2, M3, M4 (ledger Section 10), and
+M5 (this section). No further milestone is defined by the PRD; this approval does not open
+one.
+
+This is a statement about the **milestone gates**, not a claim that every item in Section
+7 is shipped. The M0 row still carries sub-items blocked on owner-external decisions:
+the git tag and PyPI release remain **BLOCKED on A4/A7**, and the `autorate-portal` scaffold
+release remains **blocked on A3** (Section 7, M0; correction order in §8.1). Those are not
+M5 deliverables and are not unblocked by this approval. The deferred backlog likewise stays
+open with its owner: R-F4–R-F8 (M4 → M5) and the M5 follow-ups F1–F6 in report §9 are
+recorded, not silently closed. F1 (approve this table) and F2 (accept D1–D8) are closed by
+this instruction; F3–F6 remain jackson's.
+
+### Stop point
+
+The Section 13.1 gate table is approved; the Section 13.5 stop for M5 is discharged and
+work is complete at the milestone level. The report stays frozen at `8719e225…`, the gate
+table at `f61648f9…`; neither was edited after approval. No outbound message to a named
+third party and no irreversible public exposure (§0.2 (a)/(b)) was undertaken by this
+approval. M0's release blockers and the deferred backlog are the only open items, each with
+owner jackson.
